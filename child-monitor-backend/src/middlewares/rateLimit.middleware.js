@@ -94,7 +94,8 @@ const agentLimiter = rateLimit({
     }
     return req.ip; // Fallback về IP nếu thiếu/sai định dạng secret
   },
-  validate: { keygenerator: false },
+  // Tắt cảnh báo về X-Forwarded-For vì keyGenerator đã dùng device secret (không phụ thuộc IP)
+  validate: { xForwardedForHeader: false },
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: 'Too many log uploads from this device' },

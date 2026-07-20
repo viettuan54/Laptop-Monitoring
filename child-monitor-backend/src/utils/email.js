@@ -1,19 +1,30 @@
 const nodemailer = require('nodemailer');
 
 let transporter = null;
+let transporterInitialized = false;
 
-// Khởi tạo transporter dựa trên cấu hình môi trường
+/**
+ * Khởi tạo SMTP transporter dựa trên cấu hình môi trường.
+ * Chỉ nên gọi 1 lần khi server khởi động (từ server.js).
+ * Nếu gọi nhiều lần, các lần sau sẽ bị bỏ qua (idempotent).
+ */
 const initTransporter = () => {
+  // Idempotent: không khởi tạo lại nếu đã chạy
+  if (transporterInitialized) return;
+  transporterInitialized = true;
+
   const isProduction = process.env.NODE_ENV === 'production';
-  const hasSMTP = 
-    process.env.SMTP_HOST && 
-    process.env.SMTP_PORT && 
-    process.env.SMTP_USER && 
+  const hasSMTP =
+    process.env.SMTP_HOST &&
+    process.env.SMTP_PORT &&
+    process.env.SMTP_USER &&
     process.env.SMTP_PASSWORD;
 
   if (isProduction && !hasSMTP) {
-    // Fail-fast được kiểm soát từ server.js, nhưng thêm chặn ở đây cho chắc chắn
-    throw new Error('❌ Môi trường PRODUCTION yêu cầu cấu hình đầy đủ biến SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD.');
+    // Fail-fast ở production: không thể gửi email mà không có SMTP
+    throw new Error(
+      '❌ Môi trường PRODUCTION yêu cầu cấu hình đầy đủ biến SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD.'
+    );
   }
 
   if (hasSMTP) {
@@ -28,23 +39,25 @@ const initTransporter = () => {
     });
     console.log('📬 Nodemailer SMTP Transporter đã được cấu hình thành công.');
   } else {
-    // Ở môi trường dev, nếu không có SMTP thì ta không khởi tạo transporter thật
+    // Dev mode không có SMTP: email sẽ được ghi ra console
     console.log('📬 Hệ thống đang ở chế độ phát triển và không cấu hình SMTP. Email sẽ được ghi ra console.');
   }
 };
 
 /**
- * Gửi email xác minh tài khoản hoặc đặt lại mật khẩu
- * @param {string} to Địa chỉ email nhận
- * @param {string} subject Tiêu đề email
- * @param {string} html Nội dung định dạng HTML
- * @param {string} textFallback Nội dung văn bản thô dự phòng
+ * Gửi email xác minh tài khoản hoặc đặt lại mật khẩu.
+ * Gọi initTransporter() từ server.js trước khi dùng hàm này.
+ *
+ * @param {object} options
+ * @param {string} options.to          Địa chỉ email nhận
+ * @param {string} options.subject     Tiêu đề email
+ * @param {string} options.html        Nội dung định dạng HTML
+ * @param {string} options.textFallback Nội dung văn bản thô dự phòng
  */
 async function sendMail({ to, subject, html, textFallback }) {
-  if (!transporter) {
-    // Nếu chưa khởi tạo thì chạy khởi tạo
-    initTransporter();
-  }
+  // Không gọi initTransporter() ở đây để tránh double-init
+  // initTransporter() đã được gọi từ server.js lúc startup
+  // Nếu vì lý do nào đó chưa gọi (unit test, v.v.) thì transporter = null → fallback console
 
   const from = process.env.SMTP_FROM || '"Laptop Monitor" <no-reply@laptopmonitor.local>';
 
@@ -60,13 +73,13 @@ async function sendMail({ to, subject, html, textFallback }) {
       console.log(`[Email Sent] Email đã gửi thành công tới: ${to}`);
     } catch (err) {
       console.error(`[Email Error] Lỗi khi gửi email tới ${to}:`, err.message);
-      // Ở môi trường production, lỗi gửi mail nên được ném ra ngoài để controller xử lý
+      // Ở production, ném lỗi để caller quyết định xử lý
       if (process.env.NODE_ENV === 'production') {
         throw err;
       }
     }
   } else {
-    // Chế độ Dev fallback ghi ra console
+    // Dev fallback: ghi ra console thay vì gửi thật
     console.log('\n=================== MOCK EMAIL SENDING ===================');
     console.log(`FROM: ${from}`);
     console.log(`TO: ${to}`);

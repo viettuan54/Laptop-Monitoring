@@ -289,7 +289,7 @@ exports.logAppBatch = async (req, res) => {
     const endTimes   = validRecords.map((r) => r.end_time);
     const durations  = validRecords.map((r) => r.duration_seconds);
 
-    await adminPool.query(
+    const result = await adminPool.query(
       `INSERT INTO app_usage(client_record_id, device_id, app_name, category, start_time, end_time, duration_seconds)
        SELECT
          unnest($1::text[]),
@@ -303,9 +303,15 @@ exports.logAppBatch = async (req, res) => {
       [clientIds, device_id, appNames, categories, startTimes, endTimes, durations]
     );
 
+    // result.rowCount = số dòng thực sự được INSERT (sau khi ON CONFLICT DO NOTHING lọc trùng)
+    // Không dùng validRecords.length vì bản ghi trùng client_record_id sẽ bị bỏ qua
+    const insertedCount = result.rowCount ?? 0;
+    const duplicateCount = validRecords.length - insertedCount;
+
     res.status(201).json({
       message: 'Batch app usage logged',
-      inserted: validRecords.length,
+      inserted: insertedCount,
+      duplicates: duplicateCount,
       skipped: skippedReasons.length,
       skipped_reasons: skippedReasons,
     });
@@ -408,7 +414,7 @@ exports.logWebBatch = async (req, res) => {
     const durations  = validRecords.map((r) => r.duration_seconds);
     const pageTitles = validRecords.map((r) => r.page_title);
 
-    await adminPool.query(
+    const result = await adminPool.query(
       `INSERT INTO website_logs(client_record_id, device_id, url, domain, category, visit_time, duration_seconds, page_title)
        SELECT
          unnest($1::text[]),
@@ -423,9 +429,14 @@ exports.logWebBatch = async (req, res) => {
       [clientIds, device_id, urls, domains, categories, visitTimes, durations, pageTitles]
     );
 
+    // result.rowCount = số dòng thực sự được INSERT (sau khi ON CONFLICT DO NOTHING lọc trùng)
+    const insertedCount = result.rowCount ?? 0;
+    const duplicateCount = validRecords.length - insertedCount;
+
     res.status(201).json({
       message: 'Batch website logs saved',
-      inserted: validRecords.length,
+      inserted: insertedCount,
+      duplicates: duplicateCount,
       skipped: skippedReasons.length,
       skipped_reasons: skippedReasons,
     });

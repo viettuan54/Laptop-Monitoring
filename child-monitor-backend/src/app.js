@@ -34,8 +34,13 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Device-Secret'],
 };
 app.use(cors(corsOptions));
-// Giữ limit 100kb global để ngăn chặn DoS (Payload lớn có thể làm cạn kiệt băng thông, CPU, RAM),
-// nếu sau này cần gửi batch log thì cấu hình express.json({ limit: '5mb' }) riêng tại route đó.
+
+// ── Logs Route (Giao thức gửi log của Agent & xem log của Phụ huynh) ──────
+// Đặt trước parser global để cho phép tùy biến giới hạn payload (100kb vs 1mb)
+app.use('/api/logs', require('./routes/logs.routes'));
+
+// Giữ limit 100kb global để ngăn chặn DoS (Payload lớn có thể làm cạn kiệt băng thông, CPU, RAM)
+// đối với các route còn lại.
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ limit: '100kb', extended: true }));
 
@@ -48,7 +53,6 @@ app.use('/api/devices', parentLimiter, require('./routes/devices.routes'));
 app.use('/api/settings', parentLimiter, require('./routes/settings.routes'));
 app.use('/api/alerts', parentLimiter, require('./routes/alerts.routes'));
 app.use('/api/ai-analysis', parentLimiter, require('./routes/aiAnalysis.routes'));
-app.use('/api/logs', require('./routes/logs.routes'));
 app.use('/api/agent', agentLimiter, require('./routes/agent.routes'));
 app.use('/api/admin', parentLimiter, require('./routes/admin.routes'));
 
@@ -64,6 +68,9 @@ app.use((req, res) => {
 // Global error handler – bắt lỗi từ middleware và async throw ngoài try/catch
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({ message: 'Payload too large' });
+  }
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
     return res.status(400).json({ message: 'Invalid JSON payload' });
   }

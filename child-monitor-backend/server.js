@@ -101,13 +101,16 @@ function scheduleCleanup() {
     return next2AM - now;
   };
 
+  // Lưu vào biến để tránh gọi getNextRunMs() 2 lần (lần 2 có giá trị nhỏ hơn vài ms → log sai thời gian)
+  const msUntilCleanup = getNextRunMs();
+
   // Chạy lần đầu vào 2:00 AM tiếp theo
   setTimeout(() => {
     runCleanup();
     // Sau đó lặp lại mỗi 24 giờ
     setInterval(runCleanup, 24 * 60 * 60 * 1000);
-  }, getNextRunMs());
+  }, msUntilCleanup);
 
-  const nextRun = new Date(Date.now() + getNextRunMs());
+  const nextRun = new Date(Date.now() + msUntilCleanup);
   console.log(`[Cleanup] Lần dọn dữ liệu tiếp theo: ${nextRun.toLocaleString()}`);
 }

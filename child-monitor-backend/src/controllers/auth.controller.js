@@ -146,7 +146,7 @@ exports.login = async (req, res) => {
 
   try {
     const result = await adminPool.query(
-      'SELECT * FROM users WHERE LOWER(email)=LOWER($1)',
+      'SELECT user_id, name, email, password, role, is_verified, token_version FROM users WHERE LOWER(email)=LOWER($1)',
       [normalizedEmail]
     );
 
@@ -272,7 +272,7 @@ exports.resendVerification = async (req, res) => {
   const normalizedEmail = email.trim().toLowerCase();
 
   try {
-    const result = await adminPool.query('SELECT * FROM users WHERE LOWER(email) = LOWER($1)', [normalizedEmail]);
+    const result = await adminPool.query('SELECT user_id, name, email, password, is_verified FROM users WHERE LOWER(email) = LOWER($1)', [normalizedEmail]);
     if (result.rows.length === 0) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
@@ -334,7 +334,7 @@ exports.changePassword = async (req, res) => {
   const dbClient = await adminPool.connect();
   try {
     const userId = req.user.user_id;
-    const result = await dbClient.query('SELECT * FROM users WHERE user_id = $1', [userId]);
+    const result = await dbClient.query('SELECT user_id, email, password FROM users WHERE user_id = $1', [userId]);
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'User not found' });
     }
@@ -443,7 +443,7 @@ exports.resetPassword = async (req, res) => {
     const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
 
     const result = await dbClient.query(
-      'SELECT * FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()',
+      'SELECT user_id, email FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()',
       [hashedToken]
     );
 
