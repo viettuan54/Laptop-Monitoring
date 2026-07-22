@@ -3,9 +3,17 @@ import sys
 import time
 import logging
 import threading
-import servicemanager
-import win32service
-import win32serviceutil
+
+try:
+    import servicemanager
+    import win32service
+    import win32serviceutil
+    ServiceBaseClass = win32serviceutil.ServiceFramework
+except ImportError:
+    servicemanager = None
+    win32service = None
+    win32serviceutil = None
+    ServiceBaseClass = object
 
 # Thêm thư mục hiện tại vào sys.path để import các module con
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -39,13 +47,19 @@ def run_forever(name, target_func, interval_seconds, *args):
             logging.error(f"Worker thread [{name}] crashed with error: {e}", exc_info=True)
         time.sleep(interval_seconds)
 
-class ChildMonitorService(win32serviceutil.ServiceFramework):
+class ChildMonitorService(ServiceBaseClass):
     _svc_name_ = "ChildMonitorService"
     _svc_display_name_ = "Child Monitoring Agent Service"
     _svc_description_ = "Dịch vụ giám sát và thực thi chính sách an toàn cho laptop trẻ em."
 
-    def __init__(self, args):
-        super().__init__(args)
+    def __init__(self, args=None):
+        if not args:
+            args = [self._svc_name_]
+        if win32serviceutil and ServiceBaseClass != object:
+            try:
+                super().__init__(args)
+            except Exception as e:
+                logging.debug(f"ServiceFramework init skipped: {e}")
         self.stop_event = threading.Event()
         self.api_client = None
         self.offline_queue = None
@@ -55,7 +69,8 @@ class ChildMonitorService(win32serviceutil.ServiceFramework):
         self.watchdog = None
 
     def SvcStop(self):
-        self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+        if win32service:
+            self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         logging.info("Service stopping signal received...")
         self.stop_event.set()
         if self.pipe_server:
@@ -64,11 +79,12 @@ class ChildMonitorService(win32serviceutil.ServiceFramework):
             self.watchdog.stop()
 
     def SvcDoRun(self):
-        servicemanager.LogMsg(
-            servicemanager.EVENTLOG_INFORMATION_TYPE,
-            servicemanager.SIC_GENERIC_MESSAGE,
-            (self._svc_name_, "Service started successfully.")
-        )
+        if servicemanager:
+            servicemanager.LogMsg(
+                servicemanager.EVENTLOG_INFORMATION_TYPE,
+                servicemanager.SIC_GENERIC_MESSAGE,
+                (self._svc_name_, "Service started successfully.")
+            )
         self.main()
 
     def main(self):
@@ -77,7 +93,7 @@ class ChildMonitorService(win32serviceutil.ServiceFramework):
         # Khởi tạo các module lõi
         self.api_client = APIClient()
         self.offline_queue = OfflineQueue(api_client=self.api_client)
-        self.enforcement_core = EnforcementCore()
+        self.enforcement_core = EnforcementCore(offline_queue=self.offline_queue)
         self.web_tracker = WebTracker(offline_queue=self.offline_queue)
         self.pipe_server = PipeServer(offline_queue=self.offline_queue, enforcement_core=self.enforcement_core)
         
@@ -158,19 +174,19 @@ class ChildMonitorService(win32serviceutil.ServiceFramework):
 
     def _web_tracker_loop_step(self):
         """Web Tracker Loop (15s): Đọc lịch sử trình duyệt mới và đẩy vào offline queue."""
-        self.web_tracker.process_new_history()
+        self.web_tracker.track()
 
     def _offline_sync_loop_step(self):
         """Offline Log Sync Loop (60s): Đồng bộ log trong SQLite queue lên backend."""
-        self.offline_queue.sync_pending_logs()
+        self.offline_queue.sync_offline_data(self.api_client)
 
 if __name__ == "__main__":
-    if len(sys.argv) > 1:
+    if len(sys.argv) > 1 and win32serviceutil:
         win32serviceutil.HandleCommandLine(ChildMonitorService)
     else:
         # Chạy ở dạng Standalone Script (Dev Mode) khi không truyền tham số CLI
         logging.info("Starting ChildMonitorService in Standalone / Dev mode...")
-        service_inst = ChildMonitorService([])
+        service_inst = ChildMonitorService(["ChildMonitorService"])
         try:
             service_inst.main()
         except KeyboardInterrupt:

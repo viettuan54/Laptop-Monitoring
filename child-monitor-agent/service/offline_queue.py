@@ -9,12 +9,13 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 class OfflineQueue:
-    def __init__(self, db_path=None):
+    def __init__(self, db_path=None, api_client=None):
         if db_path is None:
             base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             db_path = os.path.join(base_dir, "db", "local.db")
             
         self.db_path = db_path
+        self.api_client = api_client
         self.init_db()
         self.secure_db_file()
 
@@ -134,6 +135,14 @@ class OfflineQueue:
         except Exception as e:
             logging.error(f"Failed to get daily usage: {e}")
             return 0
+
+    def sync_pending_logs(self, api_client=None):
+        """Hàm wrapper đồng bộ dữ liệu ngoại tuyến (hỗ trợ cả truyền api_client hoặc dùng self.api_client)."""
+        target_client = api_client or self.api_client
+        if target_client:
+            self.sync_offline_data(target_client)
+        else:
+            logging.warning("Cannot sync offline logs: APIClient is missing.")
 
     def sync_offline_data(self, api_client):
         """Đồng bộ hóa logs chưa gửi lên backend theo batch 100 bản ghi, có delay 200ms."""

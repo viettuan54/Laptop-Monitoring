@@ -6,6 +6,7 @@ import threading
 import win32pipe
 import win32file
 import win32security
+import win32con
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -38,16 +39,16 @@ class PipeServer:
         sid_system = win32security.CreateWellKnownSid(win32security.WinLocalSystemSid)
         sid_admins = win32security.CreateWellKnownSid(win32security.WinBuiltinAdministratorsSid)
 
-        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32file.GENERIC_ALL, sid_system)
-        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32file.GENERIC_ALL, sid_admins)
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32con.GENERIC_ALL, sid_system)
+        dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32con.GENERIC_ALL, sid_admins)
 
         if user_sid:
             # Cho phép User SID cụ thể của Session đang đăng nhập kết nối
-            dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32file.GENERIC_READ | win32file.GENERIC_WRITE, user_sid)
+            dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32con.GENERIC_READ | win32con.GENERIC_WRITE, user_sid)
         else:
             # Fallback cho phép Everyone nếu chưa xác định được User SID
             sid_everyone = win32security.CreateWellKnownSid(win32security.WinWorldSid)
-            dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32file.GENERIC_READ | win32file.GENERIC_WRITE, sid_everyone)
+            dacl.AddAccessAllowedAce(win32security.ACL_REVISION, win32con.GENERIC_READ | win32con.GENERIC_WRITE, sid_everyone)
 
         sd.SetSecurityDescriptorDacl(1, dacl, 0)
         sa.SECURITY_DESCRIPTOR = sd
@@ -151,10 +152,17 @@ class PipeServer:
 
             # Kiểm tra trạng thái policy hiện tại để phản hồi cho Companion
             should_lock, reason, remaining_seconds = self.enforcement_core.check_policy_status()
+            
+            # Tính toán số phút đếm ngược cảnh báo nếu còn dưới 5 phút (300s)
+            countdown_minutes = 0
+            if not should_lock and 0 < remaining_seconds <= 300:
+                countdown_minutes = max(1, int(remaining_seconds // 60))
+
             response_payload = {
                 "should_lock": should_lock,
                 "reason": reason,
-                "remaining_seconds": remaining_seconds
+                "remaining_seconds": remaining_seconds,
+                "countdown_minutes": countdown_minutes
             }
             response_bytes = json.dumps(response_payload).encode('utf-8')
             win32file.WriteFile(pipe_handle, response_bytes)

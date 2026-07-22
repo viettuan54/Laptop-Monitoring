@@ -26,11 +26,11 @@ def handle_policy_response(policy_response):
     reason = policy_response.get("reason", "")
     countdown_minutes = policy_response.get("countdown_minutes", 0)
 
-    if should_lock:
+    if countdown_minutes > 0 and not should_lock:
+        logging.warning(f"Approaching time limit warning: {countdown_minutes}m remaining")
+        UIAlerts.show_countdown_warning(minutes=countdown_minutes, reason="Sắp hết thời gian sử dụng máy tính cho phép trong ngày!")
+    elif should_lock:
         logging.warning(f"Lock policy triggered: {reason}")
-        if countdown_minutes > 0:
-            UIAlerts.show_countdown_warning(minutes=countdown_minutes, reason=reason)
-            time.sleep(5) # Cho phép người dùng nhìn thấy cảnh báo trước khi khóa
         lock_windows_session()
 
 def start_ping_timer(pipe_client, interval=30):

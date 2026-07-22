@@ -9,10 +9,10 @@ node_modules/
 # Scratch / temp files
 scratch/
 
-# Migration files containing passwords
+# Migration files containing passwords or sensitive data
 migration_v9.sql
 
-# Database seed / dump files (may contain sensitive data)
+# Database seed / dump files
 Data.sql
 
 # Logs
@@ -20,10 +20,8 @@ logs/
 *.log
 npm-debug.log*
 
-# OS files
+# OS & Editor files
 .DS_Store
 Thumbs.db
-
-# Editor directories
 .vscode/
 .idea/
