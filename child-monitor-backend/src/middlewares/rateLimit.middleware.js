@@ -1,10 +1,12 @@
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const crypto = require('crypto');
+const { createRateLimitStore } = require('../config/redis');
 
 /**
  * Brute force protection – giới hạn 5 lần login sai / 1 phút / 1 IP
  */
 const loginLimiter = rateLimit({
+  store: createRateLimitStore('login'),
   windowMs: 60 * 1000,          // 1 phút
   max: 5,                       // tối đa 5 request
   skipSuccessfulRequests: true, // chỉ đếm request thất bại
@@ -20,6 +22,7 @@ const loginLimiter = rateLimit({
  * Register spam protection – giới hạn 10 lần đăng ký / 1 giờ / 1 IP
  */
 const registerLimiter = rateLimit({
+  store: createRateLimitStore('register'),
   windowMs: 60 * 60 * 1000,     // 1 giờ
   max: 10,                      // tối đa 10 request
   skipSuccessfulRequests: false,
@@ -35,6 +38,7 @@ const registerLimiter = rateLimit({
  * AI Analysis Limiter - Giới hạn 5 lần / 1 giờ / 1 thiết bị của phụ huynh
  */
 const aiAnalysisLimiter = rateLimit({
+  store: createRateLimitStore('ai-analysis'),
   windowMs: 60 * 60 * 1000, // 1 giờ
   max: 5,
   // Note: for /chat route, req.params.device_id is undefined, so the limit behaves as 5 requests / hour / user.
@@ -51,6 +55,7 @@ const aiAnalysisLimiter = rateLimit({
  * AI Summary Limiter - Giới hạn 10 lần / 1 giờ / 1 thiết bị của phụ huynh
  */
 const aiSummaryLimiter = rateLimit({
+  store: createRateLimitStore('ai-summary'),
   windowMs: 60 * 60 * 1000, // 1 giờ
   max: 10,
   keyGenerator: (req) => `${req.user.user_id}:${req.params.device_id}`,
@@ -66,6 +71,7 @@ const aiSummaryLimiter = rateLimit({
  * parentLimiter - Giới hạn 100 requests / 15 phút / IP cho phụ huynh
  */
 const parentLimiter = rateLimit({
+  store: createRateLimitStore('parent'),
   windowMs: 15 * 60 * 1000, // 15 phút
   max: 100,
   standardHeaders: true,
@@ -81,6 +87,7 @@ const parentLimiter = rateLimit({
  * dùng hash của device_secret làm key để giải quyết vấn đề dùng chung NAT/IP
  */
 const agentLimiter = rateLimit({
+  store: createRateLimitStore('agent'),
   windowMs: 15 * 60 * 1000, // 15 phút
   max: 600,
   keyGenerator: (req) => {
@@ -108,6 +115,7 @@ const agentLimiter = rateLimit({
  * forgotPasswordLimiter - Giới hạn 3 lần quên mật khẩu / 1 giờ / IP
  */
 const forgotPasswordLimiter = rateLimit({
+  store: createRateLimitStore('forgot-password'),
   windowMs: 60 * 60 * 1000, // 1 giờ
   max: 3,
   standardHeaders: true,
@@ -122,6 +130,7 @@ const forgotPasswordLimiter = rateLimit({
  * verifyEmailLimiter - Giới hạn 10 lần verify / 15 phút / IP
  */
 const verifyEmailLimiter = rateLimit({
+  store: createRateLimitStore('verify-email'),
   windowMs: 15 * 60 * 1000, // 15 phút
   max: 10,
   standardHeaders: true,
@@ -136,6 +145,7 @@ const verifyEmailLimiter = rateLimit({
  * resendVerificationLimiter - Giới hạn 3 lần gửi lại email xác minh / 1 giờ / IP
  */
 const resendVerificationLimiter = rateLimit({
+  store: createRateLimitStore('resend-verification'),
   windowMs: 60 * 60 * 1000, // 1 giờ
   max: 3,
   standardHeaders: true,
@@ -150,6 +160,7 @@ const resendVerificationLimiter = rateLimit({
  * resetPasswordLimiter - Giới hạn 10 lần đặt lại mật khẩu / 1 giờ / IP
  */
 const resetPasswordLimiter = rateLimit({
+  store: createRateLimitStore('reset-password'),
   windowMs: 60 * 60 * 1000, // 1 giờ
   max: 10,                  // 10 lần (nới rộng hơn forgotPasswordLimiter)
   standardHeaders: true,

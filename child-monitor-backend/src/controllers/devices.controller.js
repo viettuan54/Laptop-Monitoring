@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
+const { recordAudit } = require('../services/audit.service');
 
 exports.getDevices = async (req, res) => {
   const { child_id } = req.query;
@@ -135,6 +136,12 @@ exports.deleteDevice = async (req, res) => {
       return res.status(404).json({ message: 'Device not found or access denied' });
     }
 
+    await recordAudit(req.db, req, {
+      action: 'device.delete',
+      targetType: 'device',
+      targetId: result.rows[0].device_id,
+    });
+
     res.json({ message: 'Device deleted successfully', device_id: result.rows[0].device_id });
   } catch (error) {
     console.error('Delete device error:', error);
@@ -169,6 +176,12 @@ exports.rotateSecret = async (req, res) => {
     if (result.rows.length === 0) {
       return res.status(404).json({ message: 'Device not found or access denied' });
     }
+
+    await recordAudit(req.db, req, {
+      action: 'device.rotate_secret',
+      targetType: 'device',
+      targetId: result.rows[0].device_id,
+    });
 
     res.json({
       ...result.rows[0],

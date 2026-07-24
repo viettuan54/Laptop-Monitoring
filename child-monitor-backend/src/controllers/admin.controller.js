@@ -1,5 +1,6 @@
 const { adminPool } = require('../config/db');
 const { normalizeDomain } = require('../utils/domain');
+const { recordAudit } = require('../services/audit.service');
 
 /**
  * GET /api/admin/users
@@ -158,21 +159,33 @@ exports.addBlacklist = async (req, res) => {
     return res.status(400).json({ message: 'Reason cannot exceed 500 characters' });
   }
 
+  const client = await adminPool.connect();
   try {
-    const result = await adminPool.query(
+    await client.query('BEGIN');
+    const result = await client.query(
       `INSERT INTO website_blacklist(domain, reason, added_by)
        VALUES($1, $2, $3)
        RETURNING blacklist_id, domain, reason, created_at`,
       [normalizedDomain, reason?.trim() || null, adminUserId]
     );
 
+    await recordAudit(client, req, {
+      action: 'blacklist.add',
+      targetType: 'blacklist_domain',
+      targetId: result.rows[0].blacklist_id,
+      metadata: { domain: result.rows[0].domain },
+    });
+    await client.query('COMMIT');
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     if (error.code === '23505') {
       return res.status(409).json({ message: 'Domain already in blacklist' });
     }
     console.error('Admin addBlacklist error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  } finally {
+    client.release();
   }
 };
 
@@ -183,19 +196,86 @@ exports.addBlacklist = async (req, res) => {
 exports.deleteBlacklist = async (req, res) => {
   const { id } = req.params;
 
+  const client = await adminPool.connect();
   try {
-    const result = await adminPool.query(
+    await client.query('BEGIN');
+    const result = await client.query(
       'DELETE FROM website_blacklist WHERE blacklist_id = $1 RETURNING blacklist_id, domain',
       [id]
     );
 
     if (result.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ message: 'Blacklist entry not found' });
     }
 
+    await recordAudit(client, req, {
+      action: 'blacklist.delete',
+      targetType: 'blacklist_domain',
+      targetId: result.rows[0].blacklist_id,
+      metadata: { domain: result.rows[0].domain },
+    });
+    await client.query('COMMIT');
     res.json({ message: 'Removed from blacklist', ...result.rows[0] });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     console.error('Admin deleteBlacklist error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * GET /api/admin/audit-logs
+ * Chỉ admin được phép xem lịch sử hành động nhạy cảm.
+ */
+exports.getAuditLogs = async (req, res) => {
+  let { limit, offset, action, actor_user_id } = req.query;
+  limit = Math.min(Math.max(parseInt(limit) || 50, 1), 200);
+  offset = Math.max(parseInt(offset) || 0, 0);
+
+  const conditions = [];
+  const params = [];
+  if (action) {
+    params.push(action);
+    conditions.push(`action = $${params.length}`);
+  }
+  if (actor_user_id) {
+    const actorId = Number(actor_user_id);
+    if (!Number.isInteger(actorId) || actorId <= 0) {
+      return res.status(400).json({ message: 'actor_user_id must be a positive integer' });
+    }
+    params.push(actorId);
+    conditions.push(`actor_user_id = $${params.length}`);
+  }
+
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  params.push(limit);
+  const limitPosition = params.length;
+  params.push(offset);
+  const offsetPosition = params.length;
+
+  try {
+    const result = await adminPool.query(
+      `SELECT audit_id, actor_user_id, actor_role, action, target_type,
+              target_id, metadata, ip_address, user_agent, created_at,
+              COUNT(*) OVER()::INTEGER AS total_count
+       FROM audit_logs
+       ${where}
+       ORDER BY created_at DESC
+       LIMIT $${limitPosition} OFFSET $${offsetPosition}`,
+      params
+    );
+
+    res.json({
+      data: result.rows.map(({ total_count, ...row }) => row),
+      total: result.rows[0]?.total_count || 0,
+      limit,
+      offset,
+    });
+  } catch (error) {
+    console.error('Admin getAuditLogs error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

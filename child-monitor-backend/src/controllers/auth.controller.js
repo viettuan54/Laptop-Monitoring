@@ -1,6 +1,7 @@
 const { adminPool } = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { recordAudit } = require('../services/audit.service');
 const { v4: uuidv4 } = require('uuid');
 const { revokeToken } = require('../utils/tokenBlacklist');
 const crypto = require('crypto');
@@ -357,6 +358,11 @@ exports.changePassword = async (req, res) => {
         'DELETE FROM refresh_tokens WHERE user_id = $1',
         [userId]
       );
+      await recordAudit(dbClient, req, {
+        action: 'account.change_password',
+        targetType: 'user',
+        targetId: userId,
+      });
       await dbClient.query('COMMIT');
     } catch (err) {
       await dbClient.query('ROLLBACK');
@@ -466,6 +472,13 @@ exports.resetPassword = async (req, res) => {
         'DELETE FROM refresh_tokens WHERE user_id = $1',
         [user.user_id]
       );
+      await recordAudit(dbClient, req, {
+        action: 'account.reset_password',
+        targetType: 'user',
+        targetId: user.user_id,
+        actorUserId: user.user_id,
+        actorRole: 'password_reset',
+      });
       await dbClient.query('COMMIT');
     } catch (err) {
       await dbClient.query('ROLLBACK');
@@ -580,9 +593,10 @@ exports.deleteAccount = async (req, res) => {
     return res.status(400).json({ message: 'Password is required to confirm account deletion' });
   }
 
+  const dbClient = await adminPool.connect();
   try {
     // 1. Kiểm tra sự tồn tại của user và đối chiếu mật khẩu
-    const userResult = await adminPool.query(
+    const userResult = await dbClient.query(
       'SELECT password FROM users WHERE user_id = $1',
       [user_id]
     );
@@ -598,13 +612,23 @@ exports.deleteAccount = async (req, res) => {
 
     // 2. Tiến hành xóa tài khoản. DB với ON DELETE CASCADE trên children, devices, logs, v.v.
     // sẽ tự động dọn dẹp sạch toàn bộ dữ liệu đi kèm.
-    await adminPool.query('DELETE FROM users WHERE user_id = $1', [user_id]);
+    await dbClient.query('BEGIN');
+    await recordAudit(dbClient, req, {
+      action: 'account.delete',
+      targetType: 'user',
+      targetId: user_id,
+    });
+    await dbClient.query('DELETE FROM users WHERE user_id = $1', [user_id]);
+    await dbClient.query('COMMIT');
 
     res.json({
       message: 'Your account and all associated child data have been permanently deleted.'
     });
   } catch (error) {
+    await dbClient.query('ROLLBACK').catch(() => {});
     console.error('Delete account error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  } finally {
+    dbClient.release();
   }
 };

@@ -39,6 +39,7 @@ const app = require('./src/app');
 const { adminPool, backendPool, validateRlsConfiguration } = require('./src/config/db');
 const { cleanupExpiredTokens, cleanupExpiredRefreshTokens } = require('./src/utils/tokenBlacklist');
 const { initTransporter } = require('./src/utils/email');
+const { initializeRedis, closeRedis } = require('./src/config/redis');
 
 const PORT = process.env.PORT || 3000;
 
@@ -51,6 +52,9 @@ if (!process.env.FRONTEND_URL) {
 }
 
 async function bootstrap() {
+  // Production không được mở HTTP port nếu Redis phân tán chưa sẵn sàng.
+  await initializeRedis();
+
   // Không mở cổng HTTP nếu role hoặc policy RLS đang cấu hình sai.
   await validateRlsConfiguration();
 
@@ -67,7 +71,7 @@ async function bootstrap() {
 
 bootstrap().catch(async (error) => {
   console.error('❌ Backend startup aborted:', error.message);
-  await Promise.allSettled([adminPool.end(), backendPool.end()]);
+  await Promise.allSettled([adminPool.end(), backendPool.end(), closeRedis()]);
   process.exit(1);
 });
 

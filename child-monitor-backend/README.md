@@ -8,18 +8,20 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 * **Batch Offline Sync**: Hỗ trợ Agent gửi dữ liệu offline dạng lô bằng PostgreSQL `unnest()` và cơ chế idempotent tránh trùng lặp log khi retry.
 * **AI Analysis**: Tự động phân tích xu hướng hành vi 24h và hỗ trợ Chat Advisor bằng Gemini AI (chống Prompt Injection bằng XML tags và code validation).
 * **Quyền được lãng quên**: Hỗ trợ endpoint xóa hoàn toàn tài khoản và cascade sạch dữ liệu liên quan.
+* **Distributed Rate Limit**: Production dùng Redis store dùng chung giữa nhiều process/server; development và test có thể dùng MemoryStore.
+* **Audit Log**: Ghi transactionally các hành động nhạy cảm như blacklist, xóa thiết bị, rotate secret, đổi policy và thay đổi tài khoản.
 
 ---
 
-## ⚠️ Lưu ý kỹ thuật & Hạn chế kiến trúc (Technical Limitations)
+## Cấu hình production
 
-Khi viết báo cáo hoặc triển khai thực tế, hãy lưu ý các điểm sau để chứng minh sự hiểu biết sâu sắc về hệ thống:
+Chạy lần lượt toàn bộ migration đến `migration_v11.sql`.
 
-### 1. Phân tán Rate Limit (Distributed Rate Limiting)
-* **Hiện tại**: Dự án sử dụng `express-rate-limit` với cơ chế lưu trữ mặc định trong bộ nhớ RAM (`MemoryStore`).
-* **Hạn chế**: Nếu triển khai dự án chạy Cluster Mode (nhiều tiến trình CPU song song qua PM2 Cluster) hoặc chạy Auto-Scaling đa server (nhiều instance), số lượng request được tính độc lập trên từng instance. Điều này dẫn tới việc Rate Limit không được đồng bộ hóa hoàn toàn trên toàn cụm.
-* **Giải pháp nâng cấp**: Khi chuyển sang production thực tế, cần thay thế bộ nhớ MemoryStore mặc định bằng **Redis Store** thông qua thư viện `@express-rate-limit/redis` để quản lý tập trung và chia sẻ giới hạn request giữa các server.
+Production bắt buộc cấu hình:
 
-### 2. Audit Log (Nhật ký kiểm toán)
-* **Hiện tại**: Các hành động nhạy cảm như thêm/xóa tên miền độc hại trong website blacklist, xoá thiết bị, hay thay đổi mật khẩu chưa được ghi vết lịch sử hoạt động (Audit Logs).
-* **Khuyến nghị**: Cần thiết kế thêm bảng `audit_logs` để ghi vết người thực hiện, thời gian và payload của các thay đổi quản trị nhạy cảm nhằm mục tiêu tuân thủ an toàn thông tin trẻ em.
+```env
+NODE_ENV=production
+REDIS_URL=rediss://user:password@redis-host:6379
+```
+
+Backend fail-fast và không mở HTTP port nếu Redis production không sẵn sàng. Admin có thể truy vấn audit log qua `GET /api/admin/audit-logs`, hỗ trợ `limit`, `offset`, `action` và `actor_user_id`.

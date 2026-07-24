@@ -1,3 +1,5 @@
+const { recordAudit } = require('../services/audit.service');
+
 exports.getSettings = async (req, res) => {
   const { child_id } = req.params;
 
@@ -118,6 +120,25 @@ exports.updateSettings = async (req, res) => {
         enable_keylog,
       ]
     );
+
+    const changedFields = Object.entries({
+      daily_limit_minutes,
+      allowed_start_time,
+      allowed_end_time,
+      is_locked,
+      enable_webcam_monitoring,
+      enable_screenshot_review,
+      enable_keylog,
+    })
+      .filter(([, value]) => value !== undefined && value !== null)
+      .map(([field]) => field);
+
+    await recordAudit(req.db, req, {
+      action: 'settings.update',
+      targetType: 'child',
+      targetId: child_id,
+      metadata: { changed_fields: changedFields },
+    });
 
     res.json(result.rows[0]);
   } catch (error) {
