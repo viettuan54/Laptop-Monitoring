@@ -20,6 +20,10 @@ const state = {
   webLogs: [],
   adminStats: null,
   adminUsers: [],
+  pushTokens: [],
+  faceChallenge: '',
+  faceRequiredFrames: 3,
+  faceStream: null,
   adminUserFilter: {},
   activityTab: 'apps',
   selectedChildId: null,
@@ -90,6 +94,18 @@ function localizeError(message = '') {
     'Domain already in blacklist': 'Tên miền đã có trong danh sách chặn.',
     'You cannot delete your own admin account': 'Bạn không thể xóa tài khoản quản trị của chính mình.',
     'You cannot demote or disable your own admin account': 'Bạn không thể tự hạ quyền hoặc khóa tài khoản quản trị của mình.',
+    'Push notifications are disabled on the server': 'Máy chủ chưa bật tính năng thông báo đẩy.',
+    'No active push token is registered': 'Chưa có thiết bị nhận thông báo nào được đăng ký.',
+    'Push provider is unavailable': 'Dịch vụ gửi thông báo hiện không khả dụng.',
+    'Invalid EXPO push token': 'Expo push token không hợp lệ.',
+    'Invalid FCM push token': 'FCM push token không hợp lệ.',
+    'This push token is already registered to another account': 'Push token này đã được đăng ký cho một tài khoản khác.',
+    'Face verification failed': 'Khuôn mặt không khớp với nhãn quản trị viên.',
+    'Face verification challenge is invalid or expired': 'Phiên xác thực khuôn mặt đã hết hạn. Vui lòng đăng nhập lại.',
+    'Face verification challenge has already been used': 'Phiên xác thực khuôn mặt đã được sử dụng.',
+    'Face recognition service is unavailable': 'Dịch vụ nhận diện khuôn mặt chưa sẵn sàng.',
+    'Invalid camera frames': 'Khung hình camera không hợp lệ.',
+    'Too many face verification attempts, try again later': 'Bạn đã thử xác thực khuôn mặt quá nhiều lần. Vui lòng thử lại sau.',
   };
   return translations[message] || message;
 }
@@ -221,6 +237,7 @@ function saveSession(tokens) {
 }
 
 function clearSession() {
+  stopFaceCamera();
   Object.assign(state, {
     accessToken: '',
     refreshToken: '',
@@ -230,10 +247,18 @@ function clearSession() {
     devices: [],
     alerts: [],
     analyses: [],
+    faceChallenge: '',
   });
   sessionStorage.removeItem('lm_access_token');
   sessionStorage.removeItem('lm_refresh_token');
   sessionStorage.removeItem('lm_role');
+}
+
+function stopFaceCamera() {
+  if (state.faceStream) {
+    state.faceStream.getTracks().forEach((track) => track.stop());
+    state.faceStream = null;
+  }
 }
 
 function toast(title, message = '', type = 'success') {
@@ -277,6 +302,7 @@ function loading() {
 }
 
 function renderAuth(mode = 'login') {
+  stopFaceCamera();
   const params = new URLSearchParams(location.search);
   if (location.pathname.includes('verify') || params.get('token') && location.pathname.includes('verify')) {
     mode = 'verify';
@@ -357,6 +383,98 @@ function renderAuth(mode = 'login') {
         </div>
       </section>
     </main>`;
+}
+
+async function renderAdminFaceVerification(challengeResult) {
+  stopFaceCamera();
+  state.faceChallenge = challengeResult.faceChallenge;
+  state.faceRequiredFrames = challengeResult.requiredFrames || 3;
+  app.innerHTML = `
+    <main class="auth-shell">
+      <section class="auth-story">
+        ${brandMarkup()}
+        <div class="auth-message">
+          <p class="eyebrow">Bảo vệ quyền quản trị</p>
+          <h1>Mật khẩu đúng.<br><em>Xác minh khuôn mặt.</em></h1>
+          <p>SafeNest chỉ cấp phiên quản trị khi mô hình FaceNet xác nhận nhãn khuôn mặt là “admin” và nhãn này vẫn khớp role trong cơ sở dữ liệu.</p>
+        </div>
+        <div class="trust-row"><span><i class="trust-dot"></i>Challenge dùng một lần</span><span><i class="trust-dot"></i>Không lưu ảnh khuôn mặt</span><span><i class="trust-dot"></i>JWT chưa được cấp</span></div>
+      </section>
+      <section class="auth-panel">
+        <div class="auth-card face-auth-card">
+          <p class="eyebrow">Bước xác thực thứ hai</p>
+          <h2>Đưa khuôn mặt vào khung hình</h2>
+          <p>Giữ khuôn mặt thẳng, đủ sáng và không có người khác trong ảnh. Hệ thống sẽ chụp ${state.faceRequiredFrames} khung hình liên tiếp.</p>
+          <div class="face-camera">
+            <video id="face-video" autoplay muted playsinline></video>
+            <div class="face-guide" aria-hidden="true"></div>
+            <div class="face-camera-status" id="face-camera-status">Đang yêu cầu quyền camera…</div>
+          </div>
+          <canvas id="face-canvas" class="hidden"></canvas>
+          <div class="form-actions between">
+            <button class="link-button" type="button" data-action="cancel-face-auth">Hủy và đăng nhập lại</button>
+            <button class="btn" type="button" data-action="verify-admin-face" disabled>Xác minh khuôn mặt</button>
+          </div>
+          <p class="face-privacy">Ảnh chỉ được giữ tạm trong bộ nhớ để suy luận và bị xóa ngay sau khi có kết quả.</p>
+        </div>
+      </section>
+    </main>`;
+
+  const status = document.querySelector('#face-camera-status');
+  const verifyButton = document.querySelector('[data-action="verify-admin-face"]');
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Trình duyệt không hỗ trợ camera');
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'user',
+        width: { ideal: 640 },
+        height: { ideal: 480 },
+      },
+      audio: false,
+    });
+    state.faceStream = stream;
+    const video = document.querySelector('#face-video');
+    video.srcObject = stream;
+    await video.play();
+    status.textContent = 'Camera đã sẵn sàng';
+    verifyButton.disabled = false;
+  } catch (error) {
+    status.textContent = 'Không thể truy cập camera';
+    toast('Cần quyền sử dụng camera', error.message, 'error');
+  }
+}
+
+async function captureAdminFaceFrames() {
+  const video = document.querySelector('#face-video');
+  const canvas = document.querySelector('#face-canvas');
+  if (!video || !canvas || video.readyState < 2) {
+    throw new Error('Camera chưa sẵn sàng');
+  }
+  const width = Math.min(640, video.videoWidth || 640);
+  const height = Math.round(width * ((video.videoHeight || 480) / (video.videoWidth || 640)));
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext('2d', { alpha: false });
+  const frames = [];
+  for (let index = 0; index < state.faceRequiredFrames; index += 1) {
+    context.drawImage(video, 0, 0, width, height);
+    frames.push(canvas.toDataURL('image/jpeg', 0.78));
+    if (index < state.faceRequiredFrames - 1) {
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+  }
+  return frames;
+}
+
+async function completeLogin(result) {
+  saveSession(result);
+  await detectRole();
+  state.page = state.role === 'admin' ? 'admin-overview' : 'overview';
+  renderShell();
+  await navigate(state.page);
+  toast('Đăng nhập thành công', 'Chào mừng bạn trở lại SafeNest.');
 }
 
 function brandMarkup() {
@@ -698,12 +816,29 @@ async function renderAI(content) {
   });
 }
 
-function renderAccount(content) {
+async function renderAccount(content) {
+  if (state.role === 'parent') {
+    const result = await api('/notifications/tokens');
+    state.pushTokens = result.data || [];
+  } else {
+    state.pushTokens = [];
+  }
   content.innerHTML = `
     ${pageHead('account')}
     <section class="account-grid">
       <div class="stack">
         <article class="card profile-card"><div class="profile-cover"></div><div class="profile-body"><div class="profile-avatar">${state.role === 'admin' ? 'QT' : 'PH'}</div><h2>${state.role === 'admin' ? 'Tài khoản quản trị viên' : 'Tài khoản phụ huynh'}</h2><p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · JWT 15 phút và refresh token luân phiên.</p></div></article>
+        ${state.role === 'parent' ? `<article class="card card-pad push-settings">
+          <div class="card-head" style="padding:0 0 18px"><div><h2>Thiết bị nhận thông báo</h2><p>Đăng ký Expo hoặc FCM token để nhận cảnh báo AI và cảnh báo từ Agent theo thời gian thực.</p></div><button class="btn btn-secondary btn-sm" data-action="test-push" ${state.pushTokens.some((item) => item.is_active) ? '' : 'disabled'}>Gửi thử</button></div>
+          <div class="push-token-list">${state.pushTokens.map((item) => `<div class="push-token-row"><div class="list-icon">${item.provider === 'expo' ? 'EX' : 'FC'}</div><div class="list-copy"><strong>${escapeHtml(item.device_name || 'Thiết bị không tên')}</strong><small>${escapeHtml(item.provider.toUpperCase())} · ${escapeHtml(item.platform)} · ${escapeHtml(item.token_hint)}</small>${item.last_error ? `<small class="text-danger">${escapeHtml(item.last_error)}</small>` : ''}</div><span class="badge ${item.is_active ? '' : 'red'}">${item.is_active ? 'Đang nhận' : 'Đã tắt'}</span><button class="kebab danger" data-action="delete-push-token" data-id="${item.push_token_id}" title="Gỡ thiết bị">×</button></div>`).join('') || '<p class="muted">Chưa có thiết bị nhận thông báo.</p>'}</div>
+          <form id="push-token-form" class="form-grid push-token-form">
+            <div class="field"><label>Nhà cung cấp</label><select class="select" name="provider"><option value="expo">Expo</option><option value="fcm">Firebase FCM</option></select></div>
+            <div class="field"><label>Nền tảng</label><select class="select" name="platform"><option value="android">Android</option><option value="ios">iOS</option><option value="web">Web</option></select></div>
+            <div class="field full"><label>Tên thiết bị</label><input class="input" name="device_name" maxlength="100" placeholder="Ví dụ: Điện thoại của mẹ"></div>
+            <div class="field full"><label>Push token</label><textarea class="textarea" name="token" maxlength="4096" required autocomplete="off" placeholder="ExponentPushToken[...] hoặc FCM registration token"></textarea><small>Token chỉ được gửi đến backend qua HTTPS và không hiển thị lại đầy đủ.</small></div>
+            <div class="form-actions field full"><button class="btn" type="submit">Đăng ký thiết bị nhận thông báo</button></div>
+          </form>
+        </article>` : ''}
         <article class="card card-pad"><div class="card-head" style="padding:0 0 18px"><div><h2>Đổi mật khẩu</h2><p>Thao tác này thu hồi toàn bộ phiên đăng nhập cũ.</p></div></div><form id="change-password-form" class="form-grid"><div class="field full"><label>Mật khẩu hiện tại</label><input class="input" type="password" name="oldPassword" required></div><div class="field full"><label>Mật khẩu mới</label><input class="input" type="password" name="newPassword" required minlength="8"><small>Cần chữ hoa, số và ký tự đặc biệt.</small></div><div class="form-actions field full"><button class="btn" type="submit">Cập nhật mật khẩu</button></div></form></article>
       </div>
       <aside class="stack">
@@ -812,12 +947,11 @@ async function handleSubmit(event) {
   try {
     if (form.id === 'login-form') {
       const result = await api('/auth/login', { method: 'POST', body: data, noAuth: true });
-      saveSession(result);
-      await detectRole();
-      state.page = state.role === 'admin' ? 'admin-overview' : 'overview';
-      renderShell();
-      await navigate(state.page);
-      toast('Đăng nhập thành công', 'Chào mừng bạn trở lại SafeNest.');
+      if (result.requiresFaceVerification) {
+        await renderAdminFaceVerification(result);
+        return;
+      }
+      await completeLogin(result);
     } else if (form.id === 'register-form') {
       const result = await api('/auth/register', { method: 'POST', body: data, noAuth: true });
       toast('Đã gửi yêu cầu đăng ký', localizeMessage(result.message));
@@ -871,6 +1005,11 @@ async function handleSubmit(event) {
       const result = await api('/auth/change-password', { method: 'POST', body: data });
       toast('Đã đổi mật khẩu', localizeMessage(result.message));
       await logout(false);
+    } else if (form.id === 'push-token-form') {
+      await api('/notifications/tokens', { method: 'POST', body: data });
+      form.reset();
+      toast('Đã đăng ký thiết bị nhận thông báo');
+      await renderAccount(document.querySelector('#page-content'));
     } else if (form.id === 'admin-user-filter') {
       state.adminUserFilter = data;
       await renderUsers(document.querySelector('#page-content'));
@@ -957,6 +1096,40 @@ async function handleClick(event) {
     if (action === 'reload-page' || action === 'refresh-overview') return navigate(state.page);
     if (action === 'refresh-users') return renderUsers(document.querySelector('#page-content'));
     if (action === 'logout') return logout();
+    if (action === 'cancel-face-auth') {
+      stopFaceCamera();
+      state.faceChallenge = '';
+      return renderAuth('login');
+    }
+    if (action === 'verify-admin-face') {
+      button.disabled = true;
+      const status = document.querySelector('#face-camera-status');
+      status.textContent = 'Đang chụp và xác minh…';
+      const frames = await captureAdminFaceFrames();
+      const result = await api('/auth/admin-face', {
+        method: 'POST',
+        body: { challenge: state.faceChallenge, frames },
+        noAuth: true,
+      });
+      if (result.faceLabel !== 'admin') throw new Error('Face verification failed');
+      stopFaceCamera();
+      state.faceChallenge = '';
+      await completeLogin(result);
+      return;
+    }
+    if (action === 'test-push') {
+      const result = await api('/notifications/test', { method: 'POST' });
+      const delivery = result.delivery || {};
+      toast('Đã gửi thông báo thử', `${delivery.sent || 0} thiết bị đã được nhà cung cấp tiếp nhận.`);
+      return;
+    }
+    if (action === 'delete-push-token') return confirmModal('Gỡ thiết bị nhận thông báo?', 'Thiết bị này sẽ không còn nhận cảnh báo SafeNest.', 'confirm-delete-push-token', id);
+    if (action === 'confirm-delete-push-token') {
+      await api(`/notifications/tokens/${id}`, { method: 'DELETE' });
+      closeModal();
+      toast('Đã gỡ thiết bị nhận thông báo');
+      return renderAccount(document.querySelector('#page-content'));
+    }
     if (action === 'add-child') return showModal('Thêm hồ sơ trẻ', 'Thông tin cơ bản để nhóm dữ liệu theo từng trẻ.', childForm());
     if (action === 'edit-child') return showModal('Chỉnh sửa hồ sơ trẻ', 'Cập nhật tên và độ tuổi.', childForm(state.children.find((x) => String(x.child_id) === String(id))));
     if (action === 'delete-child') return confirmModal('Xóa hồ sơ trẻ?', 'Thiết bị và dữ liệu liên quan cũng có thể bị xóa.', 'confirm-delete-child', id);
@@ -1026,9 +1199,14 @@ async function handleClick(event) {
     if (action === 'clear-agent-secret') { state.agentSecret = ''; toast('Đã xóa secret khỏi bộ nhớ'); return renderApiLab(document.querySelector('#page-content')); }
     if (action === 'select-agent-endpoint') { state.agentEndpoint = button.dataset.endpoint; return renderApiLab(document.querySelector('#page-content')); }
   } catch (error) {
+    if (action === 'verify-admin-face') {
+      const status = document.querySelector('#face-camera-status');
+      if (status) status.textContent = localizeError(error.message);
+    }
     toast('Không thể hoàn tất', localizeError(error.message), 'error');
   } finally {
     if (button && action === 'run-analysis') button.disabled = false;
+    if (button && action === 'verify-admin-face' && document.body.contains(button)) button.disabled = false;
   }
 }
 

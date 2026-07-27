@@ -52,6 +52,7 @@ app.use('/api/logs', require('./routes/logs.routes'));
 
 // Giữ limit 100kb global để ngăn chặn DoS (Payload lớn có thể làm cạn kiệt băng thông, CPU, RAM)
 // đối với các route còn lại.
+app.use('/api/auth/admin-face', express.json({ limit: '2200kb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ limit: '100kb', extended: true }));
 
@@ -63,6 +64,7 @@ app.use('/api/children', parentLimiter, require('./routes/children.routes'));
 app.use('/api/devices', parentLimiter, require('./routes/devices.routes'));
 app.use('/api/settings', parentLimiter, require('./routes/settings.routes'));
 app.use('/api/alerts', parentLimiter, require('./routes/alerts.routes'));
+app.use('/api/notifications', parentLimiter, require('./routes/notifications.routes'));
 app.use('/api/ai-analysis', parentLimiter, require('./routes/aiAnalysis.routes'));
 app.use('/api/agent', agentLimiter, require('./routes/agent.routes'));
 app.use('/api/admin', parentLimiter, require('./routes/admin.routes'));

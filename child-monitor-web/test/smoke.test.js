@@ -90,6 +90,7 @@ test('dashboard source covers every backend route group', () => {
   const routeFragments = [
     '/auth/register',
     '/auth/login',
+    '/auth/admin-face',
     '/auth/logout',
     '/auth/verify',
     '/auth/resend-verification',
@@ -105,6 +106,8 @@ test('dashboard source covers every backend route group', () => {
     '/logs/app',
     '/logs/web',
     '/alerts',
+    '/notifications/tokens',
+    '/notifications/test',
     '/ai-analysis',
     '/agent/heartbeat',
     '/agent/config',

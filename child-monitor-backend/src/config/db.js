@@ -46,6 +46,8 @@ backendPool.on('error', (err) => {
 const RLS_TABLES = [
   'users', 'children', 'devices', 'app_usage', 'website_logs',
   'settings', 'ai_analysis', 'alerts', 'audit_logs',
+  'push_tokens', 'push_receipts',
+  'admin_face_challenges',
 ];
 
 async function validateRlsConfiguration() {

@@ -5,6 +5,7 @@
 
 # Dependencies
 node_modules/
+.venv-face/
 
 # Scratch / temp files
 scratch/
@@ -19,6 +20,7 @@ Data.sql
 logs/
 *.log
 npm-debug.log*
+AI/attendance.csv
 
 # OS & Editor files
 .DS_Store

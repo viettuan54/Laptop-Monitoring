@@ -68,6 +68,37 @@ const aiSummaryLimiter = rateLimit({
 });
 
 /**
+ * Giới hạn suy luận khuôn mặt vì đây là tác vụ CPU/RAM nặng và là bước xác thực.
+ */
+const faceAuthLimiter = rateLimit({
+  store: createRateLimitStore('admin-face'),
+  windowMs: 5 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many face verification attempts, try again later' },
+  handler: (req, res, next, options) => {
+    res.status(429).json(options.message);
+  },
+});
+
+/**
+ * Chỉ cho phép gửi tối đa 5 thông báo thử nghiệm mỗi 15 phút cho mỗi tài khoản.
+ */
+const pushTestLimiter = rateLimit({
+  store: createRateLimitStore('push-test'),
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => String(req.user.user_id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many test notifications, try again later' },
+  handler: (req, res, next, options) => {
+    res.status(429).json(options.message);
+  },
+});
+
+/**
  * parentLimiter - Giới hạn 100 requests / 15 phút / IP cho phụ huynh
  */
 const parentLimiter = rateLimit({
@@ -173,9 +204,11 @@ const resetPasswordLimiter = rateLimit({
 
 module.exports = {
   loginLimiter,
+  faceAuthLimiter,
   registerLimiter,
   aiAnalysisLimiter,
   aiSummaryLimiter,
+  pushTestLimiter,
   parentLimiter,
   agentLimiter,
   forgotPasswordLimiter,

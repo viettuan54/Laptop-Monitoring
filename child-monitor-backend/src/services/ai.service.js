@@ -185,19 +185,28 @@ Cấu trúc JSON yêu cầu:
     const savedAnalysis = analysisInsert.rows[0];
 
     // Tạo cảnh báo tự động vào bảng alerts nếu AI đánh giá cần thiết
+    let savedAlert = null;
     if (analysisData.alert && analysisData.alert.needs_alert) {
-      await dbClient.query(
+      const alertInsert = await dbClient.query(
         `INSERT INTO alerts(device_id, alert_type, message) 
-         VALUES($1, $2, $3)`,
+         VALUES($1, $2, $3)
+         RETURNING alert_id`,
         [deviceId, analysisData.alert.alert_type, analysisData.alert.message]
       );
+      savedAlert = alertInsert.rows[0];
     }
 
     await dbClient.query('COMMIT');
 
     // Gửi thông báo đẩy không chặn (asynchronously) sau khi commit thành công
     if (analysisData.alert && analysisData.alert.needs_alert && userId) {
-      sendPushNotification(userId, 'Cảnh báo nguy cơ (AI)', analysisData.alert.message)
+      sendPushNotification(userId, 'Cảnh báo nguy cơ (AI)', analysisData.alert.message, {
+        type: 'alert',
+        route: 'alerts',
+        alert_id: savedAlert?.alert_id,
+        device_id: deviceId,
+        alert_type: analysisData.alert.alert_type,
+      })
         .catch(err => console.error('Failed to send AI push notification:', err));
     }
 

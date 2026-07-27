@@ -7,6 +7,63 @@ const { revokeToken } = require('../utils/tokenBlacklist');
 const crypto = require('crypto');
 const { validatePassword } = require('../utils/validation');
 const { sendMail } = require('../utils/email');
+const {
+  FaceAuthUnavailableError,
+  REQUIRED_FRAME_COUNT,
+  verifyAdminFace,
+} = require('../services/faceAuth.service');
+
+const FACE_CHALLENGE_TTL_MS = 2 * 60 * 1000;
+const FACE_CHALLENGE_MAX_ATTEMPTS = 3;
+
+const sha256 = (value) => crypto.createHash('sha256').update(String(value)).digest('hex');
+
+const requestFingerprint = (req) => ({
+  ipAddress: String(req.ip || req.socket?.remoteAddress || 'unknown').slice(0, 200),
+  userAgentHash: sha256(req.get?.('user-agent') || ''),
+});
+
+const adminFaceAuthRequired = () => (
+  !/^(0|false|no)$/i.test(String(process.env.FACE_AUTH_REQUIRED_FOR_ADMIN ?? 'true'))
+);
+
+const issueSession = async (user) => {
+  const jti = uuidv4();
+  const accessToken = jwt.sign(
+    { user_id: user.user_id, token_version: user.token_version, jti },
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+  const refreshTokenRaw = crypto.randomBytes(40).toString('hex');
+  const refreshTokenHash = sha256(refreshTokenRaw);
+  const refreshTokenExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+
+  await adminPool.query(
+    'INSERT INTO refresh_tokens(user_id, token_hash, expires_at) VALUES($1, $2, $3)',
+    [user.user_id, refreshTokenHash, refreshTokenExpires]
+  );
+  return { accessToken, refreshToken: refreshTokenRaw };
+};
+
+const createAdminFaceChallenge = async (userId, req) => {
+  const challenge = crypto.randomBytes(32).toString('hex');
+  const challengeHash = sha256(challenge);
+  const expiresAt = new Date(Date.now() + FACE_CHALLENGE_TTL_MS);
+  const { ipAddress, userAgentHash } = requestFingerprint(req);
+
+  await adminPool.query(
+    `WITH removed AS (
+       DELETE FROM admin_face_challenges
+       WHERE user_id = $1 OR expires_at <= NOW()
+     )
+     INSERT INTO admin_face_challenges(
+       challenge_hash, user_id, ip_address, user_agent_hash, expires_at
+     )
+     VALUES($2, $1, $3, $4, $5)`,
+    [userId, challengeHash, ipAddress, userAgentHash, expiresAt]
+  );
+  return challenge;
+};
 
 const handleFailedAttempt = async (email) => {
   try {
@@ -189,24 +246,18 @@ exports.login = async (req, res) => {
       console.error('[BruteForce Protection Error] Failed to clear failed attempts:', err);
     }
 
-    const jti = uuidv4();
+    if (user.role === 'admin' && adminFaceAuthRequired()) {
+      const faceChallenge = await createAdminFaceChallenge(user.user_id, req);
+      return res.status(202).json({
+        requiresFaceVerification: true,
+        faceChallenge,
+        expiresInSeconds: Math.floor(FACE_CHALLENGE_TTL_MS / 1000),
+        requiredFrames: REQUIRED_FRAME_COUNT,
+      });
+    }
 
-    const accessToken = jwt.sign(
-      { user_id: user.user_id, token_version: user.token_version, jti },
-      process.env.JWT_SECRET,
-      { expiresIn: '15m' }
-    );
-
-    const refreshTokenRaw = crypto.randomBytes(40).toString('hex');
-    const refreshTokenHash = crypto.createHash('sha256').update(refreshTokenRaw).digest('hex');
-    const refreshTokenExpires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-    await adminPool.query(
-      'INSERT INTO refresh_tokens(user_id, token_hash, expires_at) VALUES($1, $2, $3)',
-      [user.user_id, refreshTokenHash, refreshTokenExpires]
-    );
-
-    res.json({ accessToken, refreshToken: refreshTokenRaw });
+    const session = await issueSession(user);
+    res.json(session);
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -586,6 +637,133 @@ exports.refresh = async (req, res) => {
     if (dbClient) {
       dbClient.release();
     }
+  }
+};
+
+exports.verifyAdminFace = async (req, res) => {
+  const { challenge, frames } = req.body || {};
+  if (typeof challenge !== 'string' || !/^[a-f0-9]{64}$/i.test(challenge)) {
+    return res.status(400).json({ message: 'Invalid face verification challenge' });
+  }
+  if (!Array.isArray(frames) || frames.length !== REQUIRED_FRAME_COUNT) {
+    return res.status(400).json({ message: `Exactly ${REQUIRED_FRAME_COUNT} camera frames are required` });
+  }
+
+  const challengeHash = sha256(challenge);
+  const { ipAddress, userAgentHash } = requestFingerprint(req);
+  let challengeRow;
+  try {
+    const claimed = await adminPool.query(
+      `UPDATE admin_face_challenges
+       SET attempts = attempts + 1
+       WHERE challenge_hash = $1
+         AND expires_at > NOW()
+         AND attempts < $2
+         AND ip_address = $3
+         AND user_agent_hash = $4
+       RETURNING user_id, attempts`,
+      [challengeHash, FACE_CHALLENGE_MAX_ATTEMPTS, ipAddress, userAgentHash]
+    );
+    if (!claimed.rows.length) {
+      await adminPool.query(
+        'DELETE FROM admin_face_challenges WHERE challenge_hash = $1',
+        [challengeHash]
+      );
+      return res.status(401).json({ message: 'Face verification challenge is invalid or expired' });
+    }
+    challengeRow = claimed.rows[0];
+
+    const userResult = await adminPool.query(
+      `SELECT user_id, email, role, is_verified, is_active, token_version
+       FROM users
+       WHERE user_id = $1`,
+      [challengeRow.user_id]
+    );
+    const user = userResult.rows[0];
+    if (!user || user.role !== 'admin' || !user.is_active || !user.is_verified) {
+      await adminPool.query('DELETE FROM admin_face_challenges WHERE challenge_hash = $1', [challengeHash]);
+      return res.status(403).json({ message: 'Admin account is not eligible for face verification' });
+    }
+
+    let faceResult;
+    try {
+      faceResult = await verifyAdminFace(frames);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        return res.status(400).json({ message: 'Invalid camera frames' });
+      }
+      if (error instanceof FaceAuthUnavailableError || error.code === 'FACE_AUTH_UNAVAILABLE') {
+        await adminPool.query(
+          `UPDATE admin_face_challenges
+           SET attempts = GREATEST(attempts - 1, 0)
+           WHERE challenge_hash = $1 AND expires_at > NOW()`,
+          [challengeHash]
+        );
+        return res.status(503).json({ message: 'Face recognition service is unavailable' });
+      }
+      throw error;
+    }
+
+    const labelMatchesRole = faceResult.label === 'admin' && faceResult.label === user.role;
+    if (!labelMatchesRole) {
+      if (Number(challengeRow.attempts) >= FACE_CHALLENGE_MAX_ATTEMPTS) {
+        await adminPool.query('DELETE FROM admin_face_challenges WHERE challenge_hash = $1', [challengeHash]);
+      }
+      await handleFailedAttempt(user.email);
+      return res.status(401).json({
+        message: 'Face verification failed',
+        attemptsRemaining: Math.max(0, FACE_CHALLENGE_MAX_ATTEMPTS - Number(challengeRow.attempts)),
+      });
+    }
+
+    const consumed = await adminPool.query(
+      `DELETE FROM admin_face_challenges
+       WHERE challenge_hash = $1 AND user_id = $2 AND expires_at > NOW()
+       RETURNING user_id`,
+      [challengeHash, user.user_id]
+    );
+    if (!consumed.rows.length) {
+      return res.status(401).json({ message: 'Face verification challenge has already been used' });
+    }
+
+    const finalUserResult = await adminPool.query(
+      `SELECT user_id, email, role, is_verified, is_active, token_version
+       FROM users
+       WHERE user_id = $1`,
+      [user.user_id]
+    );
+    const finalUser = finalUserResult.rows[0];
+    if (
+      !finalUser
+      || finalUser.role !== 'admin'
+      || finalUser.role !== faceResult.label
+      || !finalUser.is_active
+      || !finalUser.is_verified
+    ) {
+      return res.status(403).json({ message: 'Admin role no longer matches the verified face label' });
+    }
+
+    await adminPool.query('DELETE FROM failed_login_attempts WHERE email = $1', [finalUser.email]);
+    const session = await issueSession(finalUser);
+    req.currentUser = finalUser;
+    recordAudit(adminPool, req, {
+      action: 'auth.admin_face_verified',
+      targetType: 'user',
+      targetId: finalUser.user_id,
+      metadata: {
+        face_label: faceResult.label,
+        matched_frames: faceResult.matched_frames,
+        required_frames: faceResult.required_frames,
+      },
+    }).catch((error) => console.error('Admin face audit error:', error.message));
+
+    return res.json({
+      ...session,
+      faceLabel: faceResult.label,
+    });
+  } catch (error) {
+    console.error('Admin face verification error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 

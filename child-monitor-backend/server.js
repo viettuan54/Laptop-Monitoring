@@ -40,6 +40,10 @@ const { adminPool, backendPool, validateRlsConfiguration } = require('./src/conf
 const { cleanupExpiredTokens, cleanupExpiredRefreshTokens } = require('./src/utils/tokenBlacklist');
 const { initTransporter } = require('./src/utils/email');
 const { initializeRedis, closeRedis } = require('./src/config/redis');
+const {
+  initializePushProviders,
+  scheduleExpoReceiptProcessing,
+} = require('./src/services/notification.service');
 
 const PORT = process.env.PORT || 3000;
 
@@ -58,6 +62,9 @@ async function bootstrap() {
   // Không mở cổng HTTP nếu role hoặc policy RLS đang cấu hình sai.
   await validateRlsConfiguration();
 
+  // Khởi tạo FCM/Expo sau khi database và RLS đã sẵn sàng.
+  await initializePushProviders();
+
   // Khởi tạo SMTP Transporter sau khi kiểm tra bảo mật database thành công.
   initTransporter();
 
@@ -66,6 +73,7 @@ async function bootstrap() {
     console.log(`🚀 Server ready behind ${publicScheme}://localhost:${PORT}`);
     console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
     scheduleCleanup();
+    scheduleExpoReceiptProcessing();
   });
 }
 
@@ -112,6 +120,12 @@ function scheduleCleanup() {
       }
     } catch (err) {
       console.error('[Cleanup] failed_login_attempts cleanup error:', err.message);
+    }
+
+    try {
+      await adminPool.query('DELETE FROM admin_face_challenges WHERE expires_at <= NOW()');
+    } catch (err) {
+      console.error('[Cleanup] admin_face_challenges cleanup error:', err.message);
     }
 
     console.log('[Cleanup] Hoàn thành. Lần tiếp theo sau 24 giờ.');

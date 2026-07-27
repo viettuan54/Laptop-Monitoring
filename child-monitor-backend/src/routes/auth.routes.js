@@ -9,10 +9,12 @@ const {
   verifyEmailLimiter,
   resendVerificationLimiter,
   resetPasswordLimiter,
+  faceAuthLimiter,
 } = require('../middlewares/rateLimit.middleware');
 
 router.post('/register', registerLimiter, authController.register);
 router.post('/login', loginLimiter, authController.login);
+router.post('/admin-face', faceAuthLimiter, authController.verifyAdminFace);
 router.post('/logout', auth, authController.logout);
 
 // Email verification routes

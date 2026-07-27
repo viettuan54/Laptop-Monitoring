@@ -180,7 +180,13 @@ exports.sendVisionAlert = async (req, res) => {
         eye_distance_warning: 'Cảnh báo khoảng cách mắt',
       };
       const title = friendlyTitles[alert_type] || 'Cảnh báo từ thiết bị';
-      sendPushNotification(userId, title, trimmedMessage)
+      sendPushNotification(userId, title, trimmedMessage, {
+        type: 'alert',
+        route: 'alerts',
+        alert_id: result.rows[0].alert_id,
+        device_id,
+        alert_type,
+      })
         .catch(err => console.error('Failed to send vision push notification:', err));
     }
 

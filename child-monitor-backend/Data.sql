@@ -150,6 +150,43 @@ CREATE TABLE IF NOT EXISTS website_blacklist (
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS push_tokens (
+    push_token_id BIGSERIAL PRIMARY KEY,
+    user_id       INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    provider      VARCHAR(10) NOT NULL CHECK (provider IN ('fcm', 'expo')),
+    platform      VARCHAR(10) NOT NULL CHECK (platform IN ('android', 'ios', 'web')),
+    token         TEXT NOT NULL,
+    device_name   VARCHAR(100),
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    failure_count INT NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+    last_error    VARCHAR(500),
+    last_used_at  TIMESTAMPTZ,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (provider, token)
+);
+
+CREATE TABLE IF NOT EXISTS push_receipts (
+    receipt_id    VARCHAR(100) PRIMARY KEY,
+    push_token_id BIGINT NOT NULL REFERENCES push_tokens(push_token_id) ON DELETE CASCADE,
+    status        VARCHAR(12) NOT NULL DEFAULT 'pending'
+                  CHECK (status IN ('pending', 'delivered', 'failed', 'expired')),
+    error_code    VARCHAR(100),
+    error_message VARCHAR(500),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    checked_at    TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS admin_face_challenges (
+    challenge_hash  CHAR(64) PRIMARY KEY,
+    user_id         INT NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+    ip_address      TEXT NOT NULL,
+    user_agent_hash CHAR(64) NOT NULL,
+    attempts        SMALLINT NOT NULL DEFAULT 0 CHECK (attempts BETWEEN 0 AND 3),
+    expires_at      TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- =========================================================
 -- 3. INDEXES
 -- =========================================================
@@ -162,6 +199,10 @@ CREATE INDEX IF NOT EXISTS idx_token_blacklist_expires ON token_blacklist(expire
 CREATE INDEX IF NOT EXISTS idx_children_user        ON children(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_lower ON users (LOWER(email));
 CREATE INDEX IF NOT EXISTS idx_blacklist_domain ON website_blacklist(domain);
+CREATE INDEX IF NOT EXISTS idx_push_tokens_user_active ON push_tokens(user_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_push_receipts_pending ON push_receipts(created_at) WHERE status = 'pending';
+CREATE INDEX IF NOT EXISTS idx_admin_face_challenges_user ON admin_face_challenges(user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_face_challenges_expiry ON admin_face_challenges(expires_at);
 
 -- =========================================================
 -- 4. TRIGGER updated_at
@@ -177,6 +218,12 @@ $$ LANGUAGE plpgsql;
 DROP TRIGGER IF EXISTS trg_settings_updated ON settings;
 CREATE TRIGGER trg_settings_updated
 BEFORE UPDATE ON settings
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+DROP TRIGGER IF EXISTS trg_push_tokens_updated ON push_tokens;
+CREATE TRIGGER trg_push_tokens_updated
+BEFORE UPDATE ON push_tokens
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 
@@ -198,8 +245,11 @@ GRANT USAGE ON SCHEMA public TO app_backend, app_admin;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON
     users, children, devices, app_usage, website_logs,
-    settings, ai_analysis, alerts, token_blacklist, refresh_tokens, website_blacklist
+    settings, ai_analysis, alerts, token_blacklist, refresh_tokens, website_blacklist,
+    push_tokens
 TO app_backend;
+
+REVOKE ALL ON push_receipts FROM app_backend;
 
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO app_admin;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO app_admin;
@@ -222,6 +272,11 @@ ALTER TABLE website_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_analysis ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE push_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_face_challenges ENABLE ROW LEVEL SECURITY;
+
+REVOKE ALL ON admin_face_challenges FROM app_backend;
 
 CREATE POLICY users_self ON users
 USING (user_id = current_setting('app.current_user_id', true)::INT);
@@ -268,6 +323,19 @@ USING (device_id IN (
     JOIN children c ON d.child_id = c.child_id
     WHERE c.user_id = current_setting('app.current_user_id', true)::INT
 ));
+
+CREATE POLICY push_tokens_owner ON push_tokens
+USING (user_id = current_setting('app.current_user_id', true)::INT)
+WITH CHECK (user_id = current_setting('app.current_user_id', true)::INT);
+
+CREATE POLICY push_receipts_owner ON push_receipts
+USING (
+    EXISTS (
+        SELECT 1 FROM push_tokens pt
+        WHERE pt.push_token_id = push_receipts.push_token_id
+          AND pt.user_id = current_setting('app.current_user_id', true)::INT
+    )
+);
 
 -- =========================================================
 -- 7. DATA RETENTION
