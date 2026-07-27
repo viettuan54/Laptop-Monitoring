@@ -34,6 +34,16 @@ class PipeClient:
         }
         return self._send_and_receive(payload)
 
+    def send_vision_alert(self, alert_type, message, metrics=None):
+        """Gửi metadata Edge AI tới Service; tuyệt đối không nhận dữ liệu ảnh."""
+        payload = {
+            "action": "VISION_ALERT",
+            "alert_type": alert_type,
+            "message": message,
+            "metrics": metrics or {},
+        }
+        return self._send_and_receive(payload)
+
     def _send_and_receive(self, payload_dict, max_retries=3):
         """Mở kết nối pipe có hỗ trợ retry ngắn (100-300ms) để tránh xung đột tranh chấp."""
         for attempt in range(1, max_retries + 1):

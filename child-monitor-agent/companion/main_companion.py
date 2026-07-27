@@ -5,6 +5,7 @@ import threading
 from pipe_client import PipeClient
 from app_tracker import AppTracker
 from ui_alerts import UIAlerts
+from edge_vision import EdgeVisionMonitor
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -33,7 +34,7 @@ def handle_policy_response(policy_response):
         logging.warning(f"Lock policy triggered: {reason}")
         lock_windows_session()
 
-def start_ping_timer(pipe_client, interval=30):
+def start_ping_timer(pipe_client, response_callback=None, interval=30):
     """
     Worker thread gửi PING định kỳ mỗi 30 giây để kiểm tra policy
     bất kể người dùng có chuyển ứng dụng hay không.
@@ -43,6 +44,8 @@ def start_ping_timer(pipe_client, interval=30):
         while True:
             try:
                 policy_response = pipe_client.send_ping()
+                if response_callback:
+                    response_callback(policy_response)
                 handle_policy_response(policy_response)
             except Exception as e:
                 logging.error(f"PING timer loop error: {e}")
@@ -55,20 +58,31 @@ def main():
     logging.info("UI Companion started in User Session.")
     pipe_client = PipeClient()
     tracker = AppTracker(pipe_client)
+    vision_monitor = EdgeVisionMonitor(
+        pipe_client,
+        warning_callback=UIAlerts.show_vision_warning,
+    )
+    vision_monitor.start()
 
     # Khởi chạy luồng timer 30s PING kiểm tra policy
-    start_ping_timer(pipe_client, interval=30)
+    start_ping_timer(
+        pipe_client,
+        response_callback=vision_monitor.update_config,
+        interval=30,
+    )
 
     try:
         while True:
             try:
                 policy_response = tracker.poll()
+                vision_monitor.update_config(policy_response)
                 handle_policy_response(policy_response)
             except Exception as e:
                 logging.error(f"Companion loop error: {e}")
 
             time.sleep(3)
     finally:
+        vision_monitor.stop()
         try:
             handle_policy_response(tracker.flush())
         except Exception as e:

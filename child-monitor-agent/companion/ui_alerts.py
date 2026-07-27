@@ -37,3 +37,19 @@ class UIAlerts:
         # Chạy trong thread non-blocking
         t = threading.Thread(target=_warning_thread, daemon=True)
         t.start()
+
+    @classmethod
+    def show_vision_warning(cls, alert_type, message):
+        """Hiển thị nhắc nhở sức khỏe cục bộ sau khi Service đã lưu cảnh báo."""
+        titles = {
+            "eye_distance_warning": "Hãy ngồi xa màn hình hơn",
+            "posture_warning": "Hãy điều chỉnh tư thế",
+        }
+
+        def _warning_thread():
+            cls._display_toast(
+                titles.get(alert_type, "Nhắc nhở tư thế"),
+                message,
+            )
+
+        threading.Thread(target=_warning_thread, daemon=True).start()

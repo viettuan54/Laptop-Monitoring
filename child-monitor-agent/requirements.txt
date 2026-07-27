@@ -1,3 +1,6 @@
 psutil>=6.0,<8
 pywin32>=308
 requests>=2.32,<3
+mediapipe==0.10.33
+opencv-contrib-python>=4.10,<5
+numpy>=1.26,<3

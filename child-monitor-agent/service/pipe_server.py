@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 class PipeServer:
     PIPE_NAME = r"\\.\pipe\ChildMonitorAgentPipe"
+    VISION_ALERT_TYPES = {"posture_warning", "eye_distance_warning"}
 
     def __init__(self, offline_queue, enforcement_core):
         self.offline_queue = offline_queue
@@ -175,6 +176,25 @@ class PipeServer:
                 # Action PING chỉ kiểm tra chính sách mà không ghi nhận sự kiện theo dõi ứng dụng mới
                 pass
 
+            elif action == "VISION_ALERT":
+                alert_type = msg.get("alert_type")
+                message = msg.get("message")
+                if alert_type not in self.VISION_ALERT_TYPES:
+                    raise ValueError("Invalid Edge AI alert type")
+                if not isinstance(message, str):
+                    raise ValueError("Vision alert message must be text")
+                message = message.strip()
+                if not message or len(message) > 500:
+                    raise ValueError("Vision alert message length is invalid")
+                if any(ord(char) < 32 or ord(char) == 127 for char in message):
+                    raise ValueError("Vision alert message contains control characters")
+                persisted_id, _ = self.offline_queue.enqueue_vision_alert(
+                    alert_type,
+                    message,
+                )
+                if not persisted_id:
+                    raise RuntimeError("Failed to persist vision alert")
+
             # Kiểm tra trạng thái policy hiện tại để phản hồi cho Companion
             should_lock, reason, remaining_seconds = self.enforcement_core.check_policy_status()
             
@@ -187,13 +207,31 @@ class PipeServer:
                 "should_lock": should_lock,
                 "reason": reason,
                 "remaining_seconds": remaining_seconds,
-                "countdown_minutes": countdown_minutes
+                "countdown_minutes": countdown_minutes,
+                "vision_config": self._get_vision_config(),
             }
             response_bytes = json.dumps(response_payload).encode('utf-8')
             win32file.WriteFile(pipe_handle, response_bytes)
 
         except Exception as e:
             logging.error(f"Error processing pipe message: {e}")
+
+    def _get_vision_config(self):
+        """Chỉ bật camera khi cờ đồng thuận đã được cache từ backend."""
+        settings = self.enforcement_core.load_cached_settings()
+        return {
+            "enabled": settings.get("enable_webcam_monitoring") is True,
+            "camera_index": settings.get("vision_camera_index", 0),
+            "sample_interval_seconds": settings.get("vision_sample_interval_seconds", 0.5),
+            "alert_hold_seconds": settings.get("vision_alert_hold_seconds", 5.0),
+            "alert_cooldown_seconds": settings.get("vision_alert_cooldown_seconds", 300.0),
+            "min_eye_distance_cm": settings.get("vision_min_eye_distance_cm", 35.0),
+            "camera_horizontal_fov_degrees": settings.get("vision_camera_horizontal_fov_degrees", 60.0),
+            "assumed_ipd_cm": settings.get("vision_assumed_ipd_cm", 6.3),
+            "max_neck_angle_degrees": settings.get("vision_max_neck_angle_degrees", 25.0),
+            "max_torso_angle_degrees": settings.get("vision_max_torso_angle_degrees", 18.0),
+            "max_shoulder_tilt_degrees": settings.get("vision_max_shoulder_tilt_degrees", 12.0),
+        }
 
     def send_command_to_companion(self, command_dict):
         """Chủ động gửi lệnh (LOCK_NOW, WARNING...) tới Companion."""

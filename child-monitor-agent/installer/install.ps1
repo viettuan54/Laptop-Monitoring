@@ -7,7 +7,9 @@ param(
     [string]$DeviceSecret,
 
     [string]$InstallDir = "$env:ProgramFiles\ChildMonitorAgent",
-    [string]$Wheelhouse
+    [string]$Wheelhouse,
+
+    [string]$PythonExe
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,6 +58,7 @@ foreach ($directory in @(
     "$resolvedInstallDir\service",
     "$resolvedInstallDir\companion",
     "$resolvedInstallDir\installer",
+    "$resolvedInstallDir\models",
     "$resolvedInstallDir\config",
     "$resolvedInstallDir\db",
     "$resolvedInstallDir\logs",
@@ -71,10 +74,53 @@ Copy-Item -Force "$AgentRoot\installer\uninstall.ps1" "$resolvedInstallDir\insta
 Copy-Item -Force "$AgentRoot\installer\provision.ps1" "$resolvedInstallDir\installer\"
 Copy-Item -Force "$AgentRoot\requirements.txt" "$resolvedInstallDir\requirements.txt"
 
+$requiredModels = @(
+    @{
+        Path = "$AgentRoot\models\face_landmarker.task"
+        Sha256 = "64184E229B263107BC2B804C6625DB1341FF2BB731874B0BCC2FE6544E0BC9FF"
+    },
+    @{
+        Path = "$AgentRoot\models\pose_landmarker_lite.task"
+        Sha256 = "59929E1D1EE95287735DDD833B19CF4AC46D29BC7AFDDBBF6753C459690D574A"
+    }
+)
+foreach ($model in $requiredModels) {
+    $modelPath = $model.Path
+    if (-not (Test-Path -LiteralPath $modelPath -PathType Leaf)) {
+        throw "Required Edge AI model is missing: $modelPath"
+    }
+    $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $modelPath).Hash
+    if ($actualHash -ne $model.Sha256) {
+        throw "Edge AI model integrity check failed: $modelPath"
+    }
+    Copy-Item -Force -LiteralPath $modelPath -Destination "$resolvedInstallDir\models\"
+}
+
 $venvPython = "$resolvedInstallDir\venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPython)) {
-    $pythonLauncher = (Get-Command py.exe -ErrorAction Stop).Source
-    Invoke-Checked $pythonLauncher "-3" "-m" "venv" "$resolvedInstallDir\venv"
+    $pythonCommand = $null
+    $pythonPrefix = @()
+    if ($PythonExe) {
+        $pythonCommand = (Resolve-Path -LiteralPath $PythonExe -ErrorAction Stop).Path
+    } else {
+        $launcher = Get-Command py.exe -ErrorAction SilentlyContinue
+        if ($launcher) {
+            $pythonCommand = $launcher.Source
+            $pythonPrefix = @("-3.11")
+        } else {
+            $python = Get-Command python.exe -ErrorAction Stop
+            $pythonCommand = $python.Source
+        }
+    }
+
+    $pythonVersion = & $pythonCommand @pythonPrefix -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')"
+    if ($LASTEXITCODE -ne 0 -or $pythonVersion -notmatch '^3\.(9|10|11|12)$') {
+        throw "Agent requires Python 3.9-3.12 (Python 3.11 is recommended)."
+    }
+    & $pythonCommand @pythonPrefix -m venv "$resolvedInstallDir\venv"
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to create Agent virtual environment."
+    }
 }
 
 Invoke-Checked $venvPython "-m" "pip" "install" "--upgrade" "pip"

@@ -35,6 +35,18 @@ class FakeApiClient:
         return FakeResponse(self.accepted_ids)
 
 
+class FakeVisionApi:
+    suspended = False
+
+    def __init__(self, status_code=201):
+        self.status_code = status_code
+        self.calls = []
+
+    def post(self, endpoint, data=None, timeout=10):
+        self.calls.append((endpoint, data))
+        return FakeResponse([], self.status_code)
+
+
 class OfflineQueueIntegrationTest(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -77,6 +89,42 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
 
         self.queue._sync_apps(FakeApiClient([]))
         self.assertEqual(self._synced_state(), {record_id: 0})
+
+    def test_vision_alert_is_queued_and_synced_without_images(self):
+        record_id, inserted = self.queue.enqueue_vision_alert(
+            "posture_warning",
+            "Góc cổ 31.0°.",
+        )
+        self.assertTrue(inserted)
+
+        api = FakeVisionApi()
+        self.queue._sync_vision_alerts(api)
+        with self.queue.get_connection() as conn:
+            row = conn.execute(
+                "SELECT alert_type, message, synced FROM vision_alerts WHERE client_record_id = ?",
+                (record_id,),
+            ).fetchone()
+
+        self.assertEqual(row, ("posture_warning", "Góc cổ 31.0°.", 1))
+        self.assertEqual(api.calls[0][0], "/api/agent/vision-alert")
+        self.assertNotIn("image", api.calls[0][1])
+
+    def test_duplicate_vision_alert_is_suppressed_locally(self):
+        first_id, inserted = self.queue.enqueue_vision_alert(
+            "eye_distance_warning",
+            "Khoảng cách mắt 30 cm.",
+        )
+        self.assertTrue(inserted)
+        second_id, inserted = self.queue.enqueue_vision_alert(
+            "eye_distance_warning",
+            "Khoảng cách mắt 29 cm.",
+        )
+        self.assertFalse(inserted)
+        self.assertEqual(second_id, first_id)
+
+        with self.queue.get_connection() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM vision_alerts").fetchone()[0]
+        self.assertEqual(count, 1)
 
 
 if __name__ == "__main__":

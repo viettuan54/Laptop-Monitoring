@@ -3,6 +3,7 @@ import sys
 import base64
 import tempfile
 import unittest
+from unittest.mock import patch
 
 import win32crypt
 
@@ -66,11 +67,14 @@ class ProvisioningValidationTest(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp_dir:
             config_path = os.path.join(temp_dir, "local_config.json")
-            write_config_atomic(config_path, {
-                "server_url": "https://api.example.com",
-                "device_secret": encrypted,
-                "is_encrypted": True,
-            })
+            # ACL behavior is exercised by the elevated installer; do not remove
+            # the test runner's access to its own temporary directory.
+            with patch("provision_agent.secure_config_file"):
+                write_config_atomic(config_path, {
+                    "server_url": "https://api.example.com",
+                    "device_secret": encrypted,
+                    "is_encrypted": True,
+                })
             self.assertTrue(os.path.exists(config_path))
 
 

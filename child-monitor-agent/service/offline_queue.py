@@ -4,7 +4,7 @@ import uuid
 import time
 import logging
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -75,6 +75,17 @@ class OfflineQueue:
                 seconds_used INTEGER DEFAULT 0
             )
             """)
+
+            # Chỉ lưu metadata cảnh báo Edge AI; không lưu ảnh hoặc frame camera.
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vision_alerts (
+                client_record_id TEXT PRIMARY KEY,
+                alert_type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                synced INTEGER DEFAULT 0
+            )
+            """)
             conn.commit()
 
     def secure_db_file(self):
@@ -137,6 +148,40 @@ class OfflineQueue:
             logging.error(f"Failed to enqueue web log: {e}")
             return None
 
+    def enqueue_vision_alert(self, alert_type, message, client_record_id=None):
+        """Lưu metadata cảnh báo camera để đồng bộ sau; không nhận dữ liệu ảnh."""
+        client_record_id = client_record_id or str(uuid.uuid4())
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+                cutoff = (
+                    datetime.now().astimezone() - timedelta(minutes=5)
+                ).isoformat()
+                existing = cursor.execute(
+                    """SELECT client_record_id FROM vision_alerts
+                       WHERE alert_type = ? AND created_at >= ?
+                       ORDER BY created_at DESC LIMIT 1""",
+                    (alert_type, cutoff),
+                ).fetchone()
+                if existing:
+                    return existing[0], False
+                cursor.execute("""
+                INSERT OR IGNORE INTO vision_alerts
+                    (client_record_id, alert_type, message, created_at, synced)
+                VALUES (?, ?, ?, ?, 0)
+                """, (
+                    client_record_id,
+                    alert_type,
+                    message,
+                    datetime.now().astimezone().isoformat(),
+                ))
+                inserted = cursor.rowcount == 1
+                conn.commit()
+            return client_record_id, inserted
+        except Exception as e:
+            logging.error(f"Failed to enqueue vision alert: {e}")
+            return None, False
+
     def add_daily_usage(self, seconds):
         """Cộng dồn số giây sử dụng máy cho ngày hiện tại (YYYY-MM-DD local)."""
         today = datetime.now().strftime("%Y-%m-%d")
@@ -181,6 +226,7 @@ class OfflineQueue:
 
         self._sync_apps(api_client)
         self._sync_webs(api_client)
+        self._sync_vision_alerts(api_client)
         self.cleanup_synced_logs(days=7)
 
     def _sync_apps(self, api_client):
@@ -305,6 +351,47 @@ class OfflineQueue:
                 logging.error(f"Error during web logs sync: {e}")
                 break
 
+    def _sync_vision_alerts(self, api_client):
+        """Gửi tuần tự cảnh báo Edge AI vì backend tự chống trùng trong 5 phút."""
+        while True:
+            try:
+                with self.get_connection() as conn:
+                    conn.row_factory = sqlite3.Row
+                    rows = conn.execute(
+                        "SELECT * FROM vision_alerts WHERE synced = 0 ORDER BY created_at LIMIT 20"
+                    ).fetchall()
+                if not rows:
+                    break
+
+                made_progress = False
+                for row in rows:
+                    response = api_client.post("/api/agent/vision-alert", data={
+                        "alert_type": row["alert_type"],
+                        "message": row["message"],
+                    })
+                    if response is None:
+                        return
+
+                    # 200 includes backend duplicate suppression; 201 means inserted.
+                    # A stale local policy may race with a parent disabling webcam;
+                    # discard 400/403 rather than retrying sensitive telemetry forever.
+                    if response.status_code in (200, 201, 400, 403):
+                        with self.get_connection() as conn:
+                            conn.execute(
+                                "UPDATE vision_alerts SET synced = 1 WHERE client_record_id = ?",
+                                (row["client_record_id"],),
+                            )
+                            conn.commit()
+                        made_progress = True
+                    else:
+                        return
+                if not made_progress:
+                    break
+                time.sleep(0.200)
+            except Exception as e:
+                logging.error(f"Error during vision alert sync: {e}")
+                break
+
     def cleanup_synced_logs(self, days=7):
         """Xóa các bản ghi đã sync từ X ngày trước để tối ưu dung lượng DB file."""
         try:
@@ -314,6 +401,7 @@ class OfflineQueue:
                 cursor = conn.cursor()
                 cursor.execute("DELETE FROM app_logs WHERE synced = 1 AND start_time < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM web_logs WHERE synced = 1 AND visit_time < datetime('now', '-' || ? || ' days')", (days,))
+                cursor.execute("DELETE FROM vision_alerts WHERE synced = 1 AND created_at < datetime('now', '-' || ? || ' days')", (days,))
                 conn.commit()
         except Exception as e:
             logging.error(f"Failed to cleanup old synced logs: {e}")
