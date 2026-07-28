@@ -1,6 +1,7 @@
 """Ground-truth distance normalization and camera calibration helpers."""
 
 import math
+import re
 import statistics
 from datetime import datetime, timezone
 
@@ -10,6 +11,9 @@ CALIBRATION_PROFILE_VERSION = "1.0.0"
 TARGET_DISTANCES_CM = (25.0, 30.0, 35.0, 40.0, 50.0, 60.0, 80.0)
 MEASUREMENT_METHODS = frozenset({"tape_measure", "laser_measure"})
 MEASUREMENT_REFERENCE = "camera_lens_center_to_eye_midpoint"
+RIGHT_EYE_CORNERS = (33, 133)
+LEFT_EYE_CORNERS = (362, 263)
+NOSE_TIP = 1
 
 
 def _finite_number(value, field):
@@ -20,6 +24,79 @@ def _finite_number(value, field):
     if not math.isfinite(number):
         raise ValueError(f"{field} must be a finite number")
     return number
+
+
+def _coordinate(point, name):
+    if isinstance(point, dict):
+        return _finite_number(point.get(name, 0.0), name)
+    return _finite_number(getattr(point, name, 0.0), name)
+
+
+def _midpoint(first, second):
+    return (
+        (_coordinate(first, "x") + _coordinate(second, "x")) / 2.0,
+        (_coordinate(first, "y") + _coordinate(second, "y")) / 2.0,
+    )
+
+
+def extract_eye_measurement(
+    face_landmarks,
+    frame_width,
+    frame_height,
+    *,
+    max_head_yaw_ratio=0.45,
+    max_center_offset_x=0.3,
+    max_center_offset_y=0.35,
+):
+    """Extract the normalized eye feature used by calibration and inference.
+
+    Returns ``None`` when the face is degenerate, too far off-axis or appears
+    to have strong head yaw.
+    """
+    if not face_landmarks or len(face_landmarks) <= max(LEFT_EYE_CORNERS):
+        return None
+
+    width = _finite_number(frame_width, "frame_width")
+    height = _finite_number(frame_height, "frame_height")
+    if width <= 0 or height <= 0:
+        raise ValueError("frame dimensions must be positive")
+
+    right_eye = _midpoint(
+        face_landmarks[RIGHT_EYE_CORNERS[0]],
+        face_landmarks[RIGHT_EYE_CORNERS[1]],
+    )
+    left_eye = _midpoint(
+        face_landmarks[LEFT_EYE_CORNERS[0]],
+        face_landmarks[LEFT_EYE_CORNERS[1]],
+    )
+    eye_midpoint = (
+        (left_eye[0] + right_eye[0]) / 2.0,
+        (left_eye[1] + right_eye[1]) / 2.0,
+    )
+    separation = math.hypot(
+        left_eye[0] - right_eye[0],
+        (left_eye[1] - right_eye[1]) * (height / width),
+    )
+    if not 0.01 <= separation <= 0.5:
+        return None
+
+    nose_x = _coordinate(face_landmarks[NOSE_TIP], "x")
+    yaw_ratio = abs(nose_x - eye_midpoint[0]) / separation
+    center_offset_x = abs(eye_midpoint[0] - 0.5)
+    center_offset_y = abs(eye_midpoint[1] - 0.5)
+    if (
+        yaw_ratio > max_head_yaw_ratio
+        or center_offset_x > max_center_offset_x
+        or center_offset_y > max_center_offset_y
+    ):
+        return None
+
+    return {
+        "eye_separation_normalized": round(separation, 8),
+        "head_yaw_ratio": round(yaw_ratio, 4),
+        "eye_center_offset_x": round(center_offset_x, 4),
+        "eye_center_offset_y": round(center_offset_y, 4),
+    }
 
 
 def normalize_distance_measurement(
@@ -76,10 +153,16 @@ def build_calibration_profile(
     ``eye_separation_normalized``. The latter is the pixel eye separation
     divided by frame width.
     """
-    if not isinstance(camera_id, str) or len(camera_id) < 8:
-        raise ValueError("camera_id must contain at least 8 characters")
-    if not isinstance(subject_id, str) or not subject_id.startswith("subject-"):
-        raise ValueError("subject_id must start with 'subject-'")
+    if not isinstance(camera_id, str) or not re.fullmatch(
+        r"camera-[A-Za-z0-9_-]{1,120}",
+        camera_id,
+    ):
+        raise ValueError("camera_id must use the form camera-<safe-id>")
+    if not isinstance(subject_id, str) or not re.fullmatch(
+        r"subject-[A-Za-z0-9_-]+",
+        subject_id,
+    ):
+        raise ValueError("subject_id must use the form subject-<safe-id>")
 
     width = int(_finite_number(frame_width, "frame_width"))
     height = int(_finite_number(frame_height, "frame_height"))

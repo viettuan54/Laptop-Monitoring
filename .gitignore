@@ -40,3 +40,4 @@ Thumbs.db
 .venv-face/
 .venv-edge/
 ai-training/.venv/
+ai-training/.matplotlib-cache/

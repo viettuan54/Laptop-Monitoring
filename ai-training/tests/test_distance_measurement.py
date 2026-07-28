@@ -12,11 +12,41 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from data_collection.distance_measurement import (
     build_calibration_profile,
+    extract_eye_measurement,
     normalize_distance_measurement,
 )
 
 
 class DistanceMeasurementTest(unittest.TestCase):
+    @staticmethod
+    def _face_landmarks():
+        points = [
+            {"x": 0.5, "y": 0.5, "z": 0.0}
+            for _ in range(478)
+        ]
+        for index in (33, 133):
+            points[index]["x"] = 0.45
+        for index in (362, 263):
+            points[index]["x"] = 0.55
+        return points
+
+    def test_extracts_resolution_independent_eye_measurement(self):
+        points = self._face_landmarks()
+        result_640 = extract_eye_measurement(points, 640, 480)
+        result_1280 = extract_eye_measurement(points, 1280, 960)
+        self.assertEqual(result_640["eye_separation_normalized"], 0.1)
+        self.assertEqual(result_1280["eye_separation_normalized"], 0.1)
+
+    def test_rejects_off_axis_or_turned_face(self):
+        points = self._face_landmarks()
+        points[1]["x"] = 0.7
+        self.assertIsNone(extract_eye_measurement(points, 640, 480))
+
+        points = self._face_landmarks()
+        for index in (33, 133, 362, 263, 1):
+            points[index]["x"] += 0.35
+        self.assertIsNone(extract_eye_measurement(points, 640, 480))
+
     def test_normalizes_measured_distance(self):
         result = normalize_distance_measurement(
             35.04,

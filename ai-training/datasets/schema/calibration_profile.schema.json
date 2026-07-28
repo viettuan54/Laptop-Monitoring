@@ -30,7 +30,7 @@
     },
     "camera_id": {
       "type": "string",
-      "minLength": 8,
+      "pattern": "^camera-[A-Za-z0-9_-]{1,120}$",
       "maxLength": 128
     },
     "subject_id": {

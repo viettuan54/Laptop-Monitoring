@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://child-monitor.local/schemas/distance-calibration-session-1.0.0.json",
+  "title": "Child Monitor eye-distance calibration session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "session_version",
+    "distance_standard_version",
+    "session_id",
+    "subject_id",
+    "camera_id",
+    "camera_index",
+    "frame_width",
+    "frame_height",
+    "distance_reference",
+    "distance_measurement_method",
+    "distance_uncertainty_cm",
+    "target_distances_cm",
+    "sample_interval_seconds",
+    "capture_seconds_per_distance",
+    "started_at",
+    "completed_at",
+    "status",
+    "samples",
+    "distance_summaries"
+  ],
+  "properties": {
+    "session_version": {
+      "const": "1.0.0"
+    },
+    "distance_standard_version": {
+      "const": "1.0.0"
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^calibration-[A-Za-z0-9_-]+$"
+    },
+    "subject_id": {
+      "type": "string",
+      "pattern": "^subject-[A-Za-z0-9_-]+$"
+    },
+    "camera_id": {
+      "type": "string",
+      "pattern": "^camera-[A-Za-z0-9_-]{1,120}$"
+    },
+    "camera_index": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 8
+    },
+    "frame_width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "frame_height": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "distance_reference": {
+      "const": "camera_lens_center_to_eye_midpoint"
+    },
+    "distance_measurement_method": {
+      "enum": [
+        "tape_measure",
+        "laser_measure"
+      ]
+    },
+    "distance_uncertainty_cm": {
+      "type": "number",
+      "minimum": 0.1,
+      "maximum": 5
+    },
+    "target_distances_cm": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": {
+        "type": "number",
+        "minimum": 20,
+        "maximum": 200
+      }
+    },
+    "sample_interval_seconds": {
+      "type": "number",
+      "exclusiveMinimum": 0
+    },
+    "capture_seconds_per_distance": {
+      "type": "number",
+      "minimum": 5,
+      "maximum": 120
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "completed",
+        "aborted"
+      ]
+    },
+    "samples": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/sample"
+      }
+    },
+    "distance_summaries": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/distanceSummary"
+      }
+    }
+  },
+  "$defs": {
+    "sample": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "timestamp_ms",
+        "distance_measurement_status",
+        "actual_distance_cm",
+        "distance_measurement_method",
+        "distance_reference",
+        "distance_uncertainty_cm",
+        "eye_separation_normalized",
+        "head_yaw_ratio",
+        "eye_center_offset_x",
+        "eye_center_offset_y"
+      ],
+      "properties": {
+        "timestamp_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "distance_measurement_status": {
+          "const": "measured"
+        },
+        "actual_distance_cm": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 200
+        },
+        "distance_measurement_method": {
+          "enum": [
+            "tape_measure",
+            "laser_measure"
+          ]
+        },
+        "distance_reference": {
+          "const": "camera_lens_center_to_eye_midpoint"
+        },
+        "distance_uncertainty_cm": {
+          "type": "number",
+          "minimum": 0.1,
+          "maximum": 5
+        },
+        "eye_separation_normalized": {
+          "type": "number",
+          "minimum": 0.01,
+          "maximum": 0.5
+        },
+        "head_yaw_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.45
+        },
+        "eye_center_offset_x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.3
+        },
+        "eye_center_offset_y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.35
+        }
+      }
+    },
+    "distanceSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actual_distance_cm",
+        "valid_sample_count",
+        "expected_sample_count",
+        "valid_ratio"
+      ],
+      "properties": {
+        "actual_distance_cm": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 200
+        },
+        "valid_sample_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "expected_sample_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "valid_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}
