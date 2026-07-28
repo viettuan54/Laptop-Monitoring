@@ -68,6 +68,8 @@ class VisionMetricsTest(unittest.TestCase):
         self.assertEqual(result["reasons"], [])
         self.assertEqual(result["visibility_state"], "visible")
         self.assertEqual(result["confidence"], 1.0)
+        self.assertEqual(result["posture_state"], "good")
+        self.assertEqual(result["posture_labels"], [])
 
     def test_forward_neck_and_torso_lean_are_flagged(self):
         normalized = landmarks(33)
@@ -84,6 +86,11 @@ class VisionMetricsTest(unittest.TestCase):
         self.assertTrue(result["is_bad"])
         self.assertIn("neck", result["reasons"])
         self.assertIn("torso", result["reasons"])
+        self.assertEqual(
+            result["posture_labels"],
+            ["forward_head", "trunk_lean", "slouching"],
+        )
+        self.assertEqual(result["posture_state"], "bad")
 
     def test_shoulder_tilt_preserves_direction(self):
         normalized = landmarks(33)
@@ -100,6 +107,7 @@ class VisionMetricsTest(unittest.TestCase):
         self.assertIn("shoulders", result["reasons"])
         self.assertGreater(result["shoulder_tilt_signed_degrees"], 0)
         self.assertEqual(result["shoulder_tilt_direction"], "right_shoulder_lower")
+        self.assertIn("shoulder_tilt_right", result["posture_labels"])
 
     def test_low_visibility_reports_partial_body_without_warning(self):
         normalized = landmarks(33)
@@ -108,6 +116,8 @@ class VisionMetricsTest(unittest.TestCase):
         self.assertFalse(result["reliable"])
         self.assertFalse(result["is_bad"])
         self.assertEqual(result["visibility_state"], "partially_visible")
+        self.assertEqual(result["posture_state"], "unknown")
+        self.assertEqual(result["posture_labels"], [])
 
 
 if __name__ == "__main__":

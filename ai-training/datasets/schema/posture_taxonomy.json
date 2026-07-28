@@ -1,0 +1,43 @@
+{
+  "taxonomy_version": "1.0.0",
+  "visibility_states": [
+    "visible",
+    "partially_visible",
+    "not_visible"
+  ],
+  "posture_states": [
+    "good",
+    "bad",
+    "unknown"
+  ],
+  "posture_labels": [
+    "forward_head",
+    "trunk_lean",
+    "shoulder_tilt_left",
+    "shoulder_tilt_right",
+    "slouching"
+  ],
+  "derived_rules": {
+    "good": "visibility_state == 'visible' and posture_labels is empty",
+    "bad": "visibility_state == 'visible' and posture_labels is not empty",
+    "unknown": "visibility_state != 'visible'",
+    "slouching": "forward_head and trunk_lean",
+    "body_not_visible": "deprecated; use visibility_state == 'not_visible'"
+  },
+  "mutual_exclusion": [
+    [
+      "shoulder_tilt_left",
+      "shoulder_tilt_right"
+    ]
+  ],
+  "distance_target": {
+    "field": "actual_distance_cm",
+    "type": [
+      "number",
+      "null"
+    ],
+    "minimum_cm": 20,
+    "maximum_cm": 200,
+    "measurement_reference": "Perpendicular distance from the camera plane to the midpoint between the eyes."
+  }
+}

@@ -1,0 +1,295 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://child-monitor.local/schemas/landmark-record-1.0.0.json",
+  "title": "Child Monitor landmark record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "session_id",
+    "subject_id",
+    "camera_id",
+    "timestamp_ms",
+    "actual_distance_cm",
+    "visibility_state",
+    "posture_state",
+    "posture_labels",
+    "transition",
+    "face_landmarks",
+    "pose_landmarks",
+    "frame_width",
+    "frame_height"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "session_id": {
+      "type": "string",
+      "pattern": "^session-[A-Za-z0-9_-]+$"
+    },
+    "subject_id": {
+      "type": "string",
+      "pattern": "^subject-[A-Za-z0-9_-]+$"
+    },
+    "camera_id": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 128
+    },
+    "timestamp_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "actual_distance_cm": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 20,
+      "maximum": 200
+    },
+    "visibility_state": {
+      "enum": [
+        "visible",
+        "partially_visible",
+        "not_visible"
+      ]
+    },
+    "posture_state": {
+      "enum": [
+        "good",
+        "bad",
+        "unknown"
+      ]
+    },
+    "posture_labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "forward_head",
+          "trunk_lean",
+          "shoulder_tilt_left",
+          "shoulder_tilt_right",
+          "slouching"
+        ]
+      }
+    },
+    "transition": {
+      "type": "boolean"
+    },
+    "face_landmarks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/landmark"
+      }
+    },
+    "pose_landmarks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/landmark"
+      }
+    },
+    "frame_width": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "frame_height": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "visibility_state": {
+            "const": "visible"
+          },
+          "posture_labels": {
+            "maxItems": 0
+          }
+        },
+        "required": [
+          "visibility_state",
+          "posture_labels"
+        ]
+      },
+      "then": {
+        "properties": {
+          "posture_state": {
+            "const": "good"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "visibility_state": {
+            "const": "visible"
+          },
+          "posture_labels": {
+            "minItems": 1
+          }
+        },
+        "required": [
+          "visibility_state",
+          "posture_labels"
+        ]
+      },
+      "then": {
+        "properties": {
+          "posture_state": {
+            "const": "bad"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "visibility_state": {
+            "enum": [
+              "partially_visible",
+              "not_visible"
+            ]
+          }
+        },
+        "required": [
+          "visibility_state"
+        ]
+      },
+      "then": {
+        "properties": {
+          "posture_state": {
+            "const": "unknown"
+          },
+          "posture_labels": {
+            "maxItems": 0
+          }
+        }
+      }
+    },
+    {
+      "not": {
+        "properties": {
+          "posture_labels": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "shoulder_tilt_left"
+                }
+              },
+              {
+                "contains": {
+                  "const": "shoulder_tilt_right"
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "posture_labels"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "posture_labels": {
+            "contains": {
+              "const": "slouching"
+            }
+          }
+        },
+        "required": [
+          "posture_labels"
+        ]
+      },
+      "then": {
+        "properties": {
+          "posture_labels": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "forward_head"
+                }
+              },
+              {
+                "contains": {
+                  "const": "trunk_lean"
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "posture_labels": {
+            "allOf": [
+              {
+                "contains": {
+                  "const": "forward_head"
+                }
+              },
+              {
+                "contains": {
+                  "const": "trunk_lean"
+                }
+              }
+            ]
+          }
+        },
+        "required": [
+          "posture_labels"
+        ]
+      },
+      "then": {
+        "properties": {
+          "posture_labels": {
+            "contains": {
+              "const": "slouching"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "landmark": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "z": {
+          "type": "number"
+        },
+        "visibility": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "presence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    }
+  }
+}

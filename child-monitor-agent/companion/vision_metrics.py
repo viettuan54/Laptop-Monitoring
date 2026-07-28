@@ -69,6 +69,23 @@ def _angle_from_vertical(lower, upper):
     return math.degrees(math.acos(cosine))
 
 
+def _posture_labels(reasons, shoulder_tilt_direction):
+    """Map geometry-rule output to the shared ai-training taxonomy."""
+    labels = []
+    if "neck" in reasons:
+        labels.append("forward_head")
+    if "torso" in reasons:
+        labels.append("trunk_lean")
+    if "shoulders" in reasons:
+        if shoulder_tilt_direction == "left_shoulder_lower":
+            labels.append("shoulder_tilt_left")
+        elif shoulder_tilt_direction == "right_shoulder_lower":
+            labels.append("shoulder_tilt_right")
+    if "forward_head" in labels and "trunk_lean" in labels:
+        labels.append("slouching")
+    return labels
+
+
 def estimate_eye_distance_cm(
     face_landmarks,
     image_width,
@@ -149,6 +166,8 @@ def analyze_posture(
             "confidence": 0.0,
             "is_bad": False,
             "reasons": [],
+            "posture_labels": [],
+            "posture_state": "unknown",
         }
 
     required_visibilities = [_visibility(pose_landmarks[index]) for index in required]
@@ -159,6 +178,8 @@ def analyze_posture(
             "confidence": round(min(required_visibilities), 2),
             "is_bad": False,
             "reasons": [],
+            "posture_labels": [],
+            "posture_state": "unknown",
         }
 
     shoulder_left = pose_landmarks[LEFT_SHOULDER]
@@ -218,12 +239,15 @@ def analyze_posture(
         shoulder_tilt_direction = (
             "right_shoulder_lower" if shoulder_tilt_signed > 0 else "left_shoulder_lower"
         )
+    posture_labels = _posture_labels(reasons, shoulder_tilt_direction)
 
     return {
         "reliable": neck_angle is not None,
         "visibility_state": "visible",
         "confidence": round(min(quality_visibilities), 2),
         "is_bad": bool(reasons),
+        "posture_labels": posture_labels,
+        "posture_state": "bad" if posture_labels else "good",
         "neck_angle_degrees": round(neck_angle, 1) if neck_angle is not None else None,
         "torso_angle_degrees": round(torso_angle, 1) if torso_angle is not None else None,
         "shoulder_tilt_degrees": round(shoulder_tilt, 1),
