@@ -20,6 +20,7 @@ LEFT_SHOULDER = 11
 RIGHT_SHOULDER = 12
 LEFT_HIP = 23
 RIGHT_HIP = 24
+NOSE_TIP = 1
 
 
 def _number(value, default=0.0):
@@ -72,8 +73,10 @@ def estimate_eye_distance_cm(
     face_landmarks,
     image_width,
     *,
+    image_height=None,
     horizontal_fov_degrees=60.0,
     assumed_ipd_cm=6.3,
+    max_head_yaw_ratio=0.45,
 ):
     """Estimate camera-to-eye distance with a pinhole-camera approximation.
 
@@ -85,9 +88,15 @@ def estimate_eye_distance_cm(
         return None
 
     width = _number(image_width)
+    height = _number(image_height, width)
     fov = _number(horizontal_fov_degrees)
     ipd = _number(assumed_ipd_cm)
-    if width <= 0 or not 20.0 <= fov <= 140.0 or not 4.0 <= ipd <= 8.5:
+    if (
+        width <= 0
+        or height <= 0
+        or not 20.0 <= fov <= 140.0
+        or not 4.0 <= ipd <= 8.5
+    ):
         return None
 
     right_eye = _midpoint(
@@ -98,8 +107,19 @@ def estimate_eye_distance_cm(
         face_landmarks[LEFT_EYE_CORNERS[0]],
         face_landmarks[LEFT_EYE_CORNERS[1]],
     )
-    eye_separation_px = abs(left_eye[0] - right_eye[0]) * width
+    eye_separation_px = math.hypot(
+        (left_eye[0] - right_eye[0]) * width,
+        (left_eye[1] - right_eye[1]) * height,
+    )
     if eye_separation_px < 2.0:
+        return None
+
+    # Reject strong head yaw: perspective foreshortening makes the pinhole
+    # distance unreliable when the nose moves too far from the eye midpoint.
+    nose_x_px = _coordinate(face_landmarks[NOSE_TIP], "x") * width
+    eye_midpoint_x_px = ((left_eye[0] + right_eye[0]) / 2.0) * width
+    yaw_ratio = abs(nose_x_px - eye_midpoint_x_px) / eye_separation_px
+    if yaw_ratio > _number(max_head_yaw_ratio, 0.45):
         return None
 
     focal_length_px = width / (2.0 * math.tan(math.radians(fov) / 2.0))
@@ -123,9 +143,23 @@ def analyze_posture(
     """Calculate upper-body posture angles from MediaPipe pose landmarks."""
     required = (LEFT_EAR, RIGHT_EAR, LEFT_SHOULDER, RIGHT_SHOULDER)
     if not pose_landmarks or len(pose_landmarks) <= max(required):
-        return {"reliable": False, "is_bad": False, "reasons": []}
-    if any(_visibility(pose_landmarks[index]) < min_visibility for index in required):
-        return {"reliable": False, "is_bad": False, "reasons": []}
+        return {
+            "reliable": False,
+            "visibility_state": "not_visible",
+            "confidence": 0.0,
+            "is_bad": False,
+            "reasons": [],
+        }
+
+    required_visibilities = [_visibility(pose_landmarks[index]) for index in required]
+    if any(value < min_visibility for value in required_visibilities):
+        return {
+            "reliable": False,
+            "visibility_state": "partially_visible",
+            "confidence": round(min(required_visibilities), 2),
+            "is_bad": False,
+            "reasons": [],
+        }
 
     shoulder_left = pose_landmarks[LEFT_SHOULDER]
     shoulder_right = pose_landmarks[RIGHT_SHOULDER]
@@ -135,7 +169,10 @@ def analyze_posture(
     shoulder_dy = (
         _coordinate(shoulder_right, "y") - _coordinate(shoulder_left, "y")
     ) * _number(image_height, 480.0)
-    shoulder_tilt = math.degrees(math.atan2(abs(shoulder_dy), max(abs(shoulder_dx), 1e-9)))
+    shoulder_tilt_signed = math.degrees(
+        math.atan2(shoulder_dy, max(abs(shoulder_dx), 1e-9))
+    )
+    shoulder_tilt = abs(shoulder_tilt_signed)
 
     geometry_landmarks = pose_world_landmarks or pose_landmarks
     has_hips = (
@@ -171,11 +208,26 @@ def analyze_posture(
     if shoulder_tilt > max_shoulder_tilt_degrees:
         reasons.append("shoulders")
 
+    quality_visibilities = list(required_visibilities)
+    if has_hips:
+        quality_visibilities.extend(
+            [_visibility(pose_landmarks[LEFT_HIP]), _visibility(pose_landmarks[RIGHT_HIP])]
+        )
+    shoulder_tilt_direction = None
+    if shoulder_tilt > max_shoulder_tilt_degrees:
+        shoulder_tilt_direction = (
+            "right_shoulder_lower" if shoulder_tilt_signed > 0 else "left_shoulder_lower"
+        )
+
     return {
         "reliable": neck_angle is not None,
+        "visibility_state": "visible",
+        "confidence": round(min(quality_visibilities), 2),
         "is_bad": bool(reasons),
         "neck_angle_degrees": round(neck_angle, 1) if neck_angle is not None else None,
         "torso_angle_degrees": round(torso_angle, 1) if torso_angle is not None else None,
         "shoulder_tilt_degrees": round(shoulder_tilt, 1),
+        "shoulder_tilt_signed_degrees": round(shoulder_tilt_signed, 1),
+        "shoulder_tilt_direction": shoulder_tilt_direction,
         "reasons": reasons,
     }

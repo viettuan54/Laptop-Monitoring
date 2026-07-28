@@ -24,16 +24,24 @@ class EdgeVisionTest(unittest.TestCase):
     def test_alert_gate_requires_duration_and_enforces_cooldown(self):
         gate = SustainedAlertGate()
         self.assertFalse(gate.observe("posture", True, 10.0, 5.0, 60.0))
-        self.assertFalse(gate.observe("posture", True, 14.9, 5.0, 60.0))
+        self.assertFalse(gate.observe("posture", True, 12.5, 5.0, 60.0))
         self.assertTrue(gate.observe("posture", True, 15.0, 5.0, 60.0))
         self.assertFalse(gate.observe("posture", True, 70.0, 5.0, 60.0))
+        self.assertFalse(gate.observe("posture", True, 72.5, 5.0, 60.0))
         self.assertTrue(gate.observe("posture", True, 75.0, 5.0, 60.0))
 
-    def test_alert_gate_resets_when_condition_recovers(self):
+    def test_alert_gate_ignores_invalid_landmark_sample(self):
         gate = SustainedAlertGate()
-        gate.observe("eye", True, 1.0, 3.0, 60.0)
-        gate.observe("eye", False, 2.0, 3.0, 60.0)
-        self.assertFalse(gate.observe("eye", True, 3.0, 3.0, 60.0))
+        self.assertFalse(gate.observe("eye", True, 0.0, 5.0, 60.0))
+        self.assertFalse(gate.observe("eye", None, 2.0, 5.0, 60.0))
+        self.assertFalse(gate.observe("eye", True, 2.5, 5.0, 60.0))
+        self.assertTrue(gate.observe("eye", True, 5.0, 5.0, 60.0))
+
+    def test_alert_gate_does_not_alert_below_vote_ratio(self):
+        gate = SustainedAlertGate()
+        gate.observe("eye", True, 0.0, 5.0, 60.0)
+        gate.observe("eye", False, 2.0, 5.0, 60.0)
+        self.assertFalse(gate.observe("eye", True, 5.0, 5.0, 60.0))
 
     def test_missing_pipe_response_does_not_disable_existing_policy(self):
         monitor = EdgeVisionMonitor(pipe_client=None)

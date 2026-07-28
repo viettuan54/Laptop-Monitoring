@@ -5,6 +5,7 @@ import os
 import tempfile
 import threading
 import time
+from collections import deque
 
 from vision_metrics import analyze_posture, estimate_eye_distance_cm
 
@@ -68,24 +69,38 @@ def normalize_vision_config(config):
 
 
 class SustainedAlertGate:
-    """Require a condition to persist, then apply an alert cooldown."""
+    """Use a time-window vote, then apply an alert cooldown.
 
-    def __init__(self):
-        self.condition_started = {}
+    ``active=None`` means that landmarks were unavailable. Such a sample is
+    ignored instead of resetting an otherwise stable observation window.
+    """
+
+    def __init__(self, active_ratio=0.8, minimum_samples=3):
+        self.active_ratio = active_ratio
+        self.minimum_samples = minimum_samples
+        self.observations = {}
         self.last_alerted = {}
 
     def observe(self, key, active, now, hold_seconds, cooldown_seconds):
-        if not active:
-            self.condition_started.pop(key, None)
+        samples = self.observations.setdefault(key, deque())
+        cutoff = now - hold_seconds
+        while samples and samples[0][0] < cutoff:
+            samples.popleft()
+        if active is not None:
+            samples.append((now, bool(active)))
+
+        if len(samples) < self.minimum_samples:
             return False
-        started = self.condition_started.setdefault(key, now)
-        if now - started < hold_seconds:
+        if samples[-1][0] - samples[0][0] < hold_seconds * 0.8:
             return False
+        active_count = sum(1 for _, value in samples if value)
+        if active_count / len(samples) < self.active_ratio:
+            return False
+
         last_alert = self.last_alerted.get(key)
         if last_alert is not None and now - last_alert < cooldown_seconds:
             return False
         self.last_alerted[key] = now
-        self.condition_started[key] = now
         return True
 
 
@@ -163,12 +178,14 @@ class EdgeVisionMonitor:
         eye_distance = estimate_eye_distance_cm(
             face_landmarks,
             width,
+            image_height=height,
             horizontal_fov_degrees=config["camera_horizontal_fov_degrees"],
             assumed_ipd_cm=config["assumed_ipd_cm"],
         )
         eye_too_close = (
-            eye_distance is not None
-            and eye_distance < config["min_eye_distance_cm"]
+            None
+            if eye_distance is None
+            else eye_distance < config["min_eye_distance_cm"]
         )
         if self._gate.observe(
             "eye_distance",
@@ -208,7 +225,7 @@ class EdgeVisionMonitor:
         )
         if self._gate.observe(
             "posture",
-            posture["reliable"] and posture["is_bad"],
+            posture["is_bad"] if posture["reliable"] else None,
             now,
             config["alert_hold_seconds"],
             config["alert_cooldown_seconds"],
@@ -294,13 +311,22 @@ class EdgeVisionMonitor:
                     current_config = self._get_config()
                     if not current_config["enabled"]:
                         break
+                    if current_config["camera_index"] != config["camera_index"]:
+                        logging.info("Camera selection changed; reopening Edge AI camera.")
+                        break
+
+                    now = time.monotonic()
+                    wait_seconds = current_config["sample_interval_seconds"] - (
+                        now - last_sample
+                    )
+                    if wait_seconds > 0 and self._stop_event.wait(wait_seconds):
+                        break
+
                     ok, frame = camera.read()
                     if not ok:
                         logging.warning("Webcam frame read failed; reopening camera.")
                         break
                     now = time.monotonic()
-                    if now - last_sample < current_config["sample_interval_seconds"]:
-                        continue
                     last_sample = now
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
