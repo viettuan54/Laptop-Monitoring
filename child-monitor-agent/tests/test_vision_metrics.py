@@ -51,6 +51,28 @@ class VisionMetricsTest(unittest.TestCase):
         points[1]["x"] = 0.7
         self.assertIsNone(estimate_eye_distance_cm(points, 640))
 
+    def test_uses_resolution_independent_calibration_scale(self):
+        points = landmarks(478)
+        for index in (33, 133):
+            points[index]["x"] = 0.45
+        for index in (362, 263):
+            points[index]["x"] = 0.55
+
+        result_640 = estimate_eye_distance_cm(
+            points,
+            640,
+            image_height=480,
+            calibration_scale_cm=4.0,
+        )
+        result_1280 = estimate_eye_distance_cm(
+            points,
+            1280,
+            image_height=960,
+            calibration_scale_cm=4.0,
+        )
+        self.assertEqual(result_640, 40.0)
+        self.assertEqual(result_1280, 40.0)
+
     def test_upright_posture_is_not_flagged(self):
         normalized = landmarks(33)
         world = landmarks(33)

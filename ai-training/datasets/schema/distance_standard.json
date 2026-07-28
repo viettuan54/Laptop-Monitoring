@@ -1,0 +1,36 @@
+{
+  "distance_standard_version": "1.0.0",
+  "unit": "cm",
+  "reference": "camera_lens_center_to_eye_midpoint",
+  "measurement_definition": "Straight-line distance from the center of the webcam lens to the midpoint between the participant's eyes while looking toward the camera.",
+  "collection_requirements": {
+    "allowed_methods": [
+      "tape_measure",
+      "laser_measure"
+    ],
+    "target_distances_cm": [
+      25,
+      30,
+      35,
+      40,
+      50,
+      60,
+      80
+    ],
+    "minimum_cm": 20,
+    "maximum_cm": 200,
+    "record_precision_cm": 0.1,
+    "maximum_uncertainty_cm": 5,
+    "participant_instruction": "Keep the eye midpoint close to the camera optical axis and look toward the camera during measurement."
+  },
+  "calibration": {
+    "profile_scope": "subject_camera",
+    "feature": "eye_separation_normalized",
+    "feature_definition": "Euclidean eye-center separation in pixels divided by frame width.",
+    "scale_definition": "median(actual_distance_cm * eye_separation_normalized)",
+    "inference_definition": "distance_cm = calibration_scale_cm / eye_separation_normalized",
+    "minimum_samples": 6,
+    "minimum_distinct_distances": 3,
+    "fallback": "pinhole_fov_ipd"
+  }
+}

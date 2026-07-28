@@ -93,6 +93,7 @@ def estimate_eye_distance_cm(
     image_height=None,
     horizontal_fov_degrees=60.0,
     assumed_ipd_cm=6.3,
+    calibration_scale_cm=0.0,
     max_head_yaw_ratio=0.45,
 ):
     """Estimate camera-to-eye distance with a pinhole-camera approximation.
@@ -139,8 +140,13 @@ def estimate_eye_distance_cm(
     if yaw_ratio > _number(max_head_yaw_ratio, 0.45):
         return None
 
-    focal_length_px = width / (2.0 * math.tan(math.radians(fov) / 2.0))
-    distance_cm = (focal_length_px * ipd) / eye_separation_px
+    eye_separation_normalized = eye_separation_px / width
+    calibrated_scale = _number(calibration_scale_cm)
+    if 1.0 <= calibrated_scale <= 20.0:
+        distance_cm = calibrated_scale / eye_separation_normalized
+    else:
+        focal_length_px = width / (2.0 * math.tan(math.radians(fov) / 2.0))
+        distance_cm = (focal_length_px * ipd) / eye_separation_px
     if not 10.0 <= distance_cm <= 250.0:
         return None
     return round(distance_cm, 1)

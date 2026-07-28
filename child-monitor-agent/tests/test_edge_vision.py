@@ -20,6 +20,7 @@ class EdgeVisionTest(unittest.TestCase):
         self.assertFalse(config["enabled"])
         self.assertEqual(config["min_eye_distance_cm"], 80.0)
         self.assertEqual(config["sample_interval_seconds"], 0.2)
+        self.assertEqual(config["eye_distance_calibration_scale_cm"], 0.0)
 
     def test_alert_gate_requires_duration_and_enforces_cooldown(self):
         gate = SustainedAlertGate()

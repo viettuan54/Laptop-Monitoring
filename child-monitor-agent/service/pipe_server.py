@@ -228,6 +228,7 @@ class PipeServer:
             "min_eye_distance_cm": settings.get("vision_min_eye_distance_cm", 35.0),
             "camera_horizontal_fov_degrees": settings.get("vision_camera_horizontal_fov_degrees", 60.0),
             "assumed_ipd_cm": settings.get("vision_assumed_ipd_cm", 6.3),
+            "eye_distance_calibration_scale_cm": settings.get("vision_eye_distance_calibration_scale_cm", 0.0),
             "max_neck_angle_degrees": settings.get("vision_max_neck_angle_degrees", 25.0),
             "max_torso_angle_degrees": settings.get("vision_max_torso_angle_degrees", 18.0),
             "max_shoulder_tilt_degrees": settings.get("vision_max_shoulder_tilt_degrees", 12.0),

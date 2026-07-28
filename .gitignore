@@ -39,3 +39,4 @@ npm-debug.log*
 Thumbs.db
 .venv-face/
 .venv-edge/
+ai-training/.venv/

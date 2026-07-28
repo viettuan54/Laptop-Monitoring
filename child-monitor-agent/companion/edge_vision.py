@@ -19,6 +19,7 @@ DEFAULT_CONFIG = {
     "min_eye_distance_cm": 35.0,
     "camera_horizontal_fov_degrees": 60.0,
     "assumed_ipd_cm": 6.3,
+    "eye_distance_calibration_scale_cm": 0.0,
     "max_neck_angle_degrees": 25.0,
     "max_torso_angle_degrees": 18.0,
     "max_shoulder_tilt_degrees": 12.0,
@@ -55,6 +56,9 @@ def normalize_vision_config(config):
         ),
         "assumed_ipd_cm": _bounded_number(
             source.get("assumed_ipd_cm"), 6.3, 4.0, 8.5
+        ),
+        "eye_distance_calibration_scale_cm": _bounded_number(
+            source.get("eye_distance_calibration_scale_cm"), 0.0, 0.0, 20.0
         ),
         "max_neck_angle_degrees": _bounded_number(
             source.get("max_neck_angle_degrees"), 25.0, 5.0, 60.0
@@ -181,6 +185,7 @@ class EdgeVisionMonitor:
             image_height=height,
             horizontal_fov_degrees=config["camera_horizontal_fov_degrees"],
             assumed_ipd_cm=config["assumed_ipd_cm"],
+            calibration_scale_cm=config["eye_distance_calibration_scale_cm"],
         )
         eye_too_close = (
             None
@@ -201,7 +206,14 @@ class EdgeVisionMonitor:
             self._send_alert(
                 "eye_distance_warning",
                 message,
-                {"estimated_distance_cm": eye_distance},
+                {
+                    "estimated_distance_cm": eye_distance,
+                    "estimation_method": (
+                        "calibrated_eye_scale"
+                        if config["eye_distance_calibration_scale_cm"] >= 1.0
+                        else "pinhole_fov_ipd"
+                    ),
+                },
             )
 
         pose_landmarks = (

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://child-monitor.local/schemas/landmark-record-1.0.0.json",
+  "$id": "https://child-monitor.local/schemas/landmark-record-1.1.0.json",
   "title": "Child Monitor landmark record",
   "type": "object",
   "additionalProperties": false,
@@ -10,7 +10,11 @@
     "subject_id",
     "camera_id",
     "timestamp_ms",
+    "distance_measurement_status",
     "actual_distance_cm",
+    "distance_measurement_method",
+    "distance_reference",
+    "distance_uncertainty_cm",
     "visibility_state",
     "posture_state",
     "posture_labels",
@@ -22,7 +26,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0.0"
+      "const": "1.1.0"
     },
     "session_id": {
       "type": "string",
@@ -48,6 +52,35 @@
       ],
       "minimum": 20,
       "maximum": 200
+    },
+    "distance_measurement_status": {
+      "enum": [
+        "measured",
+        "not_measured",
+        "invalid"
+      ]
+    },
+    "distance_measurement_method": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "enum": [
+        "tape_measure",
+        "laser_measure",
+        null
+      ]
+    },
+    "distance_reference": {
+      "const": "camera_lens_center_to_eye_midpoint"
+    },
+    "distance_uncertainty_cm": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0.1,
+      "maximum": 5
     },
     "visibility_state": {
       "enum": [
@@ -101,6 +134,62 @@
     }
   },
   "allOf": [
+    {
+      "if": {
+        "properties": {
+          "distance_measurement_status": {
+            "const": "measured"
+          }
+        },
+        "required": [
+          "distance_measurement_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "actual_distance_cm": {
+            "type": "number"
+          },
+          "distance_measurement_method": {
+            "enum": [
+              "tape_measure",
+              "laser_measure"
+            ]
+          },
+          "distance_uncertainty_cm": {
+            "type": "number"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "distance_measurement_status": {
+            "enum": [
+              "not_measured",
+              "invalid"
+            ]
+          }
+        },
+        "required": [
+          "distance_measurement_status"
+        ]
+      },
+      "then": {
+        "properties": {
+          "actual_distance_cm": {
+            "type": "null"
+          },
+          "distance_measurement_method": {
+            "type": "null"
+          },
+          "distance_uncertainty_cm": {
+            "type": "null"
+          }
+        }
+      }
+    },
     {
       "if": {
         "properties": {

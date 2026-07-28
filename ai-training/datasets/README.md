@@ -48,13 +48,21 @@ kiểm tra tính nhất quán.
 
 `actual_distance_cm` là nhãn hồi quy, không phải nhãn gần/xa:
 
-- Đo vuông góc từ mặt phẳng camera tới điểm giữa hai mắt.
+- Đo đường thẳng từ tâm ống kính webcam tới điểm giữa hai mắt.
+- Người tham gia nhìn về phía camera và giữ điểm giữa hai mắt gần trục camera.
 - Chỉ nhập khi đã đo bằng thước; không ước lượng bằng quan sát.
 - Dùng `null` nếu frame không thuộc phiên hiệu chỉnh khoảng cách.
 - Giá trị hợp lệ cho bộ thu hiện tại là 20–200 cm.
+- Ghi với độ chính xác 0,1 cm và khai báo `distance_uncertainty_cm`.
+- `distance_measurement_method` chỉ nhận `tape_measure` hoặc `laser_measure`.
+- `distance_measurement_status` nhận `measured`, `not_measured` hoặc `invalid`.
 
 Ngưỡng cảnh báo như 35 cm thuộc policy của Agent, không được ghi thành nhãn
 `near` hoặc `far` trong dataset.
+
+Các khoảng cách mục tiêu khi hiệu chỉnh là 25, 30, 35, 40, 50, 60 và 80 cm.
+Một profile tối thiểu cần sáu mẫu hợp lệ tại ít nhất ba khoảng cách khác nhau.
+Chuẩn đầy đủ nằm trong `schema/distance_standard.json`.
 
 ## 5. Quy trình gán nhãn
 

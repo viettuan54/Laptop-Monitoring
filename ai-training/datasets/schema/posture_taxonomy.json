@@ -38,6 +38,6 @@
     ],
     "minimum_cm": 20,
     "maximum_cm": 200,
-    "measurement_reference": "Perpendicular distance from the camera plane to the midpoint between the eyes."
+    "measurement_reference": "Straight-line distance from the center of the webcam lens to the midpoint between the eyes."
   }
 }
