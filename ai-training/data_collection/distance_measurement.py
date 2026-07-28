@@ -5,9 +5,11 @@ import re
 import statistics
 from datetime import datetime, timezone
 
+import numpy as np
+
 
 DISTANCE_STANDARD_VERSION = "1.0.0"
-CALIBRATION_PROFILE_VERSION = "1.0.0"
+CALIBRATION_PROFILE_VERSION = "2.0.0"
 TARGET_DISTANCES_CM = (25.0, 30.0, 35.0, 40.0, 50.0, 60.0, 80.0)
 MEASUREMENT_METHODS = frozenset({"tape_measure", "laser_measure"})
 MEASUREMENT_REFERENCE = "camera_lens_center_to_eye_midpoint"
@@ -186,24 +188,119 @@ def build_calibration_profile(
     if len(normalized_samples) < 6 or len(distinct_distances) < 3:
         raise ValueError("calibration requires at least 6 samples at 3 distances")
 
-    scales = [distance * separation for distance, separation in normalized_samples]
-    calibration_scale_cm = statistics.median(scales)
-    errors = [
-        abs((calibration_scale_cm / separation) - distance)
+    actual_distances = np.asarray(
+        [distance for distance, _ in normalized_samples],
+        dtype=float,
+    )
+    inverse_eye_separations = np.asarray(
+        [1.0 / separation for _, separation in normalized_samples],
+        dtype=float,
+    )
+    if len(np.unique(np.round(inverse_eye_separations, 8))) < 3:
+        raise ValueError("quadratic calibration requires at least 3 distinct features")
+
+    quadratic, linear, intercept = np.polyfit(
+        inverse_eye_separations,
+        actual_distances,
+        2,
+    )
+    predictions = np.polyval(
+        [quadratic, linear, intercept],
+        inverse_eye_separations,
+    )
+    residuals = predictions - actual_distances
+    absolute_errors = np.abs(residuals)
+
+    legacy_scales = [
+        distance * separation for distance, separation in normalized_samples
+    ]
+    legacy_scale_cm = statistics.median(legacy_scales)
+    legacy_errors = [
+        abs((legacy_scale_cm / separation) - distance)
         for distance, separation in normalized_samples
     ]
+
+    per_distance_metrics = []
+    for distance in sorted(distinct_distances):
+        mask = actual_distances == distance
+        distance_predictions = predictions[mask]
+        distance_residuals = residuals[mask]
+        per_distance_metrics.append(
+            {
+                "actual_distance_cm": distance,
+                "sample_count": int(np.sum(mask)),
+                "predicted_mean_cm": round(float(np.mean(distance_predictions)), 2),
+                "bias_cm": round(float(np.mean(distance_residuals)), 2),
+                "mae_cm": round(float(np.mean(np.abs(distance_residuals))), 2),
+            }
+        )
 
     return {
         "profile_version": CALIBRATION_PROFILE_VERSION,
         "distance_standard_version": DISTANCE_STANDARD_VERSION,
         "profile_scope": "subject_camera",
+        "model_type": "inverse_eye_separation_polynomial",
+        "polynomial_degree": 2,
+        "coefficient_order": ["quadratic", "linear", "intercept"],
+        "coefficients": {
+            "quadratic": round(float(quadratic), 12),
+            "linear": round(float(linear), 12),
+            "intercept": round(float(intercept), 12),
+        },
+        "feature_range": {
+            "inverse_eye_separation_min": round(
+                float(np.min(inverse_eye_separations)),
+                8,
+            ),
+            "inverse_eye_separation_max": round(
+                float(np.max(inverse_eye_separations)),
+                8,
+            ),
+        },
         "camera_id": camera_id,
         "subject_id": subject_id,
         "frame_width": width,
         "frame_height": height,
-        "calibration_scale_cm": round(calibration_scale_cm, 6),
         "sample_count": len(normalized_samples),
         "calibration_distances_cm": sorted(distinct_distances),
-        "training_mae_cm": round(statistics.mean(errors), 2),
+        "training_metrics": {
+            "evaluation_scope": "training_data_only",
+            "mae_cm": round(float(np.mean(absolute_errors)), 2),
+            "rmse_cm": round(float(np.sqrt(np.mean(np.square(residuals)))), 2),
+            "max_absolute_error_cm": round(float(np.max(absolute_errors)), 2),
+            "per_distance": per_distance_metrics,
+        },
+        "legacy_single_scale": {
+            "calibration_scale_cm": round(legacy_scale_cm, 6),
+            "training_mae_cm": round(statistics.mean(legacy_errors), 2),
+        },
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def estimate_distance_from_profile(eye_separation_normalized, profile):
+    """Apply a validated v2 quadratic calibration profile."""
+    separation = _finite_number(
+        eye_separation_normalized,
+        "eye_separation_normalized",
+    )
+    if not 0.01 <= separation <= 0.5:
+        return None
+    if profile.get("profile_version") != CALIBRATION_PROFILE_VERSION:
+        raise ValueError("Only calibration profile version 2.0.0 is supported")
+    if profile.get("model_type") != "inverse_eye_separation_polynomial":
+        raise ValueError("Unsupported distance calibration model")
+
+    coefficients = profile.get("coefficients") or {}
+    quadratic = _finite_number(coefficients.get("quadratic"), "quadratic")
+    linear = _finite_number(coefficients.get("linear"), "linear")
+    intercept = _finite_number(coefficients.get("intercept"), "intercept")
+    inverse_separation = 1.0 / separation
+    distance = (
+        quadratic * inverse_separation * inverse_separation
+        + linear * inverse_separation
+        + intercept
+    )
+    if not 10.0 <= distance <= 250.0:
+        return None
+    return round(distance, 1)

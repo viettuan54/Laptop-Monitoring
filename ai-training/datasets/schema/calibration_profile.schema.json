@@ -1,32 +1,88 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://child-monitor.local/schemas/distance-calibration-profile-1.0.0.json",
-  "title": "Child Monitor eye-distance calibration profile",
+  "$id": "https://child-monitor.local/schemas/distance-calibration-profile-2.0.0.json",
+  "title": "Child Monitor quadratic eye-distance calibration profile",
   "type": "object",
   "additionalProperties": false,
   "required": [
     "profile_version",
     "distance_standard_version",
     "profile_scope",
+    "model_type",
+    "polynomial_degree",
+    "coefficient_order",
+    "coefficients",
+    "feature_range",
     "camera_id",
     "subject_id",
     "frame_width",
     "frame_height",
-    "calibration_scale_cm",
     "sample_count",
     "calibration_distances_cm",
-    "training_mae_cm",
+    "training_metrics",
+    "legacy_single_scale",
     "created_at"
   ],
   "properties": {
     "profile_version": {
-      "const": "1.0.0"
+      "const": "2.0.0"
     },
     "distance_standard_version": {
       "const": "1.0.0"
     },
     "profile_scope": {
       "const": "subject_camera"
+    },
+    "model_type": {
+      "const": "inverse_eye_separation_polynomial"
+    },
+    "polynomial_degree": {
+      "const": 2
+    },
+    "coefficient_order": {
+      "const": [
+        "quadratic",
+        "linear",
+        "intercept"
+      ]
+    },
+    "coefficients": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "quadratic",
+        "linear",
+        "intercept"
+      ],
+      "properties": {
+        "quadratic": {
+          "type": "number"
+        },
+        "linear": {
+          "type": "number"
+        },
+        "intercept": {
+          "type": "number"
+        }
+      }
+    },
+    "feature_range": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "inverse_eye_separation_min",
+        "inverse_eye_separation_max"
+      ],
+      "properties": {
+        "inverse_eye_separation_min": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        },
+        "inverse_eye_separation_max": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      }
     },
     "camera_id": {
       "type": "string",
@@ -45,11 +101,6 @@
       "type": "integer",
       "minimum": 1
     },
-    "calibration_scale_cm": {
-      "type": "number",
-      "minimum": 1,
-      "maximum": 20
-    },
     "sample_count": {
       "type": "integer",
       "minimum": 6
@@ -64,13 +115,97 @@
         "maximum": 200
       }
     },
-    "training_mae_cm": {
-      "type": "number",
-      "minimum": 0
+    "training_metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "evaluation_scope",
+        "mae_cm",
+        "rmse_cm",
+        "max_absolute_error_cm",
+        "per_distance"
+      ],
+      "properties": {
+        "evaluation_scope": {
+          "const": "training_data_only"
+        },
+        "mae_cm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rmse_cm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_absolute_error_cm": {
+          "type": "number",
+          "minimum": 0
+        },
+        "per_distance": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "$ref": "#/$defs/perDistanceMetric"
+          }
+        }
+      }
+    },
+    "legacy_single_scale": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "calibration_scale_cm",
+        "training_mae_cm"
+      ],
+      "properties": {
+        "calibration_scale_cm": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "training_mae_cm": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
     },
     "created_at": {
       "type": "string",
       "format": "date-time"
+    }
+  },
+  "$defs": {
+    "perDistanceMetric": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actual_distance_cm",
+        "sample_count",
+        "predicted_mean_cm",
+        "bias_cm",
+        "mae_cm"
+      ],
+      "properties": {
+        "actual_distance_cm": {
+          "type": "number",
+          "minimum": 20,
+          "maximum": 200
+        },
+        "sample_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "predicted_mean_cm": {
+          "type": "number"
+        },
+        "bias_cm": {
+          "type": "number"
+        },
+        "mae_cm": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
     }
   }
 }

@@ -12,6 +12,7 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from data_collection.distance_measurement import (
     build_calibration_profile,
+    estimate_distance_from_profile,
     extract_eye_measurement,
     normalize_distance_measurement,
 )
@@ -90,9 +91,21 @@ class DistanceMeasurementTest(unittest.TestCase):
             frame_width=640,
             frame_height=480,
         )
-        self.assertAlmostEqual(profile["calibration_scale_cm"], expected_scale)
-        self.assertEqual(profile["training_mae_cm"], 0.0)
+        self.assertEqual(profile["profile_version"], "2.0.0")
+        self.assertEqual(
+            profile["model_type"],
+            "inverse_eye_separation_polynomial",
+        )
+        self.assertEqual(profile["training_metrics"]["mae_cm"], 0.0)
+        self.assertEqual(
+            profile["legacy_single_scale"]["training_mae_cm"],
+            0.0,
+        )
         self.assertEqual(profile["sample_count"], 6)
+        self.assertEqual(
+            estimate_distance_from_profile(expected_scale / 40.0, profile),
+            40.0,
+        )
 
         schema_path = (
             TRAINING_ROOT

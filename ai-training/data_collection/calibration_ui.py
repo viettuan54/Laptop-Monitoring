@@ -61,7 +61,7 @@ def _camera_id(camera_index, frame_width, frame_height):
     return f"camera-{hashlib.sha256(source.encode('utf-8')).hexdigest()[:16]}"
 
 
-def _atomic_write_json(path, payload):
+def write_json_atomic(path, payload):
     path.parent.mkdir(parents=True, exist_ok=True)
     handle, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.",
@@ -83,7 +83,7 @@ def _atomic_write_json(path, payload):
         raise
 
 
-def _validate_json(payload, schema_path):
+def validate_json(payload, schema_path):
     import jsonschema
 
     schema = json.loads(schema_path.read_text(encoding="utf-8"))
@@ -156,9 +156,9 @@ def _finish_and_save(session, output_dir, *, aborted=False):
     session_schema = (
         TRAINING_ROOT / "datasets" / "schema" / "calibration_session.schema.json"
     )
-    _validate_json(session, session_schema)
+    validate_json(session, session_schema)
     session_path = output_dir / f"{session['session_id']}.session.json"
-    _atomic_write_json(session_path, session)
+    write_json_atomic(session_path, session)
     return session_path
 
 
@@ -352,15 +352,22 @@ def run_calibration(args):
     profile_schema = (
         TRAINING_ROOT / "datasets" / "schema" / "calibration_profile.schema.json"
     )
-    _validate_json(profile, profile_schema)
+    validate_json(profile, profile_schema)
     session_path = _finish_and_save(session, output_dir)
     profile_path = output_dir / f"{camera_id}-{args.subject_id}.profile.json"
-    _atomic_write_json(profile_path, profile)
+    write_json_atomic(profile_path, profile)
 
     print(f"Calibration completed: {profile_path}")
     print(f"Session samples: {session_path}")
-    print(f"Scale: {profile['calibration_scale_cm']:.6f} cm")
-    print(f"Training MAE: {profile['training_mae_cm']:.2f} cm")
+    coefficients = profile["coefficients"]
+    print(
+        "Coefficients [quadratic, linear, intercept]: "
+        f"[{coefficients['quadratic']:.8f}, "
+        f"{coefficients['linear']:.8f}, "
+        f"{coefficients['intercept']:.8f}]"
+    )
+    print(f"Training MAE: {profile['training_metrics']['mae_cm']:.2f} cm")
+    print("Training metrics are not independent validation results.")
     return 0
 
 

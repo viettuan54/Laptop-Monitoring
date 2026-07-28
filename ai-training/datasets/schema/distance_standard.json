@@ -25,10 +25,17 @@
   },
   "calibration": {
     "profile_scope": "subject_camera",
-    "feature": "eye_separation_normalized",
-    "feature_definition": "Euclidean eye-center separation in pixels divided by frame width.",
-    "scale_definition": "median(actual_distance_cm * eye_separation_normalized)",
-    "inference_definition": "distance_cm = calibration_scale_cm / eye_separation_normalized",
+    "profile_version": "2.0.0",
+    "model_type": "inverse_eye_separation_polynomial",
+    "feature": "inverse_eye_separation",
+    "feature_definition": "1 divided by Euclidean eye-center separation in pixels normalized by frame width.",
+    "coefficient_order": [
+      "quadratic",
+      "linear",
+      "intercept"
+    ],
+    "fit_definition": "Least-squares quadratic regression over all valid calibration samples.",
+    "inference_definition": "distance_cm = quadratic*x^2 + linear*x + intercept, where x = 1 / eye_separation_normalized.",
     "minimum_samples": 6,
     "minimum_distinct_distances": 3,
     "fallback": "pinhole_fov_ipd"

@@ -32,4 +32,15 @@ Mặc định công cụ thu tại 25, 30, 35, 40, 50, 60 và 80 cm, 20 giây m�
 cách, 5 mẫu/giây. Kết quả nằm trong `datasets/calibration/`:
 
 - `*.session.json`: scalar feature và metadata phiên thu; không chứa ảnh.
-- `*.profile.json`: hệ số hiệu chỉnh được Agent sử dụng.
+- `*.profile.json`: profile hồi quy bậc hai phiên bản 2.0.0.
+
+Có thể tạo lại profile v2 từ một session cũ mà không cần mở webcam:
+
+```powershell
+python .\ai-training\data_collection\build_profile.py `
+  .\ai-training\datasets\calibration\<session>.session.json
+```
+
+Profile v2 dùng công thức `a*x² + b*x + c`, với
+`x = 1 / eye_separation_normalized`. Các metric trong profile được tính trên
+chính session huấn luyện và không thay thế kết quả đánh giá bằng session khác.
