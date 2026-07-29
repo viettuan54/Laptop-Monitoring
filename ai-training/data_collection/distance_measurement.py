@@ -16,6 +16,12 @@ MEASUREMENT_REFERENCE = "camera_lens_center_to_eye_midpoint"
 RIGHT_EYE_CORNERS = (33, 133)
 LEFT_EYE_CORNERS = (362, 263)
 NOSE_TIP = 1
+DEFAULT_MAX_HEAD_YAW_RATIO = 0.12
+DEFAULT_MAX_CENTER_OFFSET_X = 0.10
+DEFAULT_MAX_CENTER_OFFSET_Y = 0.10
+DEFAULT_MAX_EYE_ROLL_DEGREES = 8.0
+DEFAULT_MIN_HEAD_PITCH_RATIO = 0.12
+DEFAULT_MAX_HEAD_PITCH_RATIO = 0.65
 
 
 def _finite_number(value, field):
@@ -41,22 +47,21 @@ def _midpoint(first, second):
     )
 
 
-def extract_eye_measurement(
+def analyze_eye_measurement(
     face_landmarks,
     frame_width,
     frame_height,
     *,
-    max_head_yaw_ratio=0.45,
-    max_center_offset_x=0.3,
-    max_center_offset_y=0.35,
+    max_head_yaw_ratio=DEFAULT_MAX_HEAD_YAW_RATIO,
+    max_center_offset_x=DEFAULT_MAX_CENTER_OFFSET_X,
+    max_center_offset_y=DEFAULT_MAX_CENTER_OFFSET_Y,
+    max_eye_roll_degrees=DEFAULT_MAX_EYE_ROLL_DEGREES,
+    min_head_pitch_ratio=DEFAULT_MIN_HEAD_PITCH_RATIO,
+    max_head_pitch_ratio=DEFAULT_MAX_HEAD_PITCH_RATIO,
 ):
-    """Extract the normalized eye feature used by calibration and inference.
-
-    Returns ``None`` when the face is degenerate, too far off-axis or appears
-    to have strong head yaw.
-    """
+    """Return eye features plus a specific calibration-quality decision."""
     if not face_landmarks or len(face_landmarks) <= max(LEFT_EYE_CORNERS):
-        return None
+        return {"valid": False, "rejection_reason": "face_not_detected"}
 
     width = _finite_number(frame_width, "frame_width")
     height = _finite_number(frame_height, "frame_height")
@@ -80,24 +85,70 @@ def extract_eye_measurement(
         (left_eye[1] - right_eye[1]) * (height / width),
     )
     if not 0.01 <= separation <= 0.5:
-        return None
+        return {"valid": False, "rejection_reason": "eye_geometry_invalid"}
 
     nose_x = _coordinate(face_landmarks[NOSE_TIP], "x")
+    nose_y = _coordinate(face_landmarks[NOSE_TIP], "y")
     yaw_ratio = abs(nose_x - eye_midpoint[0]) / separation
-    center_offset_x = abs(eye_midpoint[0] - 0.5)
-    center_offset_y = abs(eye_midpoint[1] - 0.5)
-    if (
-        yaw_ratio > max_head_yaw_ratio
-        or center_offset_x > max_center_offset_x
-        or center_offset_y > max_center_offset_y
-    ):
-        return None
+    center_offset_x_signed = eye_midpoint[0] - 0.5
+    center_offset_y_signed = eye_midpoint[1] - 0.5
+    center_offset_x = abs(center_offset_x_signed)
+    center_offset_y = abs(center_offset_y_signed)
+    eye_dx = left_eye[0] - right_eye[0]
+    eye_dy_aspect_corrected = (left_eye[1] - right_eye[1]) * (height / width)
+    eye_roll_degrees = math.degrees(
+        math.atan2(eye_dy_aspect_corrected, max(abs(eye_dx), 1e-9))
+    )
+    head_pitch_ratio = (
+        (nose_y - eye_midpoint[1]) * (height / width)
+    ) / separation
 
-    return {
+    result = {
+        "valid": True,
+        "rejection_reason": None,
         "eye_separation_normalized": round(separation, 8),
         "head_yaw_ratio": round(yaw_ratio, 4),
         "eye_center_offset_x": round(center_offset_x, 4),
         "eye_center_offset_y": round(center_offset_y, 4),
+        "eye_center_x": round(eye_midpoint[0], 6),
+        "eye_center_y": round(eye_midpoint[1], 6),
+        "eye_center_offset_x_signed": round(center_offset_x_signed, 4),
+        "eye_center_offset_y_signed": round(center_offset_y_signed, 4),
+        "head_pitch_ratio": round(head_pitch_ratio, 4),
+        "eye_roll_degrees": round(eye_roll_degrees, 2),
+    }
+    checks = (
+        (yaw_ratio > max_head_yaw_ratio, "head_yaw"),
+        (center_offset_x > max_center_offset_x, "off_center_x"),
+        (center_offset_y > max_center_offset_y, "off_center_y"),
+        (abs(eye_roll_degrees) > max_eye_roll_degrees, "head_roll"),
+        (
+            not min_head_pitch_ratio <= head_pitch_ratio <= max_head_pitch_ratio,
+            "head_pitch",
+        ),
+    )
+    for rejected, reason in checks:
+        if rejected:
+            result["valid"] = False
+            result["rejection_reason"] = reason
+            break
+    return result
+
+
+def extract_eye_measurement(face_landmarks, frame_width, frame_height, **quality_limits):
+    """Extract scalar features only when calibration quality checks pass."""
+    result = analyze_eye_measurement(
+        face_landmarks,
+        frame_width,
+        frame_height,
+        **quality_limits,
+    )
+    if not result["valid"]:
+        return None
+    return {
+        key: value
+        for key, value in result.items()
+        if key not in {"valid", "rejection_reason"}
     }
 
 

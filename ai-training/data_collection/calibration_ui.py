@@ -23,18 +23,34 @@ if str(TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(TRAINING_ROOT))
 
 from data_collection.distance_measurement import (
+    DEFAULT_MAX_CENTER_OFFSET_X,
+    DEFAULT_MAX_CENTER_OFFSET_Y,
+    DEFAULT_MAX_EYE_ROLL_DEGREES,
+    DEFAULT_MAX_HEAD_PITCH_RATIO,
+    DEFAULT_MAX_HEAD_YAW_RATIO,
+    DEFAULT_MIN_HEAD_PITCH_RATIO,
     DISTANCE_STANDARD_VERSION,
     MEASUREMENT_METHODS,
     MEASUREMENT_REFERENCE,
     TARGET_DISTANCES_CM,
+    analyze_eye_measurement,
     build_calibration_profile,
-    extract_eye_measurement,
     normalize_distance_measurement,
 )
 
 
 WINDOW_TITLE = "Child Monitor - Eye Distance Calibration"
-SESSION_VERSION = "1.0.0"
+SESSION_VERSION = "1.1.0"
+
+QUALITY_REASON_TEXT = {
+    "face_not_detected": "Khong thay khuon mat",
+    "eye_geometry_invalid": "Khong xac dinh duoc hai mat",
+    "head_yaw": "Hay nhin thang camera",
+    "off_center_x": "Di chuyen dau sang trai/phai vao khung xanh",
+    "off_center_y": "Nang/ha dau de mat vao khung xanh",
+    "head_roll": "Giu hai mat nam ngang",
+    "head_pitch": "Khong cui hoac ngua dau",
+}
 
 
 def _parse_distances(value):
@@ -111,6 +127,29 @@ def _draw_lines(cv2, frame, lines, *, color=(255, 255, 255)):
         )
 
 
+def _draw_alignment_guide(cv2, frame, quality):
+    height, width = frame.shape[:2]
+    center_x = width // 2
+    center_y = height // 2
+    half_width = int(width * DEFAULT_MAX_CENTER_OFFSET_X)
+    half_height = int(height * DEFAULT_MAX_CENTER_OFFSET_Y)
+    valid = bool(quality and quality.get("valid"))
+    color = (50, 220, 50) if valid else (30, 180, 255)
+    cv2.rectangle(
+        frame,
+        (center_x - half_width, center_y - half_height),
+        (center_x + half_width, center_y + half_height),
+        color,
+        2,
+    )
+    cv2.line(frame, (center_x - 12, center_y), (center_x + 12, center_y), color, 1)
+    cv2.line(frame, (center_x, center_y - 12), (center_x, center_y + 12), color, 1)
+    if quality and "eye_center_x" in quality:
+        eye_x = int(quality["eye_center_x"] * width)
+        eye_y = int(quality["eye_center_y"] * height)
+        cv2.circle(frame, (eye_x, eye_y), 6, color, -1)
+
+
 def _open_camera(cv2, camera_index, width, height):
     backend = getattr(cv2, "CAP_DSHOW", 0)
     camera = cv2.VideoCapture(camera_index, backend)
@@ -142,6 +181,14 @@ def _create_session(args, camera_id, actual_width, actual_height):
         "target_distances_cm": list(args.distances),
         "sample_interval_seconds": round(1.0 / args.sample_rate_hz, 3),
         "capture_seconds_per_distance": args.capture_seconds,
+        "quality_limits": {
+            "max_head_yaw_ratio": DEFAULT_MAX_HEAD_YAW_RATIO,
+            "max_center_offset_x": DEFAULT_MAX_CENTER_OFFSET_X,
+            "max_center_offset_y": DEFAULT_MAX_CENTER_OFFSET_Y,
+            "max_eye_roll_degrees": DEFAULT_MAX_EYE_ROLL_DEGREES,
+            "min_head_pitch_ratio": DEFAULT_MIN_HEAD_PITCH_RATIO,
+            "max_head_pitch_ratio": DEFAULT_MAX_HEAD_PITCH_RATIO,
+        },
         "started_at": now.isoformat(),
         "completed_at": None,
         "status": "running",
@@ -206,6 +253,7 @@ def run_calibration(args):
     current_samples = []
     message = ""
     aborted = False
+    latest_quality = {"valid": False, "rejection_reason": "face_not_detected"}
 
     try:
         with mp.tasks.vision.FaceLandmarker.create_from_options(face_options) as landmarker:
@@ -216,25 +264,25 @@ def run_calibration(args):
 
                 now = time.monotonic()
                 target_distance = args.distances[distance_index]
-                latest_measurement = None
 
-                should_detect = (
-                    state in {"settling", "capturing"}
-                    and now - last_sample_at >= 1.0 / args.sample_rate_hz
-                )
+                should_detect = now - last_sample_at >= 1.0 / args.sample_rate_hz
                 if should_detect:
                     last_sample_at = now
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                     result = landmarker.detect_for_video(image, int(now * 1000))
                     landmarks = result.face_landmarks[0] if result.face_landmarks else None
-                    latest_measurement = extract_eye_measurement(
+                    latest_quality = analyze_eye_measurement(
                         landmarks,
                         frame.shape[1],
                         frame.shape[0],
                     )
 
-                    if state == "capturing" and latest_measurement is not None:
+                    if state == "settling" and not latest_quality["valid"]:
+                        # Require a full, continuously valid settling period.
+                        state_started = now
+
+                    if state == "capturing" and latest_quality["valid"]:
                         normalized = normalize_distance_measurement(
                             target_distance,
                             method=args.method,
@@ -243,7 +291,11 @@ def run_calibration(args):
                         sample = {
                             "timestamp_ms": int((now - session_started_at) * 1000),
                             **normalized,
-                            **latest_measurement,
+                            **{
+                                key: value
+                                for key, value in latest_quality.items()
+                                if key not in {"valid", "rejection_reason"}
+                            },
                         }
                         current_samples.append(sample)
 
@@ -288,10 +340,18 @@ def run_calibration(args):
                                 break
 
                 if state == "waiting":
+                    alignment_text = (
+                        "Mat da can chinh - nhan SPACE de bat dau"
+                        if latest_quality["valid"]
+                        else QUALITY_REASON_TEXT.get(
+                            latest_quality.get("rejection_reason"),
+                            "Can chinh lai khuon mat",
+                        )
+                    )
                     lines = [
                         f"Khoang cach {distance_index + 1}/{len(args.distances)}: {target_distance:.1f} cm",
                         "Do tu TAM ONG KINH den DIEM GIUA HAI MAT.",
-                        "Nhin thang camera; nhan SPACE de bat dau.",
+                        alignment_text,
                         "Q/ESC: huy | R: thu lai khoang cach hien tai",
                     ]
                 elif state == "settling":
@@ -299,7 +359,12 @@ def run_calibration(args):
                     lines = [
                         f"Khoang cach: {target_distance:.1f} cm",
                         f"GIU NGUYEN - bat dau sau {remaining:.1f} giay",
-                        "Mat phai gan giua khung va nhin thang camera.",
+                        QUALITY_REASON_TEXT.get(
+                            latest_quality.get("rejection_reason"),
+                            "Mat hop le - tiep tuc giu nguyen",
+                        )
+                        if not latest_quality["valid"]
+                        else "Mat hop le - tiep tuc giu nguyen",
                     ]
                 else:
                     elapsed = now - state_started
@@ -307,16 +372,24 @@ def run_calibration(args):
                         f"Dang thu: {target_distance:.1f} cm",
                         f"Thoi gian: {elapsed:.1f}/{args.capture_seconds:.1f} giay",
                         f"Mau hop le: {len(current_samples)}",
-                        "Mat hop le" if latest_measurement else "Hay nhin thang va vao giua camera",
+                        "Mat hop le"
+                        if latest_quality["valid"]
+                        else QUALITY_REASON_TEXT.get(
+                            latest_quality.get("rejection_reason"),
+                            "Can chinh lai khuon mat",
+                        ),
                     ]
                 if message:
                     lines.append(message)
 
+                _draw_alignment_guide(cv2, frame, latest_quality)
                 _draw_lines(
                     cv2,
                     frame,
                     lines,
-                    color=(70, 220, 70) if latest_measurement else (255, 255, 255),
+                    color=(70, 220, 70)
+                    if latest_quality["valid"]
+                    else (80, 180, 255),
                 )
                 cv2.imshow(WINDOW_TITLE, frame)
                 key = cv2.waitKey(1) & 0xFF
@@ -328,11 +401,14 @@ def run_calibration(args):
                     current_samples = []
                     message = "Da dat lai khoang cach hien tai."
                 elif key == ord(" ") and state == "waiting":
-                    state = "settling"
-                    state_started = now
-                    last_sample_at = 0.0
-                    current_samples = []
-                    message = ""
+                    if latest_quality["valid"]:
+                        state = "settling"
+                        state_started = now
+                        last_sample_at = 0.0
+                        current_samples = []
+                        message = ""
+                    else:
+                        message = "Can chinh mat vao khung xanh truoc khi bat dau."
     finally:
         camera.release()
         cv2.destroyAllWindows()

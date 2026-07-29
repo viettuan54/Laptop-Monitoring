@@ -11,6 +11,7 @@ if str(TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(TRAINING_ROOT))
 
 from data_collection.distance_measurement import (
+    analyze_eye_measurement,
     build_calibration_profile,
     estimate_distance_from_profile,
     extract_eye_measurement,
@@ -29,6 +30,7 @@ class DistanceMeasurementTest(unittest.TestCase):
             points[index]["x"] = 0.45
         for index in (362, 263):
             points[index]["x"] = 0.55
+        points[1]["y"] = 0.54
         return points
 
     def test_extracts_resolution_independent_eye_measurement(self):
@@ -37,6 +39,8 @@ class DistanceMeasurementTest(unittest.TestCase):
         result_1280 = extract_eye_measurement(points, 1280, 960)
         self.assertEqual(result_640["eye_separation_normalized"], 0.1)
         self.assertEqual(result_1280["eye_separation_normalized"], 0.1)
+        self.assertEqual(result_640["eye_center_offset_x_signed"], 0.0)
+        self.assertAlmostEqual(result_640["head_pitch_ratio"], 0.3)
 
     def test_rejects_off_axis_or_turned_face(self):
         points = self._face_landmarks()
@@ -47,6 +51,29 @@ class DistanceMeasurementTest(unittest.TestCase):
         for index in (33, 133, 362, 263, 1):
             points[index]["x"] += 0.35
         self.assertIsNone(extract_eye_measurement(points, 640, 480))
+
+    def test_eye_quality_reports_specific_alignment_problem(self):
+        points = self._face_landmarks()
+        for index in (33, 133, 362, 263, 1):
+            points[index]["y"] += 0.2
+        result = analyze_eye_measurement(points, 640, 480)
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["rejection_reason"], "off_center_y")
+        self.assertGreater(result["eye_center_offset_y_signed"], 0)
+
+    def test_rejects_excessive_roll_and_pitch(self):
+        points = self._face_landmarks()
+        for index in (362, 263):
+            points[index]["y"] = 0.53
+        result = analyze_eye_measurement(points, 640, 480)
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["rejection_reason"], "head_roll")
+
+        points = self._face_landmarks()
+        points[1]["y"] = 0.51
+        result = analyze_eye_measurement(points, 640, 480)
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["rejection_reason"], "head_pitch")
 
     def test_normalizes_measured_distance(self):
         result = normalize_distance_measurement(

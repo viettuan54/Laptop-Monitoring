@@ -21,7 +21,15 @@
     "maximum_cm": 200,
     "record_precision_cm": 0.1,
     "maximum_uncertainty_cm": 5,
-    "participant_instruction": "Keep the eye midpoint close to the camera optical axis and look toward the camera during measurement."
+    "participant_instruction": "Keep the eye midpoint inside the central guide, keep the eye line horizontal and look toward the camera during measurement.",
+    "quality_limits": {
+      "max_head_yaw_ratio": 0.12,
+      "max_center_offset_x": 0.1,
+      "max_center_offset_y": 0.1,
+      "max_eye_roll_degrees": 8,
+      "min_head_pitch_ratio": 0.12,
+      "max_head_pitch_ratio": 0.65
+    }
   },
   "calibration": {
     "profile_scope": "subject_camera",

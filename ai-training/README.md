@@ -25,8 +25,13 @@ python .\ai-training\data_collection\calibration_ui.py `
 ```
 
 Tại mỗi khoảng cách, đo bằng thước từ tâm ống kính đến điểm giữa hai mắt rồi
-nhấn Space. Giữ đầu ổn định và nhìn về webcam trong thời gian thu. Nhấn `R` để
-thu lại khoảng cách hiện tại, `Q` hoặc `Esc` để hủy.
+đưa chấm biểu diễn điểm giữa hai mắt vào khung hướng dẫn. Khi khung chuyển
+xanh, nhấn Space. Giữ đầu thẳng, hai mắt ngang và nhìn về webcam trong thời
+gian thu. Nhấn `R` để thu lại khoảng cách hiện tại, `Q` hoặc `Esc` để hủy.
+
+Công cụ không cho bắt đầu khi mặt chưa đúng vị trí. Trong ba giây ổn định, nếu
+người tham gia lệch khỏi khung, cúi/ngửa, nghiêng hoặc quay đầu thì bộ đếm được
+khởi động lại. Mẫu không đạt quality gate không được ghi vào session.
 
 Mặc định công cụ thu tại 25, 30, 35, 40, 50, 60 và 80 cm, 20 giây mỗi khoảng
 cách, 5 mẫu/giây. Kết quả nằm trong `datasets/calibration/`:
@@ -44,3 +49,14 @@ python .\ai-training\data_collection\build_profile.py `
 Profile v2 dùng công thức `a*x² + b*x + c`, với
 `x = 1 / eye_separation_normalized`. Các metric trong profile được tính trên
 chính session huấn luyện và không thay thế kết quả đánh giá bằng session khác.
+
+Đánh giá profile cố định trên session độc lập:
+
+```powershell
+python .\ai-training\evaluation\evaluate_distance_profile.py `
+  .\ai-training\datasets\calibration\<profile-v2>.json `
+  .\ai-training\datasets\calibration\validation-run\<session>.session.json
+```
+
+Công cụ báo cáo MAE/RMSE/bias tổng thể, MAE vùng 30–40 cm, kết quả từng khoảng
+cách, confusion matrix tại ngưỡng 35 cm và mẫu nằm ngoài miền hiệu chỉnh.

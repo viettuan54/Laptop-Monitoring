@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://child-monitor.local/schemas/distance-calibration-session-1.0.0.json",
+  "$id": "https://child-monitor.local/schemas/distance-calibration-session-1.1.0.json",
   "title": "Child Monitor eye-distance calibration session",
   "type": "object",
   "additionalProperties": false,
@@ -27,7 +27,10 @@
   ],
   "properties": {
     "session_version": {
-      "const": "1.0.0"
+      "enum": [
+        "1.0.0",
+        "1.1.0"
+      ]
     },
     "distance_standard_version": {
       "const": "1.0.0"
@@ -89,6 +92,46 @@
       "type": "number",
       "minimum": 5,
       "maximum": 120
+    },
+    "quality_limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_head_yaw_ratio",
+        "max_center_offset_x",
+        "max_center_offset_y",
+        "max_eye_roll_degrees",
+        "min_head_pitch_ratio",
+        "max_head_pitch_ratio"
+      ],
+      "properties": {
+        "max_head_yaw_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "max_center_offset_x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5
+        },
+        "max_center_offset_y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.5
+        },
+        "max_eye_roll_degrees": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 45
+        },
+        "min_head_pitch_ratio": {
+          "type": "number"
+        },
+        "max_head_pitch_ratio": {
+          "type": "number"
+        }
+      }
     },
     "started_at": {
       "type": "string",
@@ -179,6 +222,36 @@
           "type": "number",
           "minimum": 0,
           "maximum": 0.35
+        },
+        "eye_center_x": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "eye_center_y": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "eye_center_offset_x_signed": {
+          "type": "number",
+          "minimum": -0.5,
+          "maximum": 0.5
+        },
+        "eye_center_offset_y_signed": {
+          "type": "number",
+          "minimum": -0.5,
+          "maximum": 0.5
+        },
+        "head_pitch_ratio": {
+          "type": "number",
+          "minimum": -2,
+          "maximum": 2
+        },
+        "eye_roll_degrees": {
+          "type": "number",
+          "minimum": -90,
+          "maximum": 90
         }
       }
     },
