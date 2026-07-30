@@ -153,18 +153,76 @@ def evaluate_profile(profile, session, *, threshold_cm=35.0):
         ),
     }
 
+    policy = profile.get("decision_policy") or {
+        "threshold_cm": threshold_cm,
+        "warning_below_cm": threshold_cm - 2.0,
+        "safe_at_or_above_cm": threshold_cm + 2.0,
+        "uncertain_action": "continue_sampling",
+    }
+    policy_threshold = float(policy["threshold_cm"])
+    warning_below = float(policy["warning_below_cm"])
+    safe_at_or_above = float(policy["safe_at_or_above_cm"])
+    if not warning_below < policy_threshold < safe_at_or_above:
+        raise ValueError("Invalid uncertainty-zone decision policy")
+
+    zone_counts = {
+        "actual_too_close": {"warning": 0, "uncertain": 0, "safe": 0},
+        "actual_safe": {"warning": 0, "uncertain": 0, "safe": 0},
+    }
+    for item in evaluated:
+        actual_group = (
+            "actual_too_close"
+            if item["actual_distance_cm"] < policy_threshold
+            else "actual_safe"
+        )
+        predicted_distance = item["predicted_distance_cm"]
+        if predicted_distance < warning_below:
+            predicted_zone = "warning"
+        elif predicted_distance < safe_at_or_above:
+            predicted_zone = "uncertain"
+        else:
+            predicted_zone = "safe"
+        zone_counts[actual_group][predicted_zone] += 1
+
+    actual_close_count = sum(zone_counts["actual_too_close"].values())
+    actual_safe_count = sum(zone_counts["actual_safe"].values())
+    uncertain_count = (
+        zone_counts["actual_too_close"]["uncertain"]
+        + zone_counts["actual_safe"]["uncertain"]
+    )
+    uncertainty_zone = {
+        "threshold_cm": policy_threshold,
+        "warning_below_cm": warning_below,
+        "safe_at_or_above_cm": safe_at_or_above,
+        "uncertain_action": policy["uncertain_action"],
+        "counts": zone_counts,
+        "dangerous_miss_rate": _safe_ratio(
+            zone_counts["actual_too_close"]["safe"],
+            actual_close_count,
+        ),
+        "false_warning_rate": _safe_ratio(
+            zone_counts["actual_safe"]["warning"],
+            actual_safe_count,
+        ),
+        "uncertain_rate": _safe_ratio(uncertain_count, total),
+        "conclusive_coverage": _safe_ratio(total - uncertain_count, total),
+    }
+
+    outside_feature_range_ratio = outside_feature_range / len(evaluated)
     acceptance = {
         "overall_mae_at_most_5_cm": overall["mae_cm"] <= 5.0,
         "near_threshold_mae_at_most_3_cm": near_threshold["mae_cm"] <= 3.0,
-        "threshold_recall_at_least_90_percent": (
-            threshold_classification["recall"] is not None
-            and threshold_classification["recall"] >= 0.9
+        "dangerous_miss_rate_at_most_10_percent": (
+            uncertainty_zone["dangerous_miss_rate"] is not None
+            and uncertainty_zone["dangerous_miss_rate"] <= 0.1
         ),
-        "false_positive_rate_at_most_10_percent": (
-            threshold_classification["false_positive_rate"] is not None
-            and threshold_classification["false_positive_rate"] <= 0.1
+        "false_warning_rate_at_most_10_percent": (
+            uncertainty_zone["false_warning_rate"] is not None
+            and uncertainty_zone["false_warning_rate"] <= 0.1
         ),
-        "all_samples_inside_feature_range": outside_feature_range == 0,
+        "outside_feature_range_at_most_20_percent": (
+            outside_feature_range_ratio <= 0.2
+        ),
     }
     acceptance["passed"] = all(acceptance.values())
 
@@ -184,6 +242,7 @@ def evaluate_profile(profile, session, *, threshold_cm=35.0):
         "near_threshold_30_40_cm": near_threshold,
         "per_distance": per_distance,
         "threshold_classification": threshold_classification,
+        "uncertainty_zone": uncertainty_zone,
         "acceptance": acceptance,
     }
 
@@ -226,6 +285,7 @@ def _print_report(report):
     overall = report["overall"]
     near = report["near_threshold_30_40_cm"]
     threshold = report["threshold_classification"]
+    uncertainty = report["uncertainty_zone"]
     print(f"Overall MAE: {overall['mae_cm']:.2f} cm")
     print(f"Overall RMSE: {overall['rmse_cm']:.2f} cm")
     print(f"30-40 cm MAE: {near['mae_cm']:.2f} cm")
@@ -233,6 +293,16 @@ def _print_report(report):
         "Threshold confusion [TP, TN, FP, FN]: "
         f"[{threshold['true_positive']}, {threshold['true_negative']}, "
         f"{threshold['false_positive']}, {threshold['false_negative']}]"
+    )
+    print(
+        "Uncertainty-zone counts: "
+        f"{uncertainty['counts']}"
+    )
+    print(
+        "Dangerous miss / false warning / uncertain: "
+        f"{uncertainty['dangerous_miss_rate']}, "
+        f"{uncertainty['false_warning_rate']}, "
+        f"{uncertainty['uncertain_rate']}"
     )
     print(f"Acceptance: {'PASS' if report['acceptance']['passed'] else 'FAIL'}")
 

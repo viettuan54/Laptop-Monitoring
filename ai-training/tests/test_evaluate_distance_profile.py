@@ -13,11 +13,10 @@ from evaluation.evaluate_distance_profile import evaluate_profile
 class DistanceProfileEvaluationTest(unittest.TestCase):
     def _profile(self):
         return {
-            "profile_version": "2.0.0",
-            "model_type": "inverse_eye_separation_polynomial",
+            "profile_version": "3.0.0",
+            "model_type": "monotonic_inverse_eye_separation_linear",
             "coefficients": {
-                "quadratic": 0.0,
-                "linear": 5.0,
+                "slope": 5.0,
                 "intercept": 0.0,
             },
             "feature_range": {
@@ -28,6 +27,12 @@ class DistanceProfileEvaluationTest(unittest.TestCase):
             "subject_id": "subject-test",
             "frame_width": 640,
             "frame_height": 480,
+            "decision_policy": {
+                "threshold_cm": 35.0,
+                "warning_below_cm": 33.0,
+                "safe_at_or_above_cm": 37.0,
+                "uncertain_action": "continue_sampling",
+            },
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
 
@@ -55,6 +60,8 @@ class DistanceProfileEvaluationTest(unittest.TestCase):
         self.assertEqual(report["overall"]["mae_cm"], 0.0)
         self.assertEqual(report["threshold_classification"]["false_positive"], 0)
         self.assertEqual(report["threshold_classification"]["false_negative"], 0)
+        self.assertEqual(report["uncertainty_zone"]["false_warning_rate"], 0.0)
+        self.assertEqual(report["uncertainty_zone"]["dangerous_miss_rate"], 0.0)
         self.assertTrue(report["acceptance"]["passed"])
 
     def test_rejects_profile_from_another_camera(self):

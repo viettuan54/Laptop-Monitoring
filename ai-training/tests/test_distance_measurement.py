@@ -118,11 +118,12 @@ class DistanceMeasurementTest(unittest.TestCase):
             frame_width=640,
             frame_height=480,
         )
-        self.assertEqual(profile["profile_version"], "2.0.0")
+        self.assertEqual(profile["profile_version"], "3.0.0")
         self.assertEqual(
             profile["model_type"],
-            "inverse_eye_separation_polynomial",
+            "monotonic_inverse_eye_separation_linear",
         )
+        self.assertGreater(profile["coefficients"]["slope"], 0)
         self.assertEqual(profile["training_metrics"]["mae_cm"], 0.0)
         self.assertEqual(
             profile["legacy_single_scale"]["training_mae_cm"],

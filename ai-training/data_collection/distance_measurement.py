@@ -9,7 +9,7 @@ import numpy as np
 
 
 DISTANCE_STANDARD_VERSION = "1.0.0"
-CALIBRATION_PROFILE_VERSION = "2.0.0"
+CALIBRATION_PROFILE_VERSION = "3.0.0"
 TARGET_DISTANCES_CM = (25.0, 30.0, 35.0, 40.0, 50.0, 60.0, 80.0)
 MEASUREMENT_METHODS = frozenset({"tape_measure", "laser_measure"})
 MEASUREMENT_REFERENCE = "camera_lens_center_to_eye_midpoint"
@@ -199,6 +199,9 @@ def build_calibration_profile(
     subject_id,
     frame_width,
     frame_height,
+    source_session_ids=None,
+    threshold_cm=35.0,
+    uncertainty_margin_cm=2.0,
 ):
     """Build a subject-camera profile from normalized eye-separation samples.
 
@@ -221,6 +224,15 @@ def build_calibration_profile(
     height = int(_finite_number(frame_height, "frame_height"))
     if width <= 0 or height <= 0:
         raise ValueError("frame dimensions must be positive")
+    threshold = _finite_number(threshold_cm, "threshold_cm")
+    uncertainty_margin = _finite_number(
+        uncertainty_margin_cm,
+        "uncertainty_margin_cm",
+    )
+    if not 20.0 <= threshold <= 80.0:
+        raise ValueError("threshold_cm must be between 20 and 80")
+    if not 0.5 <= uncertainty_margin <= 10.0:
+        raise ValueError("uncertainty_margin_cm must be between 0.5 and 10")
 
     normalized_samples = []
     for sample in samples:
@@ -250,15 +262,24 @@ def build_calibration_profile(
     if len(np.unique(np.round(inverse_eye_separations, 8))) < 3:
         raise ValueError("quadratic calibration requires at least 3 distinct features")
 
-    quadratic, linear, intercept = np.polyfit(
-        inverse_eye_separations,
-        actual_distances,
-        2,
+    feature_mean = float(np.mean(inverse_eye_separations))
+    distance_mean = float(np.mean(actual_distances))
+    feature_variance = float(
+        np.sum(np.square(inverse_eye_separations - feature_mean))
     )
-    predictions = np.polyval(
-        [quadratic, linear, intercept],
-        inverse_eye_separations,
+    if feature_variance <= 1e-12:
+        raise ValueError("linear calibration feature variance is too small")
+    slope = float(
+        np.sum(
+            (inverse_eye_separations - feature_mean)
+            * (actual_distances - distance_mean)
+        )
+        / feature_variance
     )
+    if slope <= 0:
+        raise ValueError("calibration is not monotonic: fitted slope must be positive")
+    intercept = distance_mean - slope * feature_mean
+    predictions = (slope * inverse_eye_separations) + intercept
     residuals = predictions - actual_distances
     absolute_errors = np.abs(residuals)
 
@@ -290,12 +311,10 @@ def build_calibration_profile(
         "profile_version": CALIBRATION_PROFILE_VERSION,
         "distance_standard_version": DISTANCE_STANDARD_VERSION,
         "profile_scope": "subject_camera",
-        "model_type": "inverse_eye_separation_polynomial",
-        "polynomial_degree": 2,
-        "coefficient_order": ["quadratic", "linear", "intercept"],
+        "model_type": "monotonic_inverse_eye_separation_linear",
+        "coefficient_order": ["slope", "intercept"],
         "coefficients": {
-            "quadratic": round(float(quadratic), 12),
-            "linear": round(float(linear), 12),
+            "slope": round(slope, 12),
             "intercept": round(float(intercept), 12),
         },
         "feature_range": {
@@ -308,6 +327,23 @@ def build_calibration_profile(
                 8,
             ),
         },
+        "operating_distance_range_cm": {
+            "minimum": min(distinct_distances),
+            "maximum": max(distinct_distances),
+        },
+        "decision_policy": {
+            "threshold_cm": round(threshold, 1),
+            "warning_below_cm": round(
+                threshold - uncertainty_margin,
+                1,
+            ),
+            "safe_at_or_above_cm": round(
+                threshold + uncertainty_margin,
+                1,
+            ),
+            "uncertain_action": "continue_sampling",
+        },
+        "source_session_ids": sorted(set(source_session_ids or [])),
         "camera_id": camera_id,
         "subject_id": subject_id,
         "frame_width": width,
@@ -330,28 +366,38 @@ def build_calibration_profile(
 
 
 def estimate_distance_from_profile(eye_separation_normalized, profile):
-    """Apply a validated v2 quadratic calibration profile."""
+    """Apply a supported calibrated distance profile."""
     separation = _finite_number(
         eye_separation_normalized,
         "eye_separation_normalized",
     )
     if not 0.01 <= separation <= 0.5:
         return None
-    if profile.get("profile_version") != CALIBRATION_PROFILE_VERSION:
-        raise ValueError("Only calibration profile version 2.0.0 is supported")
-    if profile.get("model_type") != "inverse_eye_separation_polynomial":
-        raise ValueError("Unsupported distance calibration model")
-
     coefficients = profile.get("coefficients") or {}
-    quadratic = _finite_number(coefficients.get("quadratic"), "quadratic")
-    linear = _finite_number(coefficients.get("linear"), "linear")
-    intercept = _finite_number(coefficients.get("intercept"), "intercept")
     inverse_separation = 1.0 / separation
-    distance = (
-        quadratic * inverse_separation * inverse_separation
-        + linear * inverse_separation
-        + intercept
-    )
+    if (
+        profile.get("profile_version") == "3.0.0"
+        and profile.get("model_type") == "monotonic_inverse_eye_separation_linear"
+    ):
+        slope = _finite_number(coefficients.get("slope"), "slope")
+        intercept = _finite_number(coefficients.get("intercept"), "intercept")
+        if slope <= 0:
+            raise ValueError("Monotonic calibration slope must be positive")
+        distance = (slope * inverse_separation) + intercept
+    elif (
+        profile.get("profile_version") == "2.0.0"
+        and profile.get("model_type") == "inverse_eye_separation_polynomial"
+    ):
+        quadratic = _finite_number(coefficients.get("quadratic"), "quadratic")
+        linear = _finite_number(coefficients.get("linear"), "linear")
+        intercept = _finite_number(coefficients.get("intercept"), "intercept")
+        distance = (
+            quadratic * inverse_separation * inverse_separation
+            + linear * inverse_separation
+            + intercept
+        )
+    else:
+        raise ValueError("Unsupported distance calibration profile")
     if not 10.0 <= distance <= 250.0:
         return None
     return round(distance, 1)

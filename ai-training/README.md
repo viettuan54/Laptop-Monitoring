@@ -37,26 +37,56 @@ Mặc định công cụ thu tại 25, 30, 35, 40, 50, 60 và 80 cm, 20 giây m�
 cách, 5 mẫu/giây. Kết quả nằm trong `datasets/calibration/`:
 
 - `*.session.json`: scalar feature và metadata phiên thu; không chứa ảnh.
-- `*.profile.json`: profile hồi quy bậc hai phiên bản 2.0.0.
+- `*.profile.json`: profile tuyến tính đơn điệu phiên bản 3.0.0.
 
-Có thể tạo lại profile v2 từ một session cũ mà không cần mở webcam:
+Có thể tạo profile v3 từ một hoặc nhiều session mà không cần mở webcam:
 
 ```powershell
 python .\ai-training\data_collection\build_profile.py `
-  .\ai-training\datasets\calibration\<session>.session.json
+  .\ai-training\datasets\calibration\<session-1>.session.json `
+  .\ai-training\datasets\calibration\<session-2>.session.json
 ```
 
-Profile v2 dùng công thức `a*x² + b*x + c`, với
-`x = 1 / eye_separation_normalized`. Các metric trong profile được tính trên
-chính session huấn luyện và không thay thế kết quả đánh giá bằng session khác.
+Profile v3 dùng công thức đơn điệu `slope*x + intercept`, với
+`x = 1 / eye_separation_normalized`. Builder từ chối slope âm và từ chối gộp
+session khác camera, subject hoặc độ phân giải. Metric trong profile được tính
+trên dữ liệu huấn luyện và không thay thế đánh giá bằng session khác.
 
 Đánh giá profile cố định trên session độc lập:
 
 ```powershell
 python .\ai-training\evaluation\evaluate_distance_profile.py `
-  .\ai-training\datasets\calibration\<profile-v2>.json `
+  .\ai-training\datasets\calibration\<profile-v3>.json `
   .\ai-training\datasets\calibration\validation-run\<session>.session.json
 ```
 
 Công cụ báo cáo MAE/RMSE/bias tổng thể, MAE vùng 30–40 cm, kết quả từng khoảng
-cách, confusion matrix tại ngưỡng 35 cm và mẫu nằm ngoài miền hiệu chỉnh.
+cách, confusion matrix, policy ba vùng và mẫu nằm ngoài miền hiệu chỉnh.
+
+```text
+distance < 33 cm       -> warning
+33 <= distance < 37 cm -> uncertain, continue_sampling
+distance >= 37 cm      -> safe
+```
+
+Sau khi validation đạt, đóng băng candidate trước khi thu final test:
+
+```powershell
+python .\ai-training\evaluation\freeze_distance_candidate.py `
+  <profile-v3> `
+  <validation-report>
+```
+
+Không dùng session final test để fit lại profile candidate.
+
+Thu final test ở chế độ chỉ tạo session:
+
+```powershell
+python .\ai-training\data_collection\calibration_ui.py `
+  --subject-id subject-001 `
+  --distances 30,32,34,35,36,38,40 `
+  --capture-seconds 10 `
+  --method tape_measure `
+  --session-only `
+  --output-dir .\ai-training\datasets\calibration\final-test
+```

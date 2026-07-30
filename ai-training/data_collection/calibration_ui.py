@@ -418,12 +418,19 @@ def run_calibration(args):
         print(f"Calibration aborted. Session metadata: {session_path}")
         return 2
 
+    if args.session_only:
+        session_path = _finish_and_save(session, output_dir)
+        print(f"Calibration session completed: {session_path}")
+        print("Session-only mode: no profile was fitted or written.")
+        return 0
+
     profile = build_calibration_profile(
         session["samples"],
         camera_id=camera_id,
         subject_id=args.subject_id,
         frame_width=actual_width,
         frame_height=actual_height,
+        source_session_ids=[session["session_id"]],
     )
     profile_schema = (
         TRAINING_ROOT / "datasets" / "schema" / "calibration_profile.schema.json"
@@ -437,9 +444,8 @@ def run_calibration(args):
     print(f"Session samples: {session_path}")
     coefficients = profile["coefficients"]
     print(
-        "Coefficients [quadratic, linear, intercept]: "
-        f"[{coefficients['quadratic']:.8f}, "
-        f"{coefficients['linear']:.8f}, "
+        "Coefficients [slope, intercept]: "
+        f"[{coefficients['slope']:.8f}, "
         f"{coefficients['intercept']:.8f}]"
     )
     print(f"Training MAE: {profile['training_metrics']['mae_cm']:.2f} cm")
@@ -482,6 +488,11 @@ def build_parser():
     parser.add_argument("--minimum-valid-ratio", type=float, default=0.6)
     parser.add_argument("--frame-width", type=int, default=640)
     parser.add_argument("--frame-height", type=int, default=480)
+    parser.add_argument(
+        "--session-only",
+        action="store_true",
+        help="Collect a session without fitting a profile (for final testing).",
+    )
     return parser
 
 

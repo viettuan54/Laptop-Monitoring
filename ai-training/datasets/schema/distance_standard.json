@@ -33,17 +33,22 @@
   },
   "calibration": {
     "profile_scope": "subject_camera",
-    "profile_version": "2.0.0",
-    "model_type": "inverse_eye_separation_polynomial",
+    "profile_version": "3.0.0",
+    "model_type": "monotonic_inverse_eye_separation_linear",
     "feature": "inverse_eye_separation",
     "feature_definition": "1 divided by Euclidean eye-center separation in pixels normalized by frame width.",
     "coefficient_order": [
-      "quadratic",
-      "linear",
+      "slope",
       "intercept"
     ],
-    "fit_definition": "Least-squares quadratic regression over all valid calibration samples.",
-    "inference_definition": "distance_cm = quadratic*x^2 + linear*x + intercept, where x = 1 / eye_separation_normalized.",
+    "fit_definition": "Least-squares linear regression constrained to a positive slope over all valid calibration samples.",
+    "inference_definition": "distance_cm = slope*x + intercept, where x = 1 / eye_separation_normalized.",
+    "decision_policy": {
+      "threshold_cm": 35,
+      "warning_below_cm": 33,
+      "safe_at_or_above_cm": 37,
+      "uncertain_action": "continue_sampling"
+    },
     "minimum_samples": 6,
     "minimum_distinct_distances": 3,
     "fallback": "pinhole_fov_ipd"
