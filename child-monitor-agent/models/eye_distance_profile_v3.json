@@ -1,0 +1,76 @@
+{
+  "profile_version": "3.0.0",
+  "distance_standard_version": "1.0.0",
+  "profile_scope": "subject_camera",
+  "model_type": "monotonic_inverse_eye_separation_linear",
+  "coefficient_order": [
+    "slope",
+    "intercept"
+  ],
+  "coefficients": {
+    "slope": 5.888908775393,
+    "intercept": -0.895370049444
+  },
+  "feature_range": {
+    "inverse_eye_separation_min": 5.27165636,
+    "inverse_eye_separation_max": 7.26562176
+  },
+  "operating_distance_range_cm": {
+    "minimum": 30.0,
+    "maximum": 40.0
+  },
+  "decision_policy": {
+    "threshold_cm": 35.0,
+    "warning_below_cm": 33.0,
+    "safe_at_or_above_cm": 37.0,
+    "uncertain_action": "continue_sampling"
+  },
+  "source_session_ids": [
+    "calibration-20260729T024917Z-180b138e",
+    "calibration-20260729T033645Z-d5d7b909"
+  ],
+  "camera_id": "camera-1ca79cc6dce06ef4",
+  "subject_id": "subject-001",
+  "frame_width": 640,
+  "frame_height": 480,
+  "sample_count": 287,
+  "calibration_distances_cm": [
+    30.0,
+    35.0,
+    40.0
+  ],
+  "training_metrics": {
+    "evaluation_scope": "training_data_only",
+    "mae_cm": 0.92,
+    "rmse_cm": 1.06,
+    "max_absolute_error_cm": 2.13,
+    "per_distance": [
+      {
+        "actual_distance_cm": 30.0,
+        "sample_count": 96,
+        "predicted_mean_cm": 30.64,
+        "bias_cm": 0.64,
+        "mae_cm": 0.64
+      },
+      {
+        "actual_distance_cm": 35.0,
+        "sample_count": 96,
+        "predicted_mean_cm": 34.39,
+        "bias_cm": -0.61,
+        "mae_cm": 0.69
+      },
+      {
+        "actual_distance_cm": 40.0,
+        "sample_count": 95,
+        "predicted_mean_cm": 39.97,
+        "bias_cm": -0.03,
+        "mae_cm": 1.45
+      }
+    ]
+  },
+  "legacy_single_scale": {
+    "calibration_scale_cm": 5.69814,
+    "training_mae_cm": 0.93
+  },
+  "created_at": "2026-07-29T10:25:14.294191+00:00"
+}

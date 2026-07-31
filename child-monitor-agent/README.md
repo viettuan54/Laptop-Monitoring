@@ -48,11 +48,17 @@ Agent cố định MediaPipe `0.10.33`. Runtime này đã được kiểm tra kh
 Clearcut uploader của bản 0.10.35; không tự nâng phiên bản nếu chưa đánh giá lại
 privacy notice và lưu lượng mạng của SDK.
 
-Khoảng cách centimet ưu tiên hệ số hiệu chỉnh `distance × eye separation`
-đã chuẩn hóa theo chiều rộng frame. Nếu chưa có profile, Agent fallback về mô
-hình pinhole với IPD mặc định 6,3 cm và FOV ngang mặc định 60°. Không xem kết
-quả fallback là phép đo có độ chính xác cao. Chuẩn đo, schema và công cụ tạo
-profile nằm trong `../ai-training`.
+Khoảng cách centimet ưu tiên profile v3 đã chốt bằng hồi quy tuyến tính đơn
+điệu theo nghịch đảo khoảng cách hai mắt. Profile áp dụng policy ba vùng:
+`< 33 cm` là cảnh báo, `33 <= khoảng cách < 37 cm` là chưa chắc chắn và tiếp
+tục lấy mẫu, `>= 37 cm` là an toàn. Agent chỉ dùng profile khi SHA-256, camera,
+độ phân giải
+640×480 và ngưỡng chính 35 cm đều khớp với lúc calibration.
+
+Nếu profile thiếu hoặc không tương thích, Agent fallback về hệ số đơn (nếu đã
+cấu hình), sau đó là mô hình pinhole với IPD mặc định 6,3 cm và FOV ngang mặc
+định 60°. Không xem kết quả fallback là phép đo có độ chính xác cao. Chuẩn đo,
+schema và công cụ tạo profile nằm trong `../ai-training`.
 
 ## Xoay Device Secret hoặc đổi Backend
 

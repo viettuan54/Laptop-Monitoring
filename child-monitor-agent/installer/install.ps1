@@ -82,6 +82,10 @@ $requiredModels = @(
     @{
         Path = "$AgentRoot\models\pose_landmarker_lite.task"
         Sha256 = "59929E1D1EE95287735DDD833B19CF4AC46D29BC7AFDDBBF6753C459690D574A"
+    },
+    @{
+        Path = "$AgentRoot\models\eye_distance_profile_v3.json"
+        Sha256 = "815FB3E281EB68D55FC45D513F215A53676519161C5A5CEA20A5EA7FEEB4B472"
     }
 )
 foreach ($model in $requiredModels) {

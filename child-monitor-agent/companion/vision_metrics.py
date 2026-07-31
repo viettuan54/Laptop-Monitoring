@@ -22,6 +22,16 @@ LEFT_HIP = 23
 RIGHT_HIP = 24
 NOSE_TIP = 1
 
+# These limits are intentionally identical to ai-training's calibration
+# measurement standard. A profile prediction is only valid when runtime
+# landmarks satisfy the same geometry constraints as its training samples.
+CALIBRATED_MAX_HEAD_YAW_RATIO = 0.12
+CALIBRATED_MAX_CENTER_OFFSET_X = 0.10
+CALIBRATED_MAX_CENTER_OFFSET_Y = 0.10
+CALIBRATED_MAX_EYE_ROLL_DEGREES = 8.0
+CALIBRATED_MIN_HEAD_PITCH_RATIO = 0.12
+CALIBRATED_MAX_HEAD_PITCH_RATIO = 0.65
+
 
 def _number(value, default=0.0):
     try:
@@ -84,6 +94,154 @@ def _posture_labels(reasons, shoulder_tilt_direction):
     if "forward_head" in labels and "trunk_lean" in labels:
         labels.append("slouching")
     return labels
+
+
+def _calibrated_eye_measurement(face_landmarks, image_width, image_height):
+    if not face_landmarks or len(face_landmarks) <= max(LEFT_EYE_CORNERS):
+        return {"valid": False, "rejection_reason": "face_not_detected"}
+
+    width = _number(image_width)
+    height = _number(image_height)
+    if width <= 0 or height <= 0:
+        return {"valid": False, "rejection_reason": "frame_dimensions_invalid"}
+
+    right_eye = _midpoint(
+        face_landmarks[RIGHT_EYE_CORNERS[0]],
+        face_landmarks[RIGHT_EYE_CORNERS[1]],
+    )
+    left_eye = _midpoint(
+        face_landmarks[LEFT_EYE_CORNERS[0]],
+        face_landmarks[LEFT_EYE_CORNERS[1]],
+    )
+    eye_midpoint = (
+        (left_eye[0] + right_eye[0]) / 2.0,
+        (left_eye[1] + right_eye[1]) / 2.0,
+    )
+    separation = math.hypot(
+        left_eye[0] - right_eye[0],
+        (left_eye[1] - right_eye[1]) * (height / width),
+    )
+    if not 0.01 <= separation <= 0.5:
+        return {"valid": False, "rejection_reason": "eye_geometry_invalid"}
+
+    nose_x = _coordinate(face_landmarks[NOSE_TIP], "x")
+    nose_y = _coordinate(face_landmarks[NOSE_TIP], "y")
+    yaw_ratio = abs(nose_x - eye_midpoint[0]) / separation
+    center_offset_x = abs(eye_midpoint[0] - 0.5)
+    center_offset_y = abs(eye_midpoint[1] - 0.5)
+    eye_dx = left_eye[0] - right_eye[0]
+    eye_dy = (left_eye[1] - right_eye[1]) * (height / width)
+    eye_roll_degrees = math.degrees(
+        math.atan2(eye_dy, max(abs(eye_dx), 1e-9))
+    )
+    head_pitch_ratio = (
+        (nose_y - eye_midpoint[1]) * (height / width)
+    ) / separation
+
+    checks = (
+        (yaw_ratio > CALIBRATED_MAX_HEAD_YAW_RATIO, "head_yaw"),
+        (center_offset_x > CALIBRATED_MAX_CENTER_OFFSET_X, "off_center_x"),
+        (center_offset_y > CALIBRATED_MAX_CENTER_OFFSET_Y, "off_center_y"),
+        (
+            abs(eye_roll_degrees) > CALIBRATED_MAX_EYE_ROLL_DEGREES,
+            "head_roll",
+        ),
+        (
+            not CALIBRATED_MIN_HEAD_PITCH_RATIO
+            <= head_pitch_ratio
+            <= CALIBRATED_MAX_HEAD_PITCH_RATIO,
+            "head_pitch",
+        ),
+    )
+    for rejected, reason in checks:
+        if rejected:
+            return {"valid": False, "rejection_reason": reason}
+
+    return {
+        "valid": True,
+        "rejection_reason": None,
+        "eye_separation_normalized": round(separation, 8),
+        "head_yaw_ratio": round(yaw_ratio, 4),
+        "head_pitch_ratio": round(head_pitch_ratio, 4),
+        "eye_roll_degrees": round(eye_roll_degrees, 2),
+    }
+
+
+def classify_eye_distance_zone(distance_cm, decision_policy):
+    """Apply the frozen warning/uncertain/safe boundary semantics."""
+    distance = _number(distance_cm, -1.0)
+    if distance < 0 or not isinstance(decision_policy, dict):
+        return "unknown"
+    threshold = _number(decision_policy.get("threshold_cm"), -1.0)
+    warning_below = _number(decision_policy.get("warning_below_cm"), -1.0)
+    safe_at_or_above = _number(
+        decision_policy.get("safe_at_or_above_cm"),
+        -1.0,
+    )
+    if not 0 < warning_below < threshold < safe_at_or_above:
+        return "unknown"
+    if distance < warning_below:
+        return "warning"
+    if distance < safe_at_or_above:
+        return "uncertain"
+    return "safe"
+
+
+def analyze_calibrated_eye_distance(
+    face_landmarks,
+    image_width,
+    image_height,
+    profile,
+):
+    """Estimate distance with a validated v3 profile and classify its zone."""
+    measurement = _calibrated_eye_measurement(
+        face_landmarks,
+        image_width,
+        image_height,
+    )
+    base_result = {
+        "reliable": False,
+        "estimated_distance_cm": None,
+        "estimation_method": "calibration_profile_v3",
+        "profile_version": profile.get("profile_version"),
+        "decision_zone": "unknown",
+        "outside_feature_range": None,
+        "rejection_reason": measurement["rejection_reason"],
+    }
+    if not measurement["valid"]:
+        return base_result
+
+    separation = measurement["eye_separation_normalized"]
+    inverse_separation = 1.0 / separation
+    coefficients = profile["coefficients"]
+    distance_cm = (
+        _number(coefficients["slope"]) * inverse_separation
+        + _number(coefficients["intercept"])
+    )
+    if not 10.0 <= distance_cm <= 250.0:
+        base_result["rejection_reason"] = "distance_out_of_bounds"
+        return base_result
+
+    distance_cm = round(distance_cm, 1)
+    feature_range = profile["feature_range"]
+    feature_min = _number(feature_range["inverse_eye_separation_min"])
+    feature_max = _number(feature_range["inverse_eye_separation_max"])
+    base_result.update(
+        {
+            "reliable": True,
+            "estimated_distance_cm": distance_cm,
+            "decision_zone": classify_eye_distance_zone(
+                distance_cm,
+                profile["decision_policy"],
+            ),
+            "outside_feature_range": not (
+                feature_min <= inverse_separation <= feature_max
+            ),
+            "rejection_reason": None,
+            "eye_separation_normalized": separation,
+        }
+    )
+    return base_result
 
 
 def estimate_eye_distance_cm(

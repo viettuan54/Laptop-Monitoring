@@ -90,3 +90,11 @@ python .\ai-training\data_collection\calibration_ui.py `
   --session-only `
   --output-dir .\ai-training\datasets\calibration\final-test
 ```
+
+Nếu báo cáo final test đạt, cập nhật manifest mà không thay đổi profile:
+
+```powershell
+python .\ai-training\evaluation\finalize_distance_candidate.py `
+  <candidate-manifest> `
+  <final-test-report>
+```
