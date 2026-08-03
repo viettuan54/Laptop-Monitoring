@@ -42,3 +42,4 @@ Thumbs.db
 ai-training/.venv/
 ai-training/.matplotlib-cache/
 ai-training/datasets/calibration/
+ai-training/datasets/pilot/

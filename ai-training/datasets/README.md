@@ -75,3 +75,16 @@ Chuẩn đầy đủ nằm trong `schema/distance_standard.json`.
 
 Frame `transition=true` được giữ lại nhưng mặc định không dùng làm mẫu huấn
 luyện nhãn tư thế tĩnh.
+
+## 6. Định dạng file pilot
+
+Mỗi phiên `capture_landmarks.py` tạo:
+
+- `session-*.landmarks.jsonl`: mỗi dòng là một JSON object độc lập, phải hợp lệ
+  theo `schema/landmark_record.schema.json`.
+- `session-*.manifest.json`: metadata phiên, số record, phân bố nhãn sơ bộ và
+  SHA-256 của file JSONL.
+
+Manifest phải có `image_storage = "disabled"`. Dataset mặc định không chứa ảnh
+hoặc pose world landmark; `pose_landmarks` lưu tọa độ chuẩn hóa mà công cụ đã
+nhận từ MediaPipe.

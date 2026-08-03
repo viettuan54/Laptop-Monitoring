@@ -98,3 +98,46 @@ python .\ai-training\evaluation\finalize_distance_candidate.py `
   <candidate-manifest> `
   <final-test-report>
 ```
+
+## Thu landmark tư thế cho pilot
+
+`capture_landmarks.py` dùng trực tiếp `analyze_posture` từ Agent để trạng thái
+quan sát, góc và gợi ý feature trong preview không lệch khỏi runtime. Công cụ
+không có đường ghi ảnh; chỉ ghi landmark đã validate vào JSONL và metadata phiên
+thu vào manifest.
+
+Phiên tư thế không đo khoảng cách:
+
+```powershell
+.\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\data_collection\capture_landmarks.py `
+  --subject-id subject-001 `
+  --max-records 300
+```
+
+Phiên có khoảng cách đã đo cố định:
+
+```powershell
+.\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\data_collection\capture_landmarks.py `
+  --subject-id subject-001 `
+  --distance-cm 35 `
+  --method tape_measure `
+  --uncertainty-cm 1
+```
+
+Phím điều khiển:
+
+- `Space`: bắt đầu/dừng ghi record.
+- `G`: tư thế tốt, xóa các nhãn đang chọn.
+- `1`: `forward_head`.
+- `2`: `trunk_lean`.
+- `3`: `shoulder_tilt_left`.
+- `4`: `shoulder_tilt_right`.
+- `T`: bật/tắt frame chuyển tiếp.
+- `Q` hoặc `Esc`: kết thúc và ghi manifest.
+
+`slouching` được dẫn xuất tự động khi có cả `forward_head` và `trunk_lean`.
+Trái/phải luôn theo giải phẫu người tham gia dù preview được lật gương. Kết quả
+mặc định nằm trong `datasets/pilot/` và được `.gitignore` để tránh commit dữ liệu
+landmark cá nhân.
