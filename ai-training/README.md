@@ -104,7 +104,9 @@ python .\ai-training\evaluation\finalize_distance_candidate.py `
 `capture_landmarks.py` dùng trực tiếp `analyze_posture` từ Agent để trạng thái
 quan sát, góc và gợi ý feature trong preview không lệch khỏi runtime. Công cụ
 không có đường ghi ảnh; chỉ ghi landmark đã validate vào JSONL và metadata phiên
-thu vào manifest.
+thu vào manifest. Luồng MediaPipe không nạp Matplotlib vì collector tự vẽ bằng
+OpenCV; điều này tránh DLL Matplotlib không cần thiết bị Windows Application
+Control chặn.
 
 Phiên tư thế không đo khoảng cách:
 
@@ -141,3 +143,18 @@ Phím điều khiển:
 Trái/phải luôn theo giải phẫu người tham gia dù preview được lật gương. Kết quả
 mặc định nằm trong `datasets/pilot/` và được `.gitignore` để tránh commit dữ liệu
 landmark cá nhân.
+
+Collector áp dụng quality gate phiên bản 1 cho các nhãn tư thế xấu tĩnh:
+
+- `forward_head`: góc cổ phải lớn hơn 25 độ.
+- `trunk_lean`: cả hai hông phải nhìn thấy và góc thân phải lớn hơn 18 độ.
+- `shoulder_tilt_left/right`: độ nghiêng phải lớn hơn 12 độ và đúng phía giải
+  phẫu của nhãn đã chọn.
+- `slouching`: phải đồng thời đạt điều kiện của `forward_head` và `trunk_lean`.
+
+Đặt webcam sao cho khung hình thấy từ đầu đến ít nhất cả hai hông khi thu
+`trunk_lean` hoặc `slouching`. Chỉ frame có dòng `Capture quality: READY` mới
+được ghi; frame `BLOCKED` bị bỏ qua và lý do khắc phục được hiển thị ngay trên
+preview. `records` đếm mẫu hợp lệ, còn `rejected` đếm lần lấy mẫu bị chặn. Các
+tổng này cùng số lần từ chối theo từng lý do được ghi vào manifest. Frame bật
+`T` là chuyển tiếp nên không áp dụng ngưỡng của tư thế tĩnh.

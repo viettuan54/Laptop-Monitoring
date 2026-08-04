@@ -19,8 +19,10 @@ from pathlib import Path
 
 TRAINING_ROOT = Path(__file__).resolve().parent.parent
 REPOSITORY_ROOT = TRAINING_ROOT.parent
-if str(TRAINING_ROOT) not in sys.path:
-    sys.path.insert(0, str(TRAINING_ROOT))
+AGENT_COMPANION_ROOT = REPOSITORY_ROOT / "child-monitor-agent" / "companion"
+for import_root in (TRAINING_ROOT, AGENT_COMPANION_ROOT):
+    if str(import_root) not in sys.path:
+        sys.path.insert(0, str(import_root))
 
 from data_collection.distance_measurement import (
     DEFAULT_MAX_CENTER_OFFSET_X,
@@ -37,6 +39,7 @@ from data_collection.distance_measurement import (
     build_calibration_profile,
     normalize_distance_measurement,
 )
+from mediapipe_runtime import load_mediapipe
 
 
 WINDOW_TITLE = "Child Monitor - Eye Distance Calibration"
@@ -215,7 +218,8 @@ def run_calibration(args):
     os.environ.setdefault("MPLCONFIGDIR", str(runtime_cache))
 
     import cv2
-    import mediapipe as mp
+
+    mp = load_mediapipe()
 
     if not args.model_path.is_file():
         raise FileNotFoundError(f"Face Landmarker model not found: {args.model_path}")

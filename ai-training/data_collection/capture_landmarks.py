@@ -39,12 +39,19 @@ from data_collection.labels import (
     normalize_posture_annotation,
 )
 from distance_profile import camera_id as runtime_camera_id
-from vision_metrics import analyze_posture
+from mediapipe_runtime import load_mediapipe
+from vision_metrics import (
+    DEFAULT_MAX_NECK_ANGLE_DEGREES,
+    DEFAULT_MAX_SHOULDER_TILT_DEGREES,
+    DEFAULT_MAX_TORSO_ANGLE_DEGREES,
+    analyze_posture,
+)
 
 
 WINDOW_TITLE = "Child Monitor - Landmark Pilot Collection"
 LANDMARK_SCHEMA_VERSION = "1.1.0"
 COLLECTION_SESSION_VERSION = "1.0.0"
+QUALITY_GATE_VERSION = "1.0.0"
 DEFAULT_SAMPLE_RATE_HZ = 5.0
 LABEL_KEY_MAP = {
     ord("1"): "forward_head",
@@ -53,6 +60,23 @@ LABEL_KEY_MAP = {
     ord("4"): "shoulder_tilt_right",
 }
 VISIBILITY_STATES = ("visible", "partially_visible", "not_visible")
+QUALITY_REASON_TEXT = {
+    "posture_not_visible": "body landmarks are not fully visible",
+    "neck_angle_unavailable": "neck angle is unavailable",
+    "forward_head_too_weak": (
+        f"neck angle must be > {DEFAULT_MAX_NECK_ANGLE_DEGREES:.0f} deg"
+    ),
+    "hips_not_visible": "move back until both hips are visible",
+    "trunk_lean_too_weak": (
+        f"torso angle must be > {DEFAULT_MAX_TORSO_ANGLE_DEGREES:.0f} deg"
+    ),
+    "shoulder_angle_unavailable": "shoulder angle is unavailable",
+    "shoulder_tilt_too_weak": (
+        "shoulder tilt must be > "
+        f"{DEFAULT_MAX_SHOULDER_TILT_DEGREES:.0f} deg"
+    ),
+    "shoulder_tilt_wrong_direction": "shoulder tilt direction does not match label",
+}
 
 
 def _default_face_model_path():
@@ -248,6 +272,62 @@ def _toggle_label(selected_labels, label):
     }
 
 
+def evaluate_capture_quality(posture, selected_labels, *, transition=False):
+    """Apply label-specific geometry gates before persisting a static pose."""
+    if transition:
+        return {"valid": True, "rejection_reasons": []}
+
+    normalized = normalize_posture_annotation("visible", selected_labels)
+    labels = set(normalized["posture_labels"])
+    if not labels:
+        # The operator remains the authority for a human-labelled good pose.
+        # Non-visible samples are also useful for detector-quality analysis.
+        return {"valid": True, "rejection_reasons": []}
+    if posture.get("visibility_state") != "visible":
+        return {
+            "valid": False,
+            "rejection_reasons": ["posture_not_visible"],
+        }
+
+    reasons = []
+    if "forward_head" in labels:
+        neck_angle = posture.get("neck_angle_degrees")
+        if neck_angle is None:
+            reasons.append("neck_angle_unavailable")
+        elif neck_angle <= DEFAULT_MAX_NECK_ANGLE_DEGREES:
+            reasons.append("forward_head_too_weak")
+
+    if "trunk_lean" in labels:
+        torso_angle = posture.get("torso_angle_degrees")
+        if torso_angle is None:
+            reasons.append("hips_not_visible")
+        elif torso_angle <= DEFAULT_MAX_TORSO_ANGLE_DEGREES:
+            reasons.append("trunk_lean_too_weak")
+
+    shoulder_label = None
+    if "shoulder_tilt_left" in labels:
+        shoulder_label = "shoulder_tilt_left"
+    elif "shoulder_tilt_right" in labels:
+        shoulder_label = "shoulder_tilt_right"
+    if shoulder_label is not None:
+        shoulder_angle = posture.get("shoulder_tilt_degrees")
+        shoulder_signed = posture.get("shoulder_tilt_signed_degrees")
+        if shoulder_angle is None or shoulder_signed is None:
+            reasons.append("shoulder_angle_unavailable")
+        elif shoulder_angle <= DEFAULT_MAX_SHOULDER_TILT_DEGREES:
+            reasons.append("shoulder_tilt_too_weak")
+        elif (
+            shoulder_label == "shoulder_tilt_left"
+            and shoulder_signed >= 0
+        ) or (
+            shoulder_label == "shoulder_tilt_right"
+            and shoulder_signed <= 0
+        ):
+            reasons.append("shoulder_tilt_wrong_direction")
+
+    return {"valid": not reasons, "rejection_reasons": reasons}
+
+
 def _open_camera(cv2, camera_index, width, height):
     backend = getattr(cv2, "CAP_DSHOW", 0)
     camera = cv2.VideoCapture(camera_index, backend)
@@ -385,12 +465,20 @@ def _create_manifest(
         "sample_rate_hz": args.sample_rate_hz,
         "distance_measurement": distance_measurement,
         "feature_logic": "child-monitor-agent/companion/vision_metrics.py",
+        "quality_gate_version": QUALITY_GATE_VERSION,
+        "quality_thresholds_degrees": {
+            "forward_head": DEFAULT_MAX_NECK_ANGLE_DEGREES,
+            "trunk_lean": DEFAULT_MAX_TORSO_ANGLE_DEGREES,
+            "shoulder_tilt": DEFAULT_MAX_SHOULDER_TILT_DEGREES,
+        },
         "records_file": records_path.name,
         "image_storage": "disabled",
         "started_at": now.isoformat(),
         "completed_at": None,
         "status": "running",
         "sample_count": 0,
+        "rejected_sample_count": 0,
+        "quality_rejection_counts": {},
         "transition_count": 0,
         "visibility_counts": {state: 0 for state in VISIBILITY_STATES},
         "label_counts": {label: 0 for label in LABEL_ORDER},
@@ -404,6 +492,13 @@ def _update_manifest_counts(manifest, record):
     manifest["visibility_counts"][record["visibility_state"]] += 1
     for label in record["posture_labels"]:
         manifest["label_counts"][label] += 1
+
+
+def _update_manifest_rejections(manifest, rejection_reasons):
+    manifest["rejected_sample_count"] += 1
+    counts = manifest["quality_rejection_counts"]
+    for reason in rejection_reasons:
+        counts[reason] = counts.get(reason, 0) + 1
 
 
 def _append_jsonl(stream, record):
@@ -422,7 +517,8 @@ def run_capture(args):
     os.environ.setdefault("MPLCONFIGDIR", str(runtime_cache))
 
     import cv2
-    import mediapipe as mp
+
+    mp = load_mediapipe()
 
     for model_path, model_name in (
         (args.face_model_path, "Face Landmarker"),
@@ -495,7 +591,7 @@ def run_capture(args):
         selected_labels = set()
         transition = False
         session_started_at = time.monotonic()
-        last_saved_at = 0.0
+        last_sample_attempt_at = 0.0
         last_timestamp_ms = -1
         capture_error = None
         interrupted = False
@@ -568,34 +664,46 @@ def run_capture(args):
                         if visibility_state == "visible"
                         else set()
                     )
-                    annotation = normalize_posture_annotation(
-                        visibility_state,
-                        record_labels,
+                    capture_quality = evaluate_capture_quality(
+                        posture,
+                        selected_labels,
+                        transition=transition,
                     )
 
                     if (
                         recording
-                        and now - last_saved_at >= 1.0 / args.sample_rate_hz
+                        and now - last_sample_attempt_at
+                        >= 1.0 / args.sample_rate_hz
                     ):
-                        record = build_landmark_record(
-                            session_id=session_id,
-                            subject_id=args.subject_id,
-                            camera_id=resolved_camera_id,
-                            timestamp_ms=timestamp_ms,
-                            distance_measurement=distance_measurement,
-                            visibility_state=visibility_state,
-                            posture_labels=record_labels,
-                            transition=transition,
-                            face_landmarks=face_landmarks,
-                            pose_landmarks=pose_landmarks,
-                            frame_width=frame.shape[1],
-                            frame_height=frame.shape[0],
+                        last_sample_attempt_at = now
+                        if capture_quality["valid"]:
+                            record = build_landmark_record(
+                                session_id=session_id,
+                                subject_id=args.subject_id,
+                                camera_id=resolved_camera_id,
+                                timestamp_ms=timestamp_ms,
+                                distance_measurement=distance_measurement,
+                                visibility_state=visibility_state,
+                                posture_labels=record_labels,
+                                transition=transition,
+                                face_landmarks=face_landmarks,
+                                pose_landmarks=pose_landmarks,
+                                frame_width=frame.shape[1],
+                                frame_height=frame.shape[0],
+                            )
+                            validate_landmark_record(record, validator)
+                            _append_jsonl(stream, record)
+                            _update_manifest_counts(manifest, record)
+                        else:
+                            _update_manifest_rejections(
+                                manifest,
+                                capture_quality["rejection_reasons"],
+                            )
+                        attempted_count = (
+                            manifest["sample_count"]
+                            + manifest["rejected_sample_count"]
                         )
-                        validate_landmark_record(record, validator)
-                        _append_jsonl(stream, record)
-                        _update_manifest_counts(manifest, record)
-                        last_saved_at = now
-                        if manifest["sample_count"] % 25 == 0:
+                        if attempted_count % 25 == 0:
                             write_json_atomic(manifest_path, manifest)
                         if (
                             args.max_records > 0
@@ -642,13 +750,23 @@ def run_capture(args):
                         == "measured"
                         else distance_measurement["distance_measurement_status"]
                     )
+                    if capture_quality["valid"]:
+                        quality_lines = ["Capture quality: READY"]
+                    else:
+                        quality_lines = ["Capture quality: BLOCKED"]
+                        quality_lines.extend(
+                            "Fix: " + QUALITY_REASON_TEXT.get(reason, reason)
+                            for reason in capture_quality["rejection_reasons"]
+                        )
                     lines = [
                         (
                             f"RECORDING={'ON' if recording else 'OFF'} | "
                             f"records={manifest['sample_count']} | "
+                            f"rejected={manifest['rejected_sample_count']} | "
                             f"visibility={visibility_state}"
                         ),
                         f"Human labels: {selected_text}",
+                        *quality_lines,
                         _posture_summary(posture),
                         (
                             f"Distance: {distance_text} | "
@@ -657,9 +775,12 @@ def run_capture(args):
                         "SPACE record | G good | 1 head | 2 trunk | 3 left shoulder | 4 right shoulder",
                         "T transition | Q/ESC finish | left/right are anatomical (preview may be mirrored)",
                     ]
-                    panel_color = (
-                        (70, 230, 70) if recording else (80, 190, 255)
-                    )
+                    if recording and capture_quality["valid"]:
+                        panel_color = (70, 230, 70)
+                    elif recording:
+                        panel_color = (70, 70, 240)
+                    else:
+                        panel_color = (80, 190, 255)
                     _draw_status_panel(cv2, display, lines, panel_color)
                     cv2.imshow(WINDOW_TITLE, display)
                     key = cv2.waitKey(1) & 0xFF
@@ -668,7 +789,7 @@ def run_capture(args):
                     if key == ord(" "):
                         recording = not recording
                         if recording:
-                            last_saved_at = 0.0
+                            last_sample_attempt_at = 0.0
                     elif key in (ord("g"), ord("G")):
                         selected_labels.clear()
                     elif key in (ord("t"), ord("T")):
@@ -700,6 +821,7 @@ def run_capture(args):
         print(f"Landmark records: {records_path}")
         print(f"Session manifest: {manifest_path}")
         print(f"Validated records: {manifest['sample_count']}")
+        print(f"Rejected sample attempts: {manifest['rejected_sample_count']}")
         print("Images saved: 0")
         if capture_error is not None:
             raise capture_error

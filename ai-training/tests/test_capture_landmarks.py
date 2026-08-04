@@ -17,6 +17,7 @@ from data_collection.capture_landmarks import (
     build_landmark_record,
     build_parser,
     create_record_validator,
+    evaluate_capture_quality,
     serialize_landmarks,
     validate_landmark_record,
 )
@@ -61,6 +62,18 @@ class CaptureLandmarksTest(unittest.TestCase):
         }
         values.update(overrides)
         return build_landmark_record(**values)
+
+    @staticmethod
+    def _posture(**overrides):
+        posture = {
+            "visibility_state": "visible",
+            "neck_angle_degrees": 30.0,
+            "torso_angle_degrees": 20.0,
+            "shoulder_tilt_degrees": 14.0,
+            "shoulder_tilt_signed_degrees": -14.0,
+        }
+        posture.update(overrides)
+        return posture
 
     def test_builds_schema_valid_record_and_derives_slouching(self):
         record = self._record()
@@ -111,6 +124,81 @@ class CaptureLandmarksTest(unittest.TestCase):
         labels = _toggle_label(labels, "shoulder_tilt_right")
         self.assertNotIn("shoulder_tilt_left", labels)
         self.assertIn("shoulder_tilt_right", labels)
+
+    def test_trunk_gate_requires_visible_hips_and_sufficient_angle(self):
+        missing_hips = evaluate_capture_quality(
+            self._posture(torso_angle_degrees=None),
+            {"trunk_lean"},
+        )
+        self.assertFalse(missing_hips["valid"])
+        self.assertIn("hips_not_visible", missing_hips["rejection_reasons"])
+
+        weak = evaluate_capture_quality(
+            self._posture(torso_angle_degrees=18.0),
+            {"trunk_lean"},
+        )
+        self.assertFalse(weak["valid"])
+        self.assertIn("trunk_lean_too_weak", weak["rejection_reasons"])
+
+        valid = evaluate_capture_quality(
+            self._posture(torso_angle_degrees=18.1),
+            {"trunk_lean"},
+        )
+        self.assertTrue(valid["valid"])
+
+    def test_slouching_gate_requires_both_component_angles(self):
+        result = evaluate_capture_quality(
+            self._posture(neck_angle_degrees=24.0, torso_angle_degrees=None),
+            {"forward_head", "trunk_lean"},
+        )
+        self.assertFalse(result["valid"])
+        self.assertIn("forward_head_too_weak", result["rejection_reasons"])
+        self.assertIn("hips_not_visible", result["rejection_reasons"])
+
+    def test_shoulder_gate_requires_strength_and_anatomical_direction(self):
+        weak = evaluate_capture_quality(
+            self._posture(
+                shoulder_tilt_degrees=12.0,
+                shoulder_tilt_signed_degrees=-12.0,
+            ),
+            {"shoulder_tilt_left"},
+        )
+        self.assertFalse(weak["valid"])
+        self.assertIn("shoulder_tilt_too_weak", weak["rejection_reasons"])
+
+        wrong_direction = evaluate_capture_quality(
+            self._posture(
+                shoulder_tilt_degrees=14.0,
+                shoulder_tilt_signed_degrees=14.0,
+            ),
+            {"shoulder_tilt_left"},
+        )
+        self.assertFalse(wrong_direction["valid"])
+        self.assertIn(
+            "shoulder_tilt_wrong_direction",
+            wrong_direction["rejection_reasons"],
+        )
+
+        valid = evaluate_capture_quality(
+            self._posture(
+                shoulder_tilt_degrees=14.0,
+                shoulder_tilt_signed_degrees=14.0,
+            ),
+            {"shoulder_tilt_right"},
+        )
+        self.assertTrue(valid["valid"])
+
+    def test_transition_bypasses_static_pose_gate(self):
+        result = evaluate_capture_quality(
+            self._posture(
+                visibility_state="not_visible",
+                neck_angle_degrees=None,
+                torso_angle_degrees=None,
+            ),
+            {"forward_head", "trunk_lean"},
+            transition=True,
+        )
+        self.assertTrue(result["valid"])
 
     def test_cli_derives_distance_status_and_rejects_missing_measurement(self):
         parser = build_parser()

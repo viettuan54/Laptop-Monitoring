@@ -22,6 +22,11 @@ LEFT_HIP = 23
 RIGHT_HIP = 24
 NOSE_TIP = 1
 
+DEFAULT_MIN_POSTURE_VISIBILITY = 0.55
+DEFAULT_MAX_NECK_ANGLE_DEGREES = 25.0
+DEFAULT_MAX_TORSO_ANGLE_DEGREES = 18.0
+DEFAULT_MAX_SHOULDER_TILT_DEGREES = 12.0
+
 # These limits are intentionally identical to ai-training's calibration
 # measurement standard. A profile prediction is only valid when runtime
 # landmarks satisfy the same geometry constraints as its training samples.
@@ -316,10 +321,10 @@ def analyze_posture(
     *,
     image_width=640,
     image_height=480,
-    min_visibility=0.55,
-    max_neck_angle_degrees=25.0,
-    max_torso_angle_degrees=18.0,
-    max_shoulder_tilt_degrees=12.0,
+    min_visibility=DEFAULT_MIN_POSTURE_VISIBILITY,
+    max_neck_angle_degrees=DEFAULT_MAX_NECK_ANGLE_DEGREES,
+    max_torso_angle_degrees=DEFAULT_MAX_TORSO_ANGLE_DEGREES,
+    max_shoulder_tilt_degrees=DEFAULT_MAX_SHOULDER_TILT_DEGREES,
 ):
     """Calculate upper-body posture angles from MediaPipe pose landmarks."""
     required = (LEFT_EAR, RIGHT_EAR, LEFT_SHOULDER, RIGHT_SHOULDER)

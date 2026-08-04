@@ -12,6 +12,7 @@ from distance_profile import (
     assert_profile_compatible,
     load_distance_profile,
 )
+from mediapipe_runtime import load_mediapipe
 from vision_metrics import (
     analyze_calibrated_eye_distance,
     analyze_posture,
@@ -383,7 +384,8 @@ class EdgeVisionMonitor:
             os.makedirs(matplotlib_cache, exist_ok=True)
             os.environ.setdefault("MPLCONFIGDIR", matplotlib_cache)
             import cv2
-            import mediapipe as mp
+
+            mp = load_mediapipe()
         except ImportError as error:
             logging.error("Edge vision dependencies are unavailable: %s", error)
             self._stop_event.wait(30)
