@@ -158,3 +158,21 @@ Collector áp dụng quality gate phiên bản 1 cho các nhãn tư thế xấu 
 preview. `records` đếm mẫu hợp lệ, còn `rejected` đếm lần lấy mẫu bị chặn. Các
 tổng này cùng số lần từ chối theo từng lý do được ghi vào manifest. Frame bật
 `T` là chuyển tiếp nên không áp dụng ngưỡng của tư thế tĩnh.
+
+## Báo cáo dataset pilot
+
+`datasets/pilot/accepted_sessions.json` đóng băng danh sách session được dùng,
+primary class, số mẫu và SHA-256 mong đợi. Các session thử hoặc đã được thu lại
+vẫn được giữ nguyên nhưng phải nằm trong `excluded_sessions` kèm lý do.
+
+Chạy lại báo cáo sau mỗi lần thay đổi danh sách accepted:
+
+```powershell
+.\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\evaluation\report_pilot_dataset.py
+```
+
+Công cụ kiểm tra checksum, JSON Schema, identity/timestamp, phân bố nhãn,
+subject/camera/khoảng cách, landmark bị thiếu, visibility của tai/vai/hông và
+xung đột nhãn. Kết quả được ghi vào `datasets/pilot/pilot_dataset_report.json`
+và `datasets/pilot/pilot_dataset_report.md`.
