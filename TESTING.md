@@ -7,7 +7,8 @@ Tạo một database test riêng, chạy `Data.sql` cùng các migration mới n
 `child-monitor-backend/test.env.example` thành `child-monitor-backend/.env.test`.
 Test sẽ tự nạp `.env.test` trước `.env`.
 
-`TEST_DB_ADMIN_USER` phải có `BYPASSRLS` để mô phỏng `adminPool`.
+`TEST_DB_ADMIN_USER` phải có `BYPASSRLS` và quyền quản trị trên toàn bộ bảng/sequence
+trong schema test để mô phỏng `adminPool`.
 `TEST_DB_BACKEND_USER` phải là `NOSUPERUSER NOBYPASSRLS`.
 `TEST_REDIS_URL` phải trỏ đến một Redis test thật; integration suite sẽ kết nối và
 không chấp nhận fallback sang MemoryStore.

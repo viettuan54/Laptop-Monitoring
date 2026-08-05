@@ -1,5 +1,16 @@
 const { recordAudit } = require('../services/audit.service');
 
+const POLICY_CATEGORIES = Object.freeze({
+  app: Object.freeze(['learning', 'entertainment', 'browsers', 'unknown']),
+  web: Object.freeze(['education', 'entertainment', 'social', 'unsafe', 'unknown']),
+});
+const POLICY_ACTIONS = Object.freeze(['allow', 'block']);
+
+function isPositiveInteger(value) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0;
+}
+
 exports.getSettings = async (req, res) => {
   const { child_id } = req.params;
 
@@ -7,7 +18,8 @@ exports.getSettings = async (req, res) => {
     // 1. Tìm cấu hình hiện tại của đứa trẻ (được bảo vệ bởi RLS)
     let result = await req.db.query(
       `SELECT setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog, updated_at
+              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
+              enable_app_classification, enable_web_classification, updated_at
        FROM settings WHERE child_id = $1`,
       [child_id]
     );
@@ -25,7 +37,8 @@ exports.getSettings = async (req, res) => {
         `INSERT INTO settings(child_id)
          VALUES($1)
          RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-                   is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog, updated_at`,
+                   is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
+                   enable_app_classification, enable_web_classification, updated_at`,
         [child_id]
       );
     }
@@ -47,6 +60,8 @@ exports.updateSettings = async (req, res) => {
     enable_webcam_monitoring,
     enable_screenshot_review,
     enable_keylog,
+    enable_app_classification,
+    enable_web_classification,
   } = req.body;
 
   // Validate daily_limit_minutes: số nguyên từ 0 đến 1440 (24 giờ)
@@ -67,7 +82,14 @@ exports.updateSettings = async (req, res) => {
   }
 
   // Validate boolean fields (bao gồm is_locked để tránh lỗi kiểu dữ liệu ở DB)
-  const boolFields = { is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog };
+  const boolFields = {
+    is_locked,
+    enable_webcam_monitoring,
+    enable_screenshot_review,
+    enable_keylog,
+    enable_app_classification,
+    enable_web_classification,
+  };
   for (const [key, val] of Object.entries(boolFields)) {
     if (val !== undefined && val !== null && typeof val !== 'boolean') {
       return res.status(400).json({ message: `${key} must be a boolean` });
@@ -85,7 +107,8 @@ exports.updateSettings = async (req, res) => {
     const result = await req.db.query(
       `INSERT INTO settings (
          child_id, daily_limit_minutes, allowed_start_time, allowed_end_time, is_locked,
-         enable_webcam_monitoring, enable_screenshot_review, enable_keylog
+         enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
+         enable_app_classification, enable_web_classification
        )
        VALUES (
          $1,
@@ -95,7 +118,9 @@ exports.updateSettings = async (req, res) => {
          COALESCE($5, FALSE),
          COALESCE($6, FALSE),
          COALESCE($7, FALSE),
-         COALESCE($8, FALSE)
+         COALESCE($8, FALSE),
+         COALESCE($9, FALSE),
+         COALESCE($10, FALSE)
        )
        ON CONFLICT (child_id)
        DO UPDATE SET
@@ -106,9 +131,12 @@ exports.updateSettings = async (req, res) => {
          enable_webcam_monitoring  = COALESCE($6, settings.enable_webcam_monitoring),
          enable_screenshot_review  = COALESCE($7, settings.enable_screenshot_review),
          enable_keylog             = COALESCE($8, settings.enable_keylog),
+         enable_app_classification = COALESCE($9, settings.enable_app_classification),
+         enable_web_classification = COALESCE($10, settings.enable_web_classification),
          updated_at                = CURRENT_TIMESTAMP
        RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-                 is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog, updated_at`,
+                 is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
+                 enable_app_classification, enable_web_classification, updated_at`,
       [
         child_id,
         daily_limit_minutes,
@@ -118,6 +146,8 @@ exports.updateSettings = async (req, res) => {
         enable_webcam_monitoring,
         enable_screenshot_review,
         enable_keylog,
+        enable_app_classification,
+        enable_web_classification,
       ]
     );
 
@@ -129,6 +159,8 @@ exports.updateSettings = async (req, res) => {
       enable_webcam_monitoring,
       enable_screenshot_review,
       enable_keylog,
+      enable_app_classification,
+      enable_web_classification,
     })
       .filter(([, value]) => value !== undefined && value !== null)
       .map(([field]) => field);
@@ -143,6 +175,88 @@ exports.updateSettings = async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error('Update settings error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.getCategoryPolicies = async (req, res) => {
+  const { child_id } = req.params;
+  if (!isPositiveInteger(child_id)) {
+    return res.status(400).json({ message: 'child_id must be a positive integer' });
+  }
+
+  try {
+    const childCheck = await req.db.query(
+      'SELECT child_id FROM children WHERE child_id = $1',
+      [child_id]
+    );
+    if (childCheck.rows.length === 0) {
+      return res.status(404).json({ message: 'Child not found or access denied' });
+    }
+
+    const result = await req.db.query(
+      `SELECT resource_type::text AS resource_type, category, action::text AS action, updated_at
+       FROM child_category_policies
+       WHERE child_id = $1
+       ORDER BY resource_type, category`,
+      [child_id]
+    );
+
+    res.json({ child_id: Number(child_id), policies: result.rows });
+  } catch (error) {
+    console.error('Get category policies error:', error);
+    res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+exports.updateCategoryPolicy = async (req, res) => {
+  const { child_id, resource_type, category } = req.params;
+  const { action } = req.body;
+
+  if (!isPositiveInteger(child_id)) {
+    return res.status(400).json({ message: 'child_id must be a positive integer' });
+  }
+  if (!Object.hasOwn(POLICY_CATEGORIES, resource_type)) {
+    return res.status(400).json({ message: 'resource_type must be app or web' });
+  }
+  if (!POLICY_CATEGORIES[resource_type].includes(category)) {
+    return res.status(400).json({
+      message: `Invalid ${resource_type} category. Allowed: ${POLICY_CATEGORIES[resource_type].join(', ')}`,
+    });
+  }
+  if (!POLICY_ACTIONS.includes(action)) {
+    return res.status(400).json({ message: 'action must be allow or block' });
+  }
+
+  try {
+    const result = await req.db.query(
+      `UPDATE child_category_policies
+       SET action = $1
+       WHERE child_id = $2 AND resource_type = $3 AND category = $4
+       RETURNING child_id, resource_type::text AS resource_type, category,
+                 action::text AS action, updated_at`,
+      [action, child_id, resource_type, category]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: 'Policy not found or access denied' });
+    }
+
+    await recordAudit(req.db, req, {
+      action: 'classification_policy.update',
+      targetType: 'child_category_policy',
+      targetId: `${child_id}:${resource_type}:${category}`,
+      metadata: {
+        child_id: Number(child_id),
+        resource_type,
+        category,
+        access_action: action,
+      },
+    });
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Update category policy error:', error);
     res.status(500).json({ message: 'Internal server error' });
   }
 };

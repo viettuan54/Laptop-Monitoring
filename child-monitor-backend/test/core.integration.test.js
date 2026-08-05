@@ -103,9 +103,17 @@ before(async () => {
 });
 
 after(async () => {
-  if (server) await new Promise((resolve) => server.close(resolve));
-  await adminPool.query('DELETE FROM users WHERE email = ANY($1::text[])', [emails]);
-  await Promise.all([adminPool.end(), backendPool.end(), closeRedis()]);
+  let cleanupError;
+  try {
+    if (server) await new Promise((resolve) => server.close(resolve));
+    await adminPool.query('DELETE FROM audit_logs WHERE actor_user_id = ANY($1::int[])', [[userOne, userTwo]]);
+    await adminPool.query('DELETE FROM users WHERE email = ANY($1::text[])', [emails]);
+  } catch (error) {
+    cleanupError = error;
+  } finally {
+    await Promise.allSettled([adminPool.end(), backendPool.end(), closeRedis()]);
+  }
+  if (cleanupError) throw cleanupError;
 });
 
 test('auth login succeeds and a refresh token can only be rotated once concurrently', async () => {
@@ -246,4 +254,119 @@ test('classification policies have safe defaults and are isolated by RLS', async
   } finally {
     client.release();
   }
+});
+
+test('parent classification APIs toggle settings and update only owned policies', async () => {
+  const loginOne = await request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[0], password: 'Integration1!' }),
+  });
+  const loginTwo = await request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[1], password: 'Integration1!' }),
+  });
+  assert.equal(loginOne.status, 200);
+  assert.equal(loginTwo.status, 200);
+
+  const authOne = {
+    authorization: `Bearer ${loginOne.body.accessToken}`,
+    'content-type': 'application/json',
+  };
+  const authTwo = {
+    authorization: `Bearer ${loginTwo.body.accessToken}`,
+    'content-type': 'application/json',
+  };
+
+  const toggled = await request(`/api/settings/${childOne}`, {
+    method: 'PUT',
+    headers: authOne,
+    body: JSON.stringify({
+      enable_app_classification: true,
+      enable_web_classification: false,
+    }),
+  });
+  assert.equal(toggled.status, 200);
+  assert.equal(toggled.body.enable_app_classification, true);
+  assert.equal(toggled.body.enable_web_classification, false);
+
+  const settings = await request(`/api/settings/${childOne}`, { headers: authOne });
+  assert.equal(settings.status, 200);
+  assert.equal(settings.body.enable_app_classification, true);
+  assert.equal(settings.body.enable_web_classification, false);
+
+  const invalidToggle = await request(`/api/settings/${childOne}`, {
+    method: 'PUT',
+    headers: authOne,
+    body: JSON.stringify({ enable_web_classification: 'true' }),
+  });
+  assert.equal(invalidToggle.status, 400);
+
+  const policies = await request(`/api/settings/${childOne}/policies`, { headers: authOne });
+  assert.equal(policies.status, 200);
+  assert.equal(policies.body.child_id, childOne);
+  assert.equal(policies.body.policies.length, 9);
+
+  const updatedPolicy = await request(`/api/settings/${childOne}/policies/web/social`, {
+    method: 'PUT',
+    headers: authOne,
+    body: JSON.stringify({ action: 'allow' }),
+  });
+  assert.equal(updatedPolicy.status, 200);
+  assert.deepEqual(
+    {
+      child_id: updatedPolicy.body.child_id,
+      resource_type: updatedPolicy.body.resource_type,
+      category: updatedPolicy.body.category,
+      action: updatedPolicy.body.action,
+    },
+    { child_id: childOne, resource_type: 'web', category: 'social', action: 'allow' }
+  );
+
+  const invalidPolicy = await request(`/api/settings/${childOne}/policies/app/social`, {
+    method: 'PUT',
+    headers: authOne,
+    body: JSON.stringify({ action: 'block' }),
+  });
+  assert.equal(invalidPolicy.status, 400);
+
+  const invalidAction = await request(`/api/settings/${childOne}/policies/web/social`, {
+    method: 'PUT',
+    headers: authOne,
+    body: JSON.stringify({ action: 'deny' }),
+  });
+  assert.equal(invalidAction.status, 400);
+
+  const foreignToggle = await request(`/api/settings/${childOne}`, {
+    method: 'PUT',
+    headers: authTwo,
+    body: JSON.stringify({ enable_app_classification: false }),
+  });
+  assert.equal(foreignToggle.status, 404);
+
+  const foreignPolicies = await request(`/api/settings/${childOne}/policies`, { headers: authTwo });
+  assert.equal(foreignPolicies.status, 404);
+
+  const foreignUpdate = await request(`/api/settings/${childOne}/policies/web/unsafe`, {
+    method: 'PUT',
+    headers: authTwo,
+    body: JSON.stringify({ action: 'allow' }),
+  });
+  assert.equal(foreignUpdate.status, 404);
+
+  const audit = await adminPool.query(
+    `SELECT action, target_id, metadata
+     FROM audit_logs
+     WHERE actor_user_id = $1
+       AND action IN ('settings.update', 'classification_policy.update')
+     ORDER BY audit_id`,
+    [userOne]
+  );
+  assert.deepEqual(audit.rows.map((row) => row.action), [
+    'settings.update',
+    'classification_policy.update',
+  ]);
+  assert.equal(audit.rows[1].target_id, `${childOne}:web:social`);
+  assert.equal(audit.rows[1].metadata.access_action, 'allow');
 });

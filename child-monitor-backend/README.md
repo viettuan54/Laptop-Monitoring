@@ -29,6 +29,13 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v16.sql
 `migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ.
 Hãy dùng role sở hữu schema (thường là `postgres`), vì role chỉ được `GRANT` quyền đọc/ghi không thể chạy `ALTER TABLE`.
 
+API chính sách dành cho phụ huynh:
+
+- `GET /api/settings/:child_id`: đọc cấu hình, bao gồm `enable_app_classification` và `enable_web_classification`.
+- `PUT /api/settings/:child_id`: bật/tắt từng cờ bằng giá trị boolean.
+- `GET /api/settings/:child_id/policies`: lấy 4 policy ứng dụng và 5 policy website.
+- `PUT /api/settings/:child_id/policies/:resource_type/:category`: cập nhật bằng body `{ "action": "allow" | "block" }`.
+
 Production bắt buộc cấu hình:
 
 ```env
