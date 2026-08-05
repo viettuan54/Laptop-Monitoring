@@ -134,3 +134,12 @@ test('dashboard uses Vietnamese locale and Vietnamese primary navigation', () =>
   assert.match(source, /Quản lý tài khoản/);
   assert.match(source, /Intl\.DateTimeFormat\('vi-VN'/);
 });
+
+test('policy UI exposes and submits both AI classification toggles', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+
+  assert.match(source, /Phân loại AI & truy cập/);
+  assert.match(source, /switchRow\('enable_app_classification', 'Phân loại ứng dụng'/);
+  assert.match(source, /switchRow\('enable_web_classification', 'Phân loại website'/);
+  assert.match(source, /'enable_app_classification',[\s\S]*'enable_web_classification'/);
+});

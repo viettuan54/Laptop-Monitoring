@@ -748,6 +748,10 @@ async function renderPolicies(content) {
               ${switchRow('enable_screenshot_review', 'Xem xét ảnh chụp màn hình', 'Cho phép quy trình đánh giá hình ảnh.', settings.enable_screenshot_review)}
               ${switchRow('enable_keylog', 'Ghi nhận phím bấm', 'Tính năng nhạy cảm, chỉ bật khi thực sự cần.', settings.enable_keylog)}
             </section>
+            <section class="setting-section"><h3>Phân loại AI & truy cập</h3><p>Chỉ phân loại và áp dụng chính sách Cho phép/Chặn khi công tắc tương ứng được bật. Khi tắt, nội dung đó được truy cập bình thường.</p>
+              ${switchRow('enable_app_classification', 'Phân loại ứng dụng', 'Gán một trong 4 nhãn ứng dụng rồi áp dụng chính sách truy cập.', settings.enable_app_classification)}
+              ${switchRow('enable_web_classification', 'Phân loại website', 'Gán một trong 5 nhãn website rồi áp dụng chính sách truy cập.', settings.enable_web_classification)}
+            </section>
           </div>
           <div class="form-actions field full"><button class="btn" type="submit">Lưu chính sách</button></div>
         </form>
@@ -986,11 +990,18 @@ async function handleSubmit(event) {
       await api(`/devices/${form.dataset.id}`, { method: 'PUT', body: { device_name: data.device_name } });
       closeModal(); toast('Đã đổi tên thiết bị'); await navigate('devices');
     } else if (form.id === 'policy-form') {
-      const bools = ['is_locked', 'enable_webcam_monitoring', 'enable_screenshot_review', 'enable_keylog'];
+      const bools = [
+        'is_locked',
+        'enable_webcam_monitoring',
+        'enable_screenshot_review',
+        'enable_keylog',
+        'enable_app_classification',
+        'enable_web_classification',
+      ];
       bools.forEach((name) => { data[name] = form.elements[name].checked; });
       data.daily_limit_minutes = Number(data.daily_limit_minutes);
       await api(`/settings/${form.dataset.childId}`, { method: 'PUT', body: data });
-      toast('Đã lưu chính sách', 'Agent sẽ nhận cấu hình ở lần heartbeat tiếp theo.');
+      toast('Đã lưu chính sách', 'Cấu hình đã được lưu cho hồ sơ này.');
     } else if (form.id === 'activity-filter') {
       state.activityFilter = data; await renderActivity(document.querySelector('#page-content'));
     } else if (form.id === 'alert-filter') {
