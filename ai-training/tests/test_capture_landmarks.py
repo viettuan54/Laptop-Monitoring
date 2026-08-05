@@ -146,6 +146,31 @@ class CaptureLandmarksTest(unittest.TestCase):
         )
         self.assertTrue(valid["valid"])
 
+    def test_good_pose_requires_visible_hips_and_no_rule_violation(self):
+        missing_hips = evaluate_capture_quality(
+            self._posture(
+                torso_angle_degrees=None,
+                is_bad=False,
+                posture_labels=[],
+            ),
+            set(),
+        )
+        self.assertFalse(missing_hips["valid"])
+        self.assertIn("hips_not_visible", missing_hips["rejection_reasons"])
+
+        rule_violation = evaluate_capture_quality(
+            self._posture(
+                is_bad=True,
+                posture_labels=["forward_head"],
+            ),
+            set(),
+        )
+        self.assertFalse(rule_violation["valid"])
+        self.assertIn(
+            "good_pose_violates_rules",
+            rule_violation["rejection_reasons"],
+        )
+
     def test_slouching_gate_requires_both_component_angles(self):
         result = evaluate_capture_quality(
             self._posture(neck_angle_degrees=24.0, torso_angle_degrees=None),

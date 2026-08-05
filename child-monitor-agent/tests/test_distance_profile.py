@@ -13,6 +13,7 @@ from distance_profile import (
     PROFILE_FILENAME,
     assert_profile_compatible,
     camera_id,
+    expected_hash_from_sidecar,
     load_distance_profile,
     validate_distance_profile,
 )
@@ -26,7 +27,11 @@ class DistanceProfileTest(unittest.TestCase):
             "models",
             PROFILE_FILENAME,
         )
-        cls.profile, cls.profile_sha256 = load_distance_profile(cls.profile_path)
+        expected_hash = expected_hash_from_sidecar(cls.profile_path)
+        cls.profile, cls.profile_sha256 = load_distance_profile(
+            cls.profile_path,
+            expected_sha256=expected_hash,
+        )
 
     def test_packaged_frozen_profile_passes_integrity_and_schema_checks(self):
         self.assertEqual(self.profile_sha256, EXPECTED_PROFILE_SHA256)
@@ -74,6 +79,16 @@ class DistanceProfileTest(unittest.TestCase):
                 frame_width=640,
                 frame_height=480,
                 threshold_cm=40.0,
+                hostname="unit-host",
+            )
+        with self.assertRaisesRegex(ValueError, "subject_id"):
+            assert_profile_compatible(
+                profile,
+                camera_index=2,
+                frame_width=640,
+                frame_height=480,
+                threshold_cm=35.0,
+                subject_id="subject-other",
                 hostname="unit-host",
             )
 

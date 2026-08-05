@@ -16,6 +16,7 @@ from provision_agent import (
     encrypt_machine_scope,
     normalize_device_secret,
     normalize_server_url,
+    normalize_vision_subject_id,
     write_config_atomic,
 )
 
@@ -52,6 +53,13 @@ class ProvisioningValidationTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             normalize_device_secret("not-a-device-secret")
+
+        self.assertEqual(
+            normalize_vision_subject_id("subject-child_001"),
+            "subject-child_001",
+        )
+        with self.assertRaises(ValueError):
+            normalize_vision_subject_id("../child")
 
     def test_machine_scope_encryption_and_atomic_config_write(self):
         secret = "550e8400-e29b-41d4-a716-446655440000"

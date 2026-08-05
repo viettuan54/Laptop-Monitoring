@@ -20,6 +20,7 @@ class APIClient:
         self.config_path = config_path
         self.server_url = "http://localhost:3000"
         self.device_secret = None
+        self.vision_subject_id = None
         self.suspended = False
         self.last_config_mtime = 0
         
@@ -71,6 +72,12 @@ class APIClient:
             self.server_url = self.validate_server_url(configured_url)
             
             raw_secret = data.get("device_secret", "")
+            subject_id = data.get("vision_subject_id")
+            self.vision_subject_id = (
+                subject_id
+                if isinstance(subject_id, str) and subject_id.startswith("subject-")
+                else None
+            )
             # Nếu secret dạng plaintext UUID (chưa mã hóa), tiến hành mã hóa DPAPI rồi lưu lại
             if raw_secret and not data.get("is_encrypted", False):
                 encrypted_b64 = self.encrypt_secret(raw_secret)

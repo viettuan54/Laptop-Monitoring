@@ -17,6 +17,7 @@ UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
     re.IGNORECASE,
 )
+SUBJECT_ID_PATTERN = re.compile(r"^subject-[A-Za-z0-9_-]+$")
 
 
 def normalize_server_url(value):
@@ -43,6 +44,15 @@ def normalize_device_secret(value):
     if str(uuid.UUID(secret)) != secret:
         raise ValueError("DeviceSecret must be a canonical UUID")
     return secret
+
+
+def normalize_vision_subject_id(value):
+    if value is None:
+        return None
+    subject_id = value.strip()
+    if not SUBJECT_ID_PATTERN.fullmatch(subject_id):
+        raise ValueError("VisionSubjectId must use the form subject-<safe-id>")
+    return subject_id
 
 
 def validate_credentials(server_url, device_secret, timeout):
@@ -130,6 +140,7 @@ def main():
     parser.add_argument("--device-secret", required=True)
     parser.add_argument("--config-path", required=True)
     parser.add_argument("--timeout", type=int, default=10)
+    parser.add_argument("--vision-subject-id")
     parser.add_argument(
         "--skip-validation",
         action="store_true",
@@ -139,6 +150,7 @@ def main():
 
     server_url = normalize_server_url(args.server_url)
     device_secret = normalize_device_secret(args.device_secret)
+    vision_subject_id = normalize_vision_subject_id(args.vision_subject_id)
 
     if not args.skip_validation:
         validate_credentials(server_url, device_secret, args.timeout)
@@ -150,6 +162,17 @@ def main():
         "is_encrypted": True,
         "encryption_scope": "LocalMachine",
     }
+    if vision_subject_id is None and os.path.isfile(args.config_path):
+        try:
+            with open(args.config_path, "r", encoding="utf-8") as stream:
+                existing = json.load(stream)
+            vision_subject_id = normalize_vision_subject_id(
+                existing.get("vision_subject_id")
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            vision_subject_id = None
+    if vision_subject_id is not None:
+        payload["vision_subject_id"] = vision_subject_id
     write_config_atomic(args.config_path, payload)
     print(f"Agent provisioning completed for {server_url}.")
 

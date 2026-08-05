@@ -144,13 +144,18 @@ Trái/phải luôn theo giải phẫu người tham gia dù preview được l�
 mặc định nằm trong `datasets/pilot/` và được `.gitignore` để tránh commit dữ liệu
 landmark cá nhân.
 
-Collector áp dụng quality gate phiên bản 1 cho các nhãn tư thế xấu tĩnh:
+Collector áp dụng quality gate phiên bản `2.0.0` cho các nhãn tư thế tĩnh:
 
 - `forward_head`: góc cổ phải lớn hơn 25 độ.
 - `trunk_lean`: cả hai hông phải nhìn thấy và góc thân phải lớn hơn 18 độ.
 - `shoulder_tilt_left/right`: độ nghiêng phải lớn hơn 12 độ và đúng phía giải
   phẫu của nhãn đã chọn.
 - `slouching`: phải đồng thời đạt điều kiện của `forward_head` và `trunk_lean`.
+
+Mọi record tĩnh, kể cả `good` và `forward_head`, phải thấy đủ hai tai, hai vai
+và hai hông. Tư thế `good` không được vi phạm luật hình học và mọi vi phạm rõ
+theo luật phải được chọn nhãn. Các session `pre-v1`/`1.0.0` cũ vẫn được giữ để
+audit nhưng trainer chủ động từ chối; cần thu lại bằng collector hiện tại.
 
 Đặt webcam sao cho khung hình thấy từ đầu đến ít nhất cả hai hông khi thu
 `trunk_lean` hoặc `slouching`. Chỉ frame có dòng `Capture quality: READY` mới
@@ -176,3 +181,55 @@ Công cụ kiểm tra checksum, JSON Schema, identity/timestamp, phân bố nhã
 subject/camera/khoảng cách, landmark bị thiếu, visibility của tai/vai/hông và
 xung đột nhãn. Kết quả được ghi vào `datasets/pilot/pilot_dataset_report.json`
 và `datasets/pilot/pilot_dataset_report.md`.
+
+## Quy trình ba subject và baseline classifier
+
+Không tạo subject giả. Dùng ba mã ẩn danh, ví dụ `subject-001`, `subject-002`,
+`subject-003`. Mỗi người thu ít nhất hai session riêng cho từng lớp; mỗi session
+chỉ ghi một lớp và nên thực hiện khác thời điểm hoặc ánh sáng. Riêng `good` bắt
+buộc ít nhất hai session để tạo profile cá nhân.
+
+Ví dụ thu 100 record cho một session:
+
+```powershell
+.\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\data_collection\capture_landmarks.py `
+  --subject-id subject-002 `
+  --max-records 100
+```
+
+Chọn nhãn trước khi bật ghi. Lặp cho `good`, `forward_head`, `trunk_lean`, hai
+hướng vai và `slouching`. Sau khi kiểm tra từng session, thêm nó vào
+`datasets/pilot/accepted_sessions.json` kèm `primary_class`, sample count và
+SHA-256 như cấu trúc hiện tại. Không đưa session thử hoặc session nhiều lớp vào
+danh sách accepted.
+
+Trainer lấy lại mẫu ở đúng 2 Hz như Agent, gom sáu mẫu thành cửa sổ ba giây và
+bắt buộc leave-one-subject-out. Nó dừng với lỗi nếu ít hơn ba subject, thiếu lớp
+ở bất kỳ subject nào hoặc còn session dùng quality gate cũ:
+
+```powershell
+.\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\training\train_posture_baseline.py
+```
+
+Kết quả không chứa ảnh:
+
+- `artifacts/posture_baseline_v1.json`.
+- `artifacts/posture_loso_report.json` với từng fold giữ riêng một subject.
+
+Model chỉ được đánh dấu `deployment_approved` khi LOSO đạt đồng thời macro
+recall tối thiểu 70%, accuracy trên các dự đoán đủ confidence tối thiểu 80% và
+conclusive coverage tối thiểu 50%. Agent từ chối model không qua gate này và
+tiếp tục dùng rule-based.
+
+Tạo profile trung tính riêng từ ít nhất hai session `good` đã accepted:
+
+```powershell
+.\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\data_collection\build_posture_profile.py `
+  --subject-id subject-001
+```
+
+Profile được ghi cạnh dataset và phải được cài đúng máy/camera của subject.
+Model hoặc profile thiếu/không hợp lệ không làm mất rule-based safety fallback.

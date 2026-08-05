@@ -54,9 +54,29 @@ class EdgeVisionTest(unittest.TestCase):
             },
         }
 
+    @staticmethod
+    def _pose_result(*, bad=False):
+        normalized = [
+            {"x": 0.5, "y": 0.5, "z": 0.0, "visibility": 1.0}
+            for _ in range(33)
+        ]
+        world = [dict(point) for point in normalized]
+        for collection in (normalized, world):
+            collection[7].update(x=-0.1 if not bad else 0.2, y=-0.75, z=0.3 if bad else 0.0)
+            collection[8].update(x=0.1 if not bad else 0.4, y=-0.75, z=0.3 if bad else 0.0)
+            collection[11].update(x=-0.2, y=-0.5, z=0.0)
+            collection[12].update(x=0.2, y=-0.5, z=0.0)
+            collection[23].update(x=-0.2, y=0.0, z=0.0)
+            collection[24].update(x=0.2, y=0.0, z=0.0)
+        return SimpleNamespace(
+            pose_landmarks=[normalized],
+            pose_world_landmarks=[world],
+        )
+
     def test_config_is_disabled_by_default_and_values_are_bounded(self):
         config = normalize_vision_config({
             "enabled": "true",
+            "subject_id": "../invalid",
             "min_eye_distance_cm": 500,
             "sample_interval_seconds": 0,
         })
@@ -64,6 +84,7 @@ class EdgeVisionTest(unittest.TestCase):
         self.assertEqual(config["min_eye_distance_cm"], 80.0)
         self.assertEqual(config["sample_interval_seconds"], 0.2)
         self.assertEqual(config["eye_distance_calibration_scale_cm"], 0.0)
+        self.assertIsNone(config["subject_id"])
 
     def test_alert_gate_requires_duration_and_enforces_cooldown(self):
         gate = SustainedAlertGate()
@@ -146,6 +167,67 @@ class EdgeVisionTest(unittest.TestCase):
         self.assertEqual(metrics["decision_zone"], "warning")
         self.assertEqual(metrics["profile_version"], "3.0.0")
         self.assertEqual(metrics["profile_sha256"], "profile-hash")
+
+    def test_custom_model_can_add_warning_when_rules_are_safe(self):
+        class Model:
+            def observe(self, *_):
+                return {
+                    "predicted_class": "forward_head",
+                    "posture_labels": ["forward_head"],
+                    "is_bad": True,
+                    "confidence": 0.9,
+                    "minimum_confidence": 0.65,
+                    "conclusive": True,
+                    "model_version": "1.0.0",
+                    "profile_subject_id": "subject-test",
+                }
+
+        pipe_client = self._PipeClient()
+        monitor = EdgeVisionMonitor(pipe_client)
+        config = normalize_vision_config({"enabled": True, "alert_hold_seconds": 5.0})
+        with patch("edge_vision.time.monotonic", side_effect=(0.0, 2.5, 5.0)):
+            for _ in range(3):
+                monitor._evaluate(
+                    None,
+                    self._pose_result(bad=False),
+                    640,
+                    480,
+                    config,
+                    posture_classifier=Model(),
+                )
+        self.assertEqual(len(pipe_client.alerts), 1)
+        self.assertEqual(pipe_client.alerts[0][0], "posture_warning")
+        self.assertEqual(pipe_client.alerts[0][2]["decision_source"], "custom_model")
+
+    def test_custom_model_cannot_suppress_rule_safety_warning(self):
+        class Model:
+            def observe(self, *_):
+                return {
+                    "predicted_class": "good",
+                    "posture_labels": [],
+                    "is_bad": False,
+                    "confidence": 0.99,
+                    "minimum_confidence": 0.65,
+                    "conclusive": True,
+                    "model_version": "1.0.0",
+                    "profile_subject_id": None,
+                }
+
+        pipe_client = self._PipeClient()
+        monitor = EdgeVisionMonitor(pipe_client)
+        config = normalize_vision_config({"enabled": True, "alert_hold_seconds": 5.0})
+        with patch("edge_vision.time.monotonic", side_effect=(0.0, 2.5, 5.0)):
+            for _ in range(3):
+                monitor._evaluate(
+                    None,
+                    self._pose_result(bad=True),
+                    640,
+                    480,
+                    config,
+                    posture_classifier=Model(),
+                )
+        self.assertEqual(len(pipe_client.alerts), 1)
+        self.assertEqual(pipe_client.alerts[0][2]["decision_source"], "rule_safety")
 
 
 if __name__ == "__main__":

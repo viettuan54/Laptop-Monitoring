@@ -51,7 +51,7 @@ from vision_metrics import (
 WINDOW_TITLE = "Child Monitor - Landmark Pilot Collection"
 LANDMARK_SCHEMA_VERSION = "1.1.0"
 COLLECTION_SESSION_VERSION = "1.0.0"
-QUALITY_GATE_VERSION = "1.0.0"
+QUALITY_GATE_VERSION = "2.0.0"
 DEFAULT_SAMPLE_RATE_HZ = 5.0
 LABEL_KEY_MAP = {
     ord("1"): "forward_head",
@@ -76,6 +76,8 @@ QUALITY_REASON_TEXT = {
         f"{DEFAULT_MAX_SHOULDER_TILT_DEGREES:.0f} deg"
     ),
     "shoulder_tilt_wrong_direction": "shoulder tilt direction does not match label",
+    "unlabelled_rule_violation": "select every posture issue visible in this frame",
+    "good_pose_violates_rules": "return to a neutral pose before labelling good",
 }
 
 
@@ -279,10 +281,6 @@ def evaluate_capture_quality(posture, selected_labels, *, transition=False):
 
     normalized = normalize_posture_annotation("visible", selected_labels)
     labels = set(normalized["posture_labels"])
-    if not labels:
-        # The operator remains the authority for a human-labelled good pose.
-        # Non-visible samples are also useful for detector-quality analysis.
-        return {"valid": True, "rejection_reasons": []}
     if posture.get("visibility_state") != "visible":
         return {
             "valid": False,
@@ -290,6 +288,19 @@ def evaluate_capture_quality(posture, selected_labels, *, transition=False):
         }
 
     reasons = []
+    # Every static training record must be observable for every supported
+    # label. Otherwise a missing hip would silently become a negative
+    # trunk_lean/slouching label in the multi-class baseline.
+    if posture.get("torso_angle_degrees") is None:
+        reasons.append("hips_not_visible")
+
+    observed_rule_labels = set(posture.get("posture_labels") or [])
+    unexpected_labels = observed_rule_labels - labels
+    if unexpected_labels:
+        reasons.append("unlabelled_rule_violation")
+    if not labels and posture.get("is_bad"):
+        reasons.append("good_pose_violates_rules")
+
     if "forward_head" in labels:
         neck_angle = posture.get("neck_angle_degrees")
         if neck_angle is None:
@@ -300,7 +311,8 @@ def evaluate_capture_quality(posture, selected_labels, *, transition=False):
     if "trunk_lean" in labels:
         torso_angle = posture.get("torso_angle_degrees")
         if torso_angle is None:
-            reasons.append("hips_not_visible")
+            if "hips_not_visible" not in reasons:
+                reasons.append("hips_not_visible")
         elif torso_angle <= DEFAULT_MAX_TORSO_ANGLE_DEGREES:
             reasons.append("trunk_lean_too_weak")
 

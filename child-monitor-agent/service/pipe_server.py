@@ -15,13 +15,14 @@ class PipeServer:
     PIPE_NAME = r"\\.\pipe\ChildMonitorAgentPipe"
     VISION_ALERT_TYPES = {"posture_warning", "eye_distance_warning"}
 
-    def __init__(self, offline_queue, enforcement_core):
+    def __init__(self, offline_queue, enforcement_core, vision_subject_id=None):
         self.offline_queue = offline_queue
         self.enforcement_core = enforcement_core
         self.running = False
         self.client_handle = None
         self.current_user_sid = None
         self.lock = threading.Lock()
+        self.vision_subject_id = vision_subject_id
 
     def create_security_attributes(self, user_sid=None):
         """Tạo Security Attributes cho Named Pipe để bảo mật SYSTEM, Admins và User SID cụ thể."""
@@ -221,6 +222,7 @@ class PipeServer:
         settings = self.enforcement_core.load_cached_settings()
         return {
             "enabled": settings.get("enable_webcam_monitoring") is True,
+            "subject_id": self.vision_subject_id,
             "camera_index": settings.get("vision_camera_index", 0),
             "sample_interval_seconds": settings.get("vision_sample_interval_seconds", 0.5),
             "alert_hold_seconds": settings.get("vision_alert_hold_seconds", 5.0),

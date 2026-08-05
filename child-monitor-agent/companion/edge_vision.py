@@ -2,6 +2,7 @@
 
 import logging
 import os
+import re
 import tempfile
 import threading
 import time
@@ -10,9 +11,17 @@ from collections import deque
 from distance_profile import (
     PROFILE_FILENAME,
     assert_profile_compatible,
+    camera_id,
+    expected_hash_from_sidecar,
     load_distance_profile,
 )
 from mediapipe_runtime import load_mediapipe
+from posture_model import (
+    PostureBaselineClassifier,
+    load_json_asset,
+    validate_posture_model,
+    validate_posture_profile,
+)
 from vision_metrics import (
     analyze_calibrated_eye_distance,
     analyze_posture,
@@ -46,8 +55,15 @@ def _bounded_number(value, default, minimum, maximum):
 
 def normalize_vision_config(config):
     source = config if isinstance(config, dict) else {}
+    subject_id = source.get("subject_id")
+    if not isinstance(subject_id, str) or not re.fullmatch(
+        r"subject-[A-Za-z0-9_-]+",
+        subject_id,
+    ):
+        subject_id = None
     return {
         "enabled": source.get("enabled") is True,
+        "subject_id": subject_id,
         "camera_index": int(_bounded_number(source.get("camera_index"), 0, 0, 8)),
         "sample_interval_seconds": _bounded_number(
             source.get("sample_interval_seconds"), 0.5, 0.2, 5.0
@@ -135,6 +151,14 @@ class EdgeVisionMonitor:
             self.models_dir,
             PROFILE_FILENAME,
         )
+        self.posture_model_path = os.path.join(
+            self.models_dir,
+            "posture_baseline_v1.json",
+        )
+        self.posture_profile_path = os.path.join(
+            self.models_dir,
+            "posture_profile_v1.json",
+        )
         self._config = DEFAULT_CONFIG.copy()
         self._config_lock = threading.Lock()
         self._stop_event = threading.Event()
@@ -196,8 +220,12 @@ class EdgeVisionMonitor:
             )
             return None, None
         try:
-            profile, profile_sha256 = load_distance_profile(
+            expected_hash = expected_hash_from_sidecar(
                 self.distance_profile_path
+            )
+            profile, profile_sha256 = load_distance_profile(
+                self.distance_profile_path,
+                expected_sha256=expected_hash,
             )
             assert_profile_compatible(
                 profile,
@@ -205,6 +233,7 @@ class EdgeVisionMonitor:
                 frame_width=width,
                 frame_height=height,
                 threshold_cm=config["min_eye_distance_cm"],
+                subject_id=config["subject_id"],
             )
         except (OSError, ValueError) as error:
             logging.warning(
@@ -227,6 +256,76 @@ class EdgeVisionMonitor:
         )
         return profile, profile_sha256
 
+    def _load_posture_classifier(self, config, width, height):
+        if not os.path.isfile(self.posture_model_path):
+            logging.info(
+                "Custom posture model is missing; geometry safety rules remain active."
+            )
+            return None
+        try:
+            model = load_json_asset(
+                self.posture_model_path,
+                validate_posture_model,
+            )
+            if model.get("deployment_approved") is not True:
+                raise ValueError("posture model did not pass its LOSO deployment gate")
+            if abs(
+                model["sample_interval_seconds"]
+                - config["sample_interval_seconds"]
+            ) > 0.01:
+                raise ValueError(
+                    "posture model sample interval does not match runtime policy"
+                )
+        except (OSError, ValueError) as error:
+            logging.warning(
+                "Custom posture model is invalid (%s); using geometry safety rules.",
+                error,
+            )
+            return None
+
+        profile = None
+        if os.path.isfile(self.posture_profile_path):
+            try:
+                candidate = load_json_asset(
+                    self.posture_profile_path,
+                    validate_posture_profile,
+                )
+                expected_camera_id = camera_id(
+                    config["camera_index"],
+                    width,
+                    height,
+                )
+                if candidate["camera_id"] != expected_camera_id:
+                    raise ValueError("posture profile camera_id does not match runtime")
+                if (
+                    candidate["frame_width"] != int(width)
+                    or candidate["frame_height"] != int(height)
+                ):
+                    raise ValueError("posture profile resolution does not match runtime")
+                if (
+                    config["subject_id"] is not None
+                    and candidate["subject_id"] != config["subject_id"]
+                ):
+                    raise ValueError("posture profile subject_id does not match runtime")
+                profile = candidate
+            except (OSError, ValueError) as error:
+                logging.warning(
+                    "Personal posture profile is unavailable (%s); "
+                    "using the population baseline.",
+                    error,
+                )
+
+        logging.info(
+            "Custom posture baseline v%s enabled%s.",
+            model["model_version"],
+            (
+                f" for {profile['subject_id']}"
+                if profile is not None
+                else " without a personal profile"
+            ),
+        )
+        return PostureBaselineClassifier(model, profile)
+
     def _evaluate(
         self,
         face_result,
@@ -236,6 +335,7 @@ class EdgeVisionMonitor:
         config,
         distance_profile=None,
         distance_profile_sha256=None,
+        posture_classifier=None,
     ):
         now = time.monotonic()
         face_landmarks = (
@@ -345,9 +445,30 @@ class EdgeVisionMonitor:
             max_torso_angle_degrees=config["max_torso_angle_degrees"],
             max_shoulder_tilt_degrees=config["max_shoulder_tilt_degrees"],
         )
+        model_posture = None
+        if posture_classifier is not None:
+            model_posture = posture_classifier.observe(
+                pose_landmarks,
+                width,
+                height,
+            )
+
+        # The rule layer is fail-safe: a model is allowed to add a warning,
+        # never to suppress a geometry warning.  Missing/low-confidence model
+        # output therefore falls back to the existing rule decision.
+        if posture["reliable"] and posture["is_bad"]:
+            posture_active = True
+            decision_source = "rule_safety"
+        elif model_posture and model_posture["conclusive"]:
+            posture_active = model_posture["is_bad"]
+            decision_source = "custom_model"
+        else:
+            posture_active = False if posture["reliable"] else None
+            decision_source = "rule_fallback"
+
         if self._gate.observe(
             "posture",
-            posture["is_bad"] if posture["reliable"] else None,
+            posture_active,
             now,
             config["alert_hold_seconds"],
             config["alert_cooldown_seconds"],
@@ -365,8 +486,16 @@ class EdgeVisionMonitor:
             message = "Tư thế ngồi chưa phù hợp"
             if details:
                 message += f" ({', '.join(details)})"
+            if decision_source == "custom_model" and model_posture:
+                message += (
+                    f" Phân loại {model_posture['predicted_class']} "
+                    f"({model_posture['confidence']:.0%})"
+                )
             message += "."
-            self._send_alert("posture_warning", message, posture)
+            alert_metrics = posture.copy()
+            alert_metrics["decision_source"] = decision_source
+            alert_metrics["custom_model"] = model_posture
+            self._send_alert("posture_warning", message, alert_metrics)
 
     def _run_enabled(self, config):
         if not os.path.isfile(self.face_model_path) or not os.path.isfile(self.pose_model_path):
@@ -428,6 +557,8 @@ class EdgeVisionMonitor:
         distance_profile = None
         distance_profile_sha256 = None
         distance_profile_checked = False
+        posture_classifier = None
+        posture_model_checked = False
         self._gate.reset("eye_distance")
         try:
             with (
@@ -473,6 +604,13 @@ class EdgeVisionMonitor:
                             )
                         )
                         distance_profile_checked = True
+                    if not posture_model_checked:
+                        posture_classifier = self._load_posture_classifier(
+                            current_config,
+                            frame.shape[1],
+                            frame.shape[0],
+                        )
+                        posture_model_checked = True
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                     timestamp_ms = int(now * 1000)
@@ -486,6 +624,7 @@ class EdgeVisionMonitor:
                         current_config,
                         distance_profile,
                         distance_profile_sha256,
+                        posture_classifier,
                     )
                     # No image/frame is written to disk or sent over IPC/network.
                     del image, rgb, frame

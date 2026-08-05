@@ -118,7 +118,20 @@ def validate_distance_profile(profile):
     return profile
 
 
-def load_distance_profile(path, expected_sha256=EXPECTED_PROFILE_SHA256):
+def expected_hash_from_sidecar(path):
+    """Load the installer-pinned hash for a per-device profile, if present."""
+    hash_path = f"{path}.sha256"
+    try:
+        with open(hash_path, "r", encoding="ascii") as stream:
+            value = stream.read().strip().lower()
+    except FileNotFoundError:
+        return None
+    if len(value) != 64 or any(char not in "0123456789abcdef" for char in value):
+        raise ValueError("distance profile hash sidecar is invalid")
+    return value
+
+
+def load_distance_profile(path, expected_sha256=None):
     """Read, hash-check, decode, and validate a profile file."""
     with open(path, "rb") as stream:
         payload = stream.read()
@@ -154,6 +167,7 @@ def assert_profile_compatible(
     frame_width,
     frame_height,
     threshold_cm,
+    subject_id=None,
     hostname=None,
 ):
     """Reject subject-camera profiles outside their calibrated runtime."""
@@ -167,6 +181,10 @@ def assert_profile_compatible(
     if profile["camera_id"] != expected_camera_id:
         mismatches.append(
             f"camera_id profile={profile['camera_id']} runtime={expected_camera_id}"
+        )
+    if subject_id is not None and profile["subject_id"] != subject_id:
+        mismatches.append(
+            f"subject_id profile={profile['subject_id']} runtime={subject_id}"
         )
     if profile["frame_width"] != int(frame_width):
         mismatches.append(

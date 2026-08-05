@@ -60,6 +60,32 @@ cấu hình), sau đó là mô hình pinhole với IPD mặc định 6,3 cm và 
 định 60°. Không xem kết quả fallback là phép đo có độ chính xác cao. Chuẩn đo,
 schema và công cụ tạo profile nằm trong `../ai-training`.
 
+Tư thế luôn có lớp an toàn rule-based. Nếu `posture_baseline_v1.json` đã được
+huấn luyện từ ít nhất ba subject và đạt đánh giá leave-one-subject-out, Agent
+chạy thêm classifier theo cửa sổ ba giây. Model chỉ được bổ sung cảnh báo, không
+được phép ghi đè một cảnh báo do luật hình học phát hiện. Model chưa đủ cửa sổ,
+confidence thấp, sai nhịp lấy mẫu hoặc không tương thích đều fallback về luật.
+
+`posture_profile_v1.json` là profile cá nhân theo subject-camera. Profile dịch
+tư thế trung tính cá nhân về baseline tốt của model trước inference; nếu camera
+hoặc độ phân giải không khớp thì Agent bỏ profile cá nhân nhưng vẫn giữ model và
+rule-based.
+
+Khi cài model/profile đã tạo từ `ai-training`, truyền rõ đường dẫn:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\installer\install.ps1 `
+  -ServerUrl "https://api.example.com" `
+  -DeviceSecret "00000000-0000-0000-0000-000000000000" `
+  -SubjectId "subject-001" `
+  -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
+  -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
+  -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
+```
+
+Nếu không truyền `-EyeDistanceProfilePath`, installer dùng profile demo đóng gói
+và runtime chỉ kích hoạt nó khi đúng camera/độ phân giải đã hiệu chỉnh.
+
 ## Xoay Device Secret hoặc đổi Backend
 
 ```powershell

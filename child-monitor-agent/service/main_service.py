@@ -95,7 +95,11 @@ class ChildMonitorService(ServiceBaseClass):
         self.offline_queue = OfflineQueue(api_client=self.api_client)
         self.enforcement_core = EnforcementCore(offline_queue=self.offline_queue)
         self.web_tracker = WebTracker(offline_queue=self.offline_queue)
-        self.pipe_server = PipeServer(offline_queue=self.offline_queue, enforcement_core=self.enforcement_core)
+        self.pipe_server = PipeServer(
+            offline_queue=self.offline_queue,
+            enforcement_core=self.enforcement_core,
+            vision_subject_id=self.api_client.vision_subject_id,
+        )
         
         # Truyền reference của pipe_server vào Watchdog để tái tạo DACL khi đổi session
         self.watchdog = Watchdog(pipe_server=self.pipe_server)

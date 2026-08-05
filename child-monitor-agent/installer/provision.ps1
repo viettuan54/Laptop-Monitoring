@@ -7,6 +7,7 @@ param(
     [string]$DeviceSecret,
 
     [string]$InstallDir = "$env:ProgramFiles\ChildMonitorAgent",
+    [string]$SubjectId,
     [switch]$SkipValidation
 )
 
@@ -32,6 +33,12 @@ $arguments = @(
 )
 if ($SkipValidation) {
     $arguments += "--skip-validation"
+}
+if ($SubjectId) {
+    if ($SubjectId -notmatch '^subject-[A-Za-z0-9_-]+$') {
+        throw "SubjectId must use the form subject-<safe-id>."
+    }
+    $arguments += @("--vision-subject-id", $SubjectId)
 }
 
 & $python @arguments

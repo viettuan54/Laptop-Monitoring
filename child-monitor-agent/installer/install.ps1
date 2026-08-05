@@ -9,7 +9,15 @@ param(
     [string]$InstallDir = "$env:ProgramFiles\ChildMonitorAgent",
     [string]$Wheelhouse,
 
-    [string]$PythonExe
+    [string]$PythonExe,
+
+    [string]$SubjectId,
+
+    [string]$EyeDistanceProfilePath,
+
+    [string]$PostureModelPath,
+
+    [string]$PostureProfilePath
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,7 +43,32 @@ function Invoke-Checked {
     }
 }
 
+function Copy-JsonAssetWithHash {
+    param(
+        [Parameter(Mandatory = $true)][string]$SourcePath,
+        [Parameter(Mandatory = $true)][string]$DestinationName
+    )
+    $resolvedSource = (Resolve-Path -LiteralPath $SourcePath -ErrorAction Stop).Path
+    if ([IO.Path]::GetExtension($resolvedSource) -ne ".json") {
+        throw "Edge AI asset must be a JSON file: $resolvedSource"
+    }
+    # Parse before installing so malformed personal profiles fail early.
+    Get-Content -Raw -LiteralPath $resolvedSource -Encoding UTF8 |
+        ConvertFrom-Json -ErrorAction Stop | Out-Null
+    $destination = Join-Path "$resolvedInstallDir\models" $DestinationName
+    Copy-Item -Force -LiteralPath $resolvedSource -Destination $destination
+    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $destination).Hash.ToLowerInvariant()
+    [IO.File]::WriteAllText("$destination.sha256", "$hash`n", [Text.Encoding]::ASCII)
+}
+
 Assert-Administrator
+
+if ($SubjectId -and $SubjectId -notmatch '^subject-[A-Za-z0-9_-]+$') {
+    throw "SubjectId must use the form subject-<safe-id>."
+}
+if (($EyeDistanceProfilePath -or $PostureProfilePath) -and -not $SubjectId) {
+    throw "SubjectId is required when installing a personal Edge AI profile."
+}
 
 $resolvedInstallDir = [IO.Path]::GetFullPath($InstallDir)
 $programFilesBase = [IO.Path]::GetFullPath($env:ProgramFiles).TrimEnd('\')
@@ -82,10 +115,6 @@ $requiredModels = @(
     @{
         Path = "$AgentRoot\models\pose_landmarker_lite.task"
         Sha256 = "59929E1D1EE95287735DDD833B19CF4AC46D29BC7AFDDBBF6753C459690D574A"
-    },
-    @{
-        Path = "$AgentRoot\models\eye_distance_profile_v3.json"
-        Sha256 = "815FB3E281EB68D55FC45D513F215A53676519161C5A5CEA20A5EA7FEEB4B472"
     }
 )
 foreach ($model in $requiredModels) {
@@ -98,6 +127,27 @@ foreach ($model in $requiredModels) {
         throw "Edge AI model integrity check failed: $modelPath"
     }
     Copy-Item -Force -LiteralPath $modelPath -Destination "$resolvedInstallDir\models\"
+}
+
+$resolvedEyeProfile = if ($EyeDistanceProfilePath) {
+    $EyeDistanceProfilePath
+} else {
+    Write-Warning (
+        "No -EyeDistanceProfilePath was supplied. Installing the bundled " +
+        "demo subject-camera profile; it will only activate on its matching camera."
+    )
+    "$AgentRoot\models\eye_distance_profile_v3.json"
+}
+Copy-JsonAssetWithHash $resolvedEyeProfile "eye_distance_profile_v3.json"
+
+if ($PostureModelPath) {
+    Copy-JsonAssetWithHash $PostureModelPath "posture_baseline_v1.json"
+}
+if ($PostureProfilePath) {
+    if (-not $PostureModelPath -and -not (Test-Path -LiteralPath "$resolvedInstallDir\models\posture_baseline_v1.json")) {
+        throw "PostureProfilePath requires a posture model to be installed."
+    }
+    Copy-JsonAssetWithHash $PostureProfilePath "posture_profile_v1.json"
 }
 
 $venvPython = "$resolvedInstallDir\venv\Scripts\python.exe"
@@ -137,7 +187,16 @@ if ($Wheelhouse) {
 
 $provisioner = "$resolvedInstallDir\installer\provision_agent.py"
 $configPath = "$resolvedInstallDir\config\local_config.json"
-Invoke-Checked $venvPython $provisioner "--server-url" $ServerUrl "--device-secret" $DeviceSecret "--config-path" $configPath
+$provisionArguments = @(
+    $provisioner,
+    "--server-url", $ServerUrl,
+    "--device-secret", $DeviceSecret,
+    "--config-path", $configPath
+)
+if ($SubjectId) {
+    $provisionArguments += @("--vision-subject-id", $SubjectId)
+}
+Invoke-Checked $venvPython @provisionArguments
 
 $existingService = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($existingService) {
