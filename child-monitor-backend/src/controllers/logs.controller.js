@@ -29,7 +29,7 @@ exports.logAppUsage = async (req, res) => {
   }
 
   // Validate category nếu có
-  const validCategories = ['learning', 'entertainment', 'unknown'];
+  const validCategories = ['learning', 'entertainment', 'browsers', 'unknown'];
   if (category && !validCategories.includes(category)) {
     return res.status(400).json({ message: `Invalid category. Allowed: ${validCategories.join(', ')}` });
   }
@@ -242,7 +242,7 @@ exports.logAppBatch = async (req, res) => {
     });
   }
 
-  const validCategories = ['learning', 'entertainment', 'unknown'];
+  const validCategories = ['learning', 'entertainment', 'browsers', 'unknown'];
   const validRecords = [];
   const skippedReasons = [];
 

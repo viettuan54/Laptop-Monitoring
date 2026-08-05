@@ -24,10 +24,16 @@ BEGIN
         CREATE TYPE user_role AS ENUM ('parent', 'admin');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'app_category') THEN
-        CREATE TYPE app_category AS ENUM ('learning', 'entertainment', 'unknown');
+        CREATE TYPE app_category AS ENUM ('learning', 'entertainment', 'browsers', 'unknown');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'web_category') THEN
         CREATE TYPE web_category AS ENUM ('education', 'entertainment', 'social', 'unsafe', 'unknown');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'classification_resource_type') THEN
+        CREATE TYPE classification_resource_type AS ENUM ('app', 'web');
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'access_action') THEN
+        CREATE TYPE access_action AS ENUM ('allow', 'block');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'behavior_type') THEN
         CREATE TYPE behavior_type AS ENUM ('learning', 'entertainment', 'risk', 'normal');
@@ -108,7 +114,24 @@ CREATE TABLE IF NOT EXISTS settings (
     enable_webcam_monitoring   BOOLEAN DEFAULT FALSE,
     enable_screenshot_review   BOOLEAN DEFAULT FALSE,
     enable_keylog              BOOLEAN DEFAULT FALSE,
+    enable_app_classification  BOOLEAN NOT NULL DEFAULT FALSE,
+    enable_web_classification  BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS child_category_policies (
+    child_id      INT NOT NULL REFERENCES children(child_id) ON DELETE CASCADE,
+    resource_type classification_resource_type NOT NULL,
+    category      VARCHAR(30) NOT NULL,
+    action        access_action NOT NULL DEFAULT 'allow',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (child_id, resource_type, category),
+    CONSTRAINT chk_child_category_policy_category CHECK (
+        (resource_type = 'app' AND category IN ('learning', 'entertainment', 'browsers', 'unknown'))
+        OR
+        (resource_type = 'web' AND category IN ('education', 'entertainment', 'social', 'unsafe', 'unknown'))
+    )
 );
 
 CREATE TABLE IF NOT EXISTS ai_analysis (
@@ -203,6 +226,8 @@ CREATE INDEX IF NOT EXISTS idx_push_tokens_user_active ON push_tokens(user_id, i
 CREATE INDEX IF NOT EXISTS idx_push_receipts_pending ON push_receipts(created_at) WHERE status = 'pending';
 CREATE INDEX IF NOT EXISTS idx_admin_face_challenges_user ON admin_face_challenges(user_id);
 CREATE INDEX IF NOT EXISTS idx_admin_face_challenges_expiry ON admin_face_challenges(expires_at);
+CREATE INDEX IF NOT EXISTS idx_child_category_policies_lookup
+    ON child_category_policies(child_id, resource_type, action);
 
 -- =========================================================
 -- 4. TRIGGER updated_at
@@ -227,6 +252,38 @@ BEFORE UPDATE ON push_tokens
 FOR EACH ROW
 EXECUTE FUNCTION set_updated_at();
 
+DROP TRIGGER IF EXISTS trg_child_category_policies_updated ON child_category_policies;
+CREATE TRIGGER trg_child_category_policies_updated
+BEFORE UPDATE ON child_category_policies
+FOR EACH ROW
+EXECUTE FUNCTION set_updated_at();
+
+CREATE OR REPLACE FUNCTION initialize_child_category_policies()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO child_category_policies(child_id, resource_type, category, action)
+    VALUES
+        (NEW.child_id, 'app', 'learning',      'allow'),
+        (NEW.child_id, 'app', 'entertainment', 'block'),
+        (NEW.child_id, 'app', 'browsers',      'allow'),
+        (NEW.child_id, 'app', 'unknown',       'allow'),
+        (NEW.child_id, 'web', 'education',     'allow'),
+        (NEW.child_id, 'web', 'entertainment', 'block'),
+        (NEW.child_id, 'web', 'social',        'block'),
+        (NEW.child_id, 'web', 'unsafe',        'block'),
+        (NEW.child_id, 'web', 'unknown',       'allow')
+    ON CONFLICT (child_id, resource_type, category) DO NOTHING;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_children_initialize_category_policies ON children;
+CREATE TRIGGER trg_children_initialize_category_policies
+AFTER INSERT ON children
+FOR EACH ROW
+EXECUTE FUNCTION initialize_child_category_policies();
+
 -- =========================================================
 -- 5. ROLES & PERMISSIONS
 -- =========================================================
@@ -248,6 +305,9 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON
     settings, ai_analysis, alerts, token_blacklist, refresh_tokens, website_blacklist,
     push_tokens
 TO app_backend;
+
+GRANT SELECT, INSERT, UPDATE ON child_category_policies TO app_backend;
+REVOKE DELETE ON child_category_policies FROM app_backend;
 
 REVOKE ALL ON push_receipts FROM app_backend;
 
@@ -275,6 +335,7 @@ ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_face_challenges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE child_category_policies ENABLE ROW LEVEL SECURITY;
 
 REVOKE ALL ON admin_face_challenges FROM app_backend;
 
@@ -306,6 +367,16 @@ USING (device_id IN (
 
 CREATE POLICY settings_owner ON settings
 USING (child_id IN (
+    SELECT child_id FROM children
+    WHERE user_id = current_setting('app.current_user_id', true)::INT
+));
+
+CREATE POLICY child_category_policies_owner ON child_category_policies
+USING (child_id IN (
+    SELECT child_id FROM children
+    WHERE user_id = current_setting('app.current_user_id', true)::INT
+))
+WITH CHECK (child_id IN (
     SELECT child_id FROM children
     WHERE user_id = current_setting('app.current_user_id', true)::INT
 ));

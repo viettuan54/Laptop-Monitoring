@@ -19,17 +19,19 @@ const TEST_ENV = {
   DB_BACKEND_PASSWORD: process.env.TEST_DB_BACKEND_PASSWORD,
 };
 const missing = Object.entries(TEST_ENV).filter(([, value]) => !value).map(([key]) => `TEST_${key}`);
+if (!process.env.TEST_REDIS_URL) missing.push('TEST_REDIS_URL');
 if (missing.length) {
-  throw new Error(`Integration tests require an isolated migrated database: ${missing.join(', ')}`);
+  throw new Error(`Integration tests require isolated PostgreSQL and Redis services: ${missing.join(', ')}`);
 }
 
 Object.assign(process.env, TEST_ENV, {
   NODE_ENV: 'test',
   JWT_SECRET: process.env.TEST_JWT_SECRET || crypto.randomBytes(32).toString('hex'),
+  REDIS_URL: process.env.TEST_REDIS_URL,
 });
 
-const app = require('../src/app');
 const { adminPool, backendPool, validateRlsConfiguration } = require('../src/config/db');
+const { initializeRedis, closeRedis } = require('../src/config/redis');
 
 const runId = `it_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
 const emails = [`${runId}_one@example.test`, `${runId}_two@example.test`];
@@ -41,6 +43,7 @@ let childOne;
 let childTwo;
 let deviceOne;
 let plaintextDeviceSecret;
+let app;
 
 async function request(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, options);
@@ -49,6 +52,9 @@ async function request(path, options = {}) {
 }
 
 before(async () => {
+  const redisReady = await initializeRedis();
+  assert.equal(redisReady, true, 'integration tests require a real Redis connection');
+  app = require('../src/app');
   await validateRlsConfiguration();
   const adminRoleResult = await adminPool.query(`
     SELECT rolname, rolsuper, rolbypassrls
@@ -99,7 +105,7 @@ before(async () => {
 after(async () => {
   if (server) await new Promise((resolve) => server.close(resolve));
   await adminPool.query('DELETE FROM users WHERE email = ANY($1::text[])', [emails]);
-  await Promise.all([adminPool.end(), backendPool.end()]);
+  await Promise.all([adminPool.end(), backendPool.end(), closeRedis()]);
 });
 
 test('auth login succeeds and a refresh token can only be rotated once concurrently', async () => {
@@ -148,8 +154,8 @@ test('batch retry is idempotent and acknowledges the same client record ID', asy
   const payload = {
     records: [{
       client_record_id: clientRecordId,
-      app_name: 'integration.exe',
-      category: 'unknown',
+      app_name: 'msedge.exe',
+      category: 'browsers',
       start_time: new Date().toISOString(),
       duration_seconds: 30,
     }],
@@ -174,8 +180,70 @@ test('batch retry is idempotent and acknowledges the same client record ID', asy
   assert.deepEqual(retry.body.accepted_client_record_ids, [clientRecordId]);
 
   const stored = await adminPool.query(
-    'SELECT COUNT(*)::int AS count FROM app_usage WHERE device_id = $1 AND client_record_id = $2',
+    `SELECT COUNT(*)::int AS count, MIN(category::text) AS category
+     FROM app_usage WHERE device_id = $1 AND client_record_id = $2`,
     [deviceOne, clientRecordId]
   );
   assert.equal(stored.rows[0].count, 1);
+  assert.equal(stored.rows[0].category, 'browsers');
+});
+
+test('classification policies have safe defaults and are isolated by RLS', async () => {
+  const defaults = await adminPool.query(
+    `SELECT resource_type::text AS resource_type, category, action::text AS action
+     FROM child_category_policies
+     WHERE child_id = $1
+     ORDER BY resource_type, category`,
+    [childOne]
+  );
+
+  assert.deepEqual(defaults.rows, [
+    { resource_type: 'app', category: 'browsers', action: 'allow' },
+    { resource_type: 'app', category: 'entertainment', action: 'block' },
+    { resource_type: 'app', category: 'learning', action: 'allow' },
+    { resource_type: 'app', category: 'unknown', action: 'allow' },
+    { resource_type: 'web', category: 'education', action: 'allow' },
+    { resource_type: 'web', category: 'entertainment', action: 'block' },
+    { resource_type: 'web', category: 'social', action: 'block' },
+    { resource_type: 'web', category: 'unknown', action: 'allow' },
+    { resource_type: 'web', category: 'unsafe', action: 'block' },
+  ]);
+
+  const settings = await adminPool.query(
+    `INSERT INTO settings(child_id)
+     VALUES ($1), ($2)
+     ON CONFLICT (child_id) DO UPDATE SET child_id = EXCLUDED.child_id
+     RETURNING child_id, enable_app_classification, enable_web_classification`,
+    [childOne, childTwo]
+  );
+  assert.equal(settings.rows.length, 2);
+  for (const row of settings.rows) {
+    assert.equal(row.enable_app_classification, false);
+    assert.equal(row.enable_web_classification, false);
+  }
+
+  const client = await backendPool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query("SELECT set_config('app.current_user_id', $1, true)", [String(userOne)]);
+    const visible = await client.query(
+      `SELECT DISTINCT child_id
+       FROM child_category_policies
+       WHERE child_id = ANY($1::int[])
+       ORDER BY child_id`,
+      [[childOne, childTwo]]
+    );
+    assert.deepEqual(visible.rows.map((row) => row.child_id), [childOne]);
+
+    const forbiddenUpdate = await client.query(
+      `UPDATE child_category_policies
+       SET action = 'allow'
+       WHERE child_id = $1 AND resource_type = 'web' AND category = 'unsafe'`,
+      [childTwo]
+    );
+    assert.equal(forbiddenUpdate.rowCount, 0);
+    await client.query('ROLLBACK');
+  } finally {
+    client.release();
+  }
 });

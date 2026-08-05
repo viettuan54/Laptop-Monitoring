@@ -48,6 +48,7 @@ const RLS_TABLES = [
   'settings', 'ai_analysis', 'alerts', 'audit_logs',
   'push_tokens', 'push_receipts',
   'admin_face_challenges',
+  'child_category_policies',
 ];
 
 async function validateRlsConfiguration() {

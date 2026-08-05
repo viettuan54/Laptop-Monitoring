@@ -35,7 +35,6 @@ if (process.env.NODE_ENV === 'production') {
   }
 }
 
-const app = require('./src/app');
 const { adminPool, backendPool, validateRlsConfiguration } = require('./src/config/db');
 const { cleanupExpiredTokens, cleanupExpiredRefreshTokens } = require('./src/utils/tokenBlacklist');
 const { initTransporter } = require('./src/utils/email');
@@ -58,6 +57,11 @@ if (!process.env.FRONTEND_URL) {
 async function bootstrap() {
   // Production không được mở HTTP port nếu Redis phân tán chưa sẵn sàng.
   await initializeRedis();
+
+  // Rate-limit-redis nạp Lua script ngay khi các middleware được khởi tạo.
+  // Chỉ nạp Express app sau khi Redis đã kết nối để tránh ClientClosedError
+  // và đảm bảo production thực sự dùng distributed store.
+  const app = require('./src/app');
 
   // Không mở cổng HTTP nếu role hoặc policy RLS đang cấu hình sai.
   await validateRlsConfiguration();
