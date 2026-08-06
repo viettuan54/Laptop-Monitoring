@@ -47,4 +47,6 @@ ai-training/datasets/pilot/
 ai-training/datasets/content/*.csv
 !ai-training/datasets/content/*.example.csv
 ai-training/datasets/content/reports/
+ai-training/datasets/content/raw-cache/
+ai-training/datasets/content/record_provenance.jsonl
 .runtime/

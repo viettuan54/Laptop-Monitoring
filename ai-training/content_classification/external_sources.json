@@ -1,0 +1,96 @@
+{
+  "config_version": "1.0.0",
+  "user_agent": "ChildMonitorDatasetCollector/1.0 (academic project; contact: local-project)",
+  "allowed_licenses": [
+    "CC0-1.0",
+    "project-curated-facts"
+  ],
+  "sources": [
+    {
+      "id": "reviewed-app-catalog",
+      "kind": "reviewed_json",
+      "path": "reviewed_app_catalog.json",
+      "license": "project-curated-facts",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "allow_for_training": true,
+      "label_method": "curated_rule"
+    },
+    {
+      "id": "wikidata-education",
+      "kind": "wikidata_sparql",
+      "endpoint": "https://query.wikidata.org/sparql",
+      "class_ids": [
+        "Q2385804",
+        "Q3918",
+        "Q38723"
+      ],
+      "class_name": "educational or higher-education institution",
+      "resource_type": "websites",
+      "label": "education",
+      "max_records": 150,
+      "fetch_multiplier": 4,
+      "license": "CC0-1.0",
+      "license_url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+      "allow_for_training": true,
+      "label_method": "source_class_mapping"
+    },
+    {
+      "id": "wikidata-entertainment",
+      "kind": "wikidata_sparql",
+      "endpoint": "https://query.wikidata.org/sparql",
+      "class_id": "Q59152282",
+      "class_name": "video streaming service",
+      "resource_type": "websites",
+      "label": "entertainment",
+      "max_records": 150,
+      "fetch_multiplier": 4,
+      "license": "CC0-1.0",
+      "license_url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+      "allow_for_training": true,
+      "label_method": "source_class_mapping"
+    },
+    {
+      "id": "wikidata-social",
+      "kind": "wikidata_sparql",
+      "endpoint": "https://query.wikidata.org/sparql",
+      "class_id": "Q3220391",
+      "class_name": "social networking service",
+      "resource_type": "websites",
+      "label": "social",
+      "max_records": 150,
+      "fetch_multiplier": 4,
+      "license": "CC0-1.0",
+      "license_url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+      "allow_for_training": true,
+      "label_method": "source_class_mapping"
+    },
+    {
+      "id": "phishdestroy-active",
+      "kind": "json_domain_list",
+      "url": "https://raw.githubusercontent.com/phishdestroy/destroylist/main/dns/active_domains.json",
+      "resource_type": "websites",
+      "label": "unsafe",
+      "title": "Active phishing domain",
+      "max_records": 150,
+      "license": "CC0-1.0",
+      "license_url": "https://phishdestroy.io/dataset",
+      "allow_for_training": true,
+      "label_method": "threat_feed"
+    },
+    {
+      "id": "wikidata-other-news",
+      "kind": "wikidata_sparql",
+      "endpoint": "https://query.wikidata.org/sparql",
+      "class_id": "Q28933155",
+      "class_name": "news aggregation website",
+      "resource_type": "websites",
+      "label": "unknown",
+      "max_records": 150,
+      "fetch_multiplier": 4,
+      "license": "CC0-1.0",
+      "license_url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+      "allow_for_training": true,
+      "label_method": "out_of_taxonomy_negative"
+    }
+  ]
+}

@@ -128,3 +128,89 @@ Tool trả exit code `0` khi đạt, `1` khi dataset có lỗi và `2` khi schem
 không thể đọc. Các lỗi được kiểm tra gồm header sai, nhãn ngoài taxonomy, dữ
 liệu quá độ dài, control character, app path, domain/URL không hợp lệ, key trùng,
 xung đột nhãn, thiếu lớp và mất cân bằng lớp từ `5:1` trở lên.
+
+### 7.1. Thu thập dữ liệu ngoài
+
+Nguồn và giấy phép được khai báo tại
+`content_classification/external_sources.json`. Pipeline mặc định dùng:
+
+- Wikidata (CC0) để lấy domain có loại thực thể rõ ràng cho `education`,
+  `entertainment`, `social` và nhóm âm `unknown`;
+- PhishDestroy active-domain feed (CC0) cho `unsafe`;
+- `reviewed_app_catalog.json` cho tên process Windows đã đối chiếu thủ công.
+
+Catalog ứng dụng phiên bản `1.1.0` có 100 process, tương ứng 25 mẫu cho mỗi nhãn
+`learning`, `entertainment`, `browsers` và `unknown`. Khi thêm bản ghi phải khai
+báo đủ `app_name`, `display_name`, `label`, `evidence_url` HTTPS và
+`label_basis`; collector sẽ từ chối toàn bộ catalog nếu thiếu căn cứ nguồn.
+
+Chạy từ thư mục gốc dự án:
+
+```powershell
+& .\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\content_classification\collect_external_dataset.py `
+  --max-per-source 150
+```
+
+Kết quả được ghi vào `ai-training/datasets/content/`:
+
+- `apps.csv`, `websites.csv`: dữ liệu sạch đã qua validator;
+- `review_queue.csv`: identifier lỗi, nhãn xung đột hoặc bản ghi cần duyệt;
+- `record_provenance.jsonl`: nguồn, giấy phép và phương pháp gán nhãn của từng
+  bản ghi;
+- `reports/collection.json`, `reports/validation.json`: checksum, số lượng và
+  trạng thái của lần chạy;
+- `raw-cache/`: phản hồi gốc để có thể chạy lại bằng tùy chọn `--offline`.
+
+Pipeline chỉ gán nhãn bằng ánh xạ lớp đã khai báo hoặc catalog đã duyệt. Không
+dùng Gemini và cũng không dùng chính model đang train để sinh nhãn train. Domain
+trùng nhưng có nhãn khác nhau bị đưa toàn bộ vào `review_queue.csv`, không tự
+chọn một nhãn. Không đưa URL đầy đủ, query string, credential hoặc địa chỉ IP
+vào CSV train.
+
+Sau khi người duyệt sửa catalog/cấu hình nguồn, chạy lại collector thay vì sửa
+trực tiếp file CSV sinh ra. Dùng cache khi không có mạng:
+
+```powershell
+& .\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\content_classification\collect_external_dataset.py `
+  --offline
+```
+
+### 7.2. Train và đánh giá hai model
+
+Hai model độc lập dùng Multinomial Naive Bayes trên character n-gram:
+
+- app model chỉ nhận `app_name`;
+- web model chỉ nhận `domain`;
+- `display_name` và `title` không được dùng làm feature để tránh train-serving
+  skew vì Agent không gửi các trường này khi inference.
+
+Cấu hình feature, hyperparameter search và deployment gate nằm trong
+`content_classification/content_model_training_config.json`. Chạy:
+
+```powershell
+& .\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\training\train_content_models.py
+```
+
+Pipeline thực hiện các bước sau:
+
+1. chạy lại validator cho cả hai CSV;
+2. chia `60%/20%/20%` thành train/validation/test bằng seed cố định;
+3. gom các subdomain cùng họ vào đúng một split để giảm rò rỉ;
+4. chọn n-gram/alpha và hiệu chỉnh temperature chỉ trên validation;
+5. mở test sau khi đã chọn cấu hình, tính accuracy, macro-F1, confusion matrix,
+   calibration, coverage và accuracy tại `confidence >= 0.70`;
+6. đặt `deployment_approved` theo toàn bộ gate, không tự hạ gate để model đạt.
+
+Kết quả nằm tại `ai-training/artifacts/content_classification/`:
+
+- `app_content_model_v1.json`;
+- `web_content_model_v1.json`;
+- `evaluation_report.json`.
+
+Các artifact được `.gitignore`. Không chép model vào Agent khi
+`deployment_approved = false`; lúc đó tiếp tục thu thập/gán nhãn dữ liệu và
+train lại. Model confidence dưới `0.70` luôn dành cho nhánh Gemini fallback ở
+giai đoạn tích hợp inference.

@@ -1,0 +1,60 @@
+{
+  "config_version": "1.0.0",
+  "random_seed": "child-monitor-content-v1",
+  "split_ratios": {
+    "train": 0.6,
+    "validation": 0.2,
+    "test": 0.2
+  },
+  "resources": {
+    "apps": {
+      "feature_config": {
+        "minimum_n": 2,
+        "maximum_n": 5
+      },
+      "alpha": 1.0,
+      "search_grid": {
+        "ngram_ranges": [
+          [2, 3],
+          [2, 4],
+          [2, 5],
+          [3, 5]
+        ],
+        "alphas": [0.1, 0.3, 1.0, 3.0]
+      },
+      "acceptance": {
+        "minimum_total_samples_per_class": 20,
+        "minimum_test_samples_per_class": 5,
+        "minimum_macro_f1": 0.65,
+        "minimum_conclusive_accuracy": 0.8,
+        "minimum_conclusive_coverage": 0.4,
+        "maximum_high_confidence_error_rate": 0.1
+      }
+    },
+    "websites": {
+      "feature_config": {
+        "minimum_n": 3,
+        "maximum_n": 5
+      },
+      "alpha": 1.0,
+      "search_grid": {
+        "ngram_ranges": [
+          [2, 3],
+          [2, 4],
+          [2, 5],
+          [3, 4],
+          [3, 5]
+        ],
+        "alphas": [0.1, 0.2, 0.3, 0.5, 1.0, 2.0]
+      },
+      "acceptance": {
+        "minimum_total_samples_per_class": 30,
+        "minimum_test_samples_per_class": 5,
+        "minimum_macro_f1": 0.65,
+        "minimum_conclusive_accuracy": 0.8,
+        "minimum_conclusive_coverage": 0.4,
+        "maximum_high_confidence_error_rate": 0.1
+      }
+    }
+  }
+}

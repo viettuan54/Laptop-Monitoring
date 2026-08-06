@@ -15,6 +15,19 @@ Phân loại nội dung ứng dụng/website dùng taxonomy riêng tại
 buộc chạy `content_classification/validate_dataset.py`; chỉ dataset có exit code
 `0` mới được chuyển sang bước chia train/validation/test.
 
+Thu thập dữ liệu ngoài bằng `content_classification/collect_external_dataset.py`.
+Công cụ tải các nguồn CC0 đã cho phép, chuẩn hóa domain/tên process, cách ly bản
+ghi xung đột vào hàng đợi duyệt, lưu provenance rồi tự chạy validator. Chi tiết
+và lệnh PowerShell nằm trong `datasets/README.md`.
+
+Catalog ứng dụng phiên bản `1.1.0` hiện có 100 process, cân bằng 25 mẫu cho mỗi
+nhãn `learning`, `entertainment`, `browsers` và `unknown`. Mỗi mẫu phải có nguồn
+HTTPS và căn cứ gán nhãn trước khi collector chấp nhận.
+
+Train và đánh giá hai model phân loại bằng
+`training/train_content_models.py`. Artifact là JSON thuần có thể kiểm tra trước
+khi Agent nạp; model không đạt gate luôn có `deployment_approved = false`.
+
 Không lưu ảnh, tên, email, token, device secret hoặc face embedding nhận dạng
 trong dataset mặc định.
 

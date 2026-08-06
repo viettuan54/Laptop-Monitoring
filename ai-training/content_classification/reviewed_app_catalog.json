@@ -1,0 +1,706 @@
+{
+  "catalog_version": "1.1.0",
+  "reviewed_at": "2026-08-06",
+  "records": [
+    {
+      "app_name": "winword.exe",
+      "display_name": "Microsoft Word",
+      "label": "learning",
+      "evidence_url": "https://learn.microsoft.com/en-us/previous-versions/office/troubleshoot/office-developer/use-visual-c-automate-run-program-instance",
+      "label_basis": "Productivity and document-authoring tool used for learning"
+    },
+    {
+      "app_name": "excel.exe",
+      "display_name": "Microsoft Excel",
+      "label": "learning",
+      "evidence_url": "https://learn.microsoft.com/en-us/previous-versions/office/troubleshoot/office-developer/use-visual-c-automate-run-program-instance",
+      "label_basis": "Productivity and spreadsheet tool used for learning"
+    },
+    {
+      "app_name": "powerpnt.exe",
+      "display_name": "Microsoft PowerPoint",
+      "label": "learning",
+      "evidence_url": "https://learn.microsoft.com/en-us/previous-versions/office/troubleshoot/office-developer/use-visual-c-automate-run-program-instance",
+      "label_basis": "Presentation-authoring tool used for learning"
+    },
+    {
+      "app_name": "code.exe",
+      "display_name": "Visual Studio Code",
+      "label": "learning",
+      "evidence_url": "https://code.visualstudio.com/docs/setup/windows",
+      "label_basis": "Programming and learning tool"
+    },
+    {
+      "app_name": "steam.exe",
+      "display_name": "Steam",
+      "label": "entertainment",
+      "evidence_url": "https://store.steampowered.com/about/",
+      "label_basis": "Game distribution and play platform"
+    },
+    {
+      "app_name": "spotify.exe",
+      "display_name": "Spotify",
+      "label": "entertainment",
+      "evidence_url": "https://support.spotify.com/article/get-the-app/",
+      "label_basis": "Music streaming application"
+    },
+    {
+      "app_name": "vlc.exe",
+      "display_name": "VLC media player",
+      "label": "entertainment",
+      "evidence_url": "https://www.videolan.org/vlc/",
+      "label_basis": "Audio and video player"
+    },
+    {
+      "app_name": "robloxplayerbeta.exe",
+      "display_name": "Roblox Player",
+      "label": "entertainment",
+      "evidence_url": "https://en.help.roblox.com/hc/en-us/articles/204473560-How-to-Install-and-Play-Roblox",
+      "label_basis": "Game player"
+    },
+    {
+      "app_name": "chrome.exe",
+      "display_name": "Google Chrome",
+      "label": "browsers",
+      "evidence_url": "https://support.google.com/chrome/answer/142063/fix-chrome-if-it-crashes-or-won-t-open-computer?hl=en-GB",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "msedge.exe",
+      "display_name": "Microsoft Edge",
+      "label": "browsers",
+      "evidence_url": "https://learn.microsoft.com/en-us/microsoft-edge/web-platform/devtools-mcp-server",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "firefox.exe",
+      "display_name": "Mozilla Firefox",
+      "label": "browsers",
+      "evidence_url": "https://support.mozilla.org/kb/custom-installation-firefox-on-windows",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "explorer.exe",
+      "display_name": "Windows Explorer",
+      "label": "browsers",
+      "evidence_url": "https://learn.microsoft.com/en-us/windows/win32/shell/developing-with-windows-explorer",
+      "label_basis": "Project policy explicitly groups Windows Explorer with browsers"
+    },
+    {
+      "app_name": "notepad.exe",
+      "display_name": "Windows Notepad",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/windows-insider/release-notes/apps/notepad",
+      "label_basis": "Text utility outside the three named app categories"
+    },
+    {
+      "app_name": "calc.exe",
+      "display_name": "Windows Calculator",
+      "label": "unknown",
+      "evidence_url": "https://apps.microsoft.com/detail/9wzdncrfhvn5",
+      "label_basis": "Utility outside the three named app categories"
+    },
+    {
+      "app_name": "taskmgr.exe",
+      "display_name": "Windows Task Manager",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/support-tools/support-tools-task-manager",
+      "label_basis": "System utility outside the three named app categories"
+    },
+    {
+      "app_name": "7zfm.exe",
+      "display_name": "7-Zip File Manager",
+      "label": "unknown",
+      "evidence_url": "https://www.7-zip.org/",
+      "label_basis": "Archive utility outside the three named app categories"
+    },
+    {
+      "app_name": "onenote.exe",
+      "display_name": "Microsoft OneNote",
+      "label": "learning",
+      "evidence_url": "https://www.onenote.com/download",
+      "label_basis": "Note-taking and study application"
+    },
+    {
+      "app_name": "msaccess.exe",
+      "display_name": "Microsoft Access",
+      "label": "learning",
+      "evidence_url": "https://www.microsoft.com/en-us/microsoft-365/access",
+      "label_basis": "Database authoring and learning tool"
+    },
+    {
+      "app_name": "devenv.exe",
+      "display_name": "Microsoft Visual Studio",
+      "label": "learning",
+      "evidence_url": "https://visualstudio.microsoft.com/vs/",
+      "label_basis": "Programming and software-development learning tool"
+    },
+    {
+      "app_name": "pycharm64.exe",
+      "display_name": "JetBrains PyCharm",
+      "label": "learning",
+      "evidence_url": "https://www.jetbrains.com/pycharm/download/",
+      "label_basis": "Python programming and learning tool"
+    },
+    {
+      "app_name": "idea64.exe",
+      "display_name": "IntelliJ IDEA",
+      "label": "learning",
+      "evidence_url": "https://www.jetbrains.com/idea/download/",
+      "label_basis": "Programming and learning tool"
+    },
+    {
+      "app_name": "eclipse.exe",
+      "display_name": "Eclipse IDE",
+      "label": "learning",
+      "evidence_url": "https://www.eclipse.org/downloads/",
+      "label_basis": "Programming and learning tool"
+    },
+    {
+      "app_name": "netbeans64.exe",
+      "display_name": "Apache NetBeans",
+      "label": "learning",
+      "evidence_url": "https://netbeans.apache.org/front/main/download/",
+      "label_basis": "Programming and learning tool"
+    },
+    {
+      "app_name": "anki.exe",
+      "display_name": "Anki",
+      "label": "learning",
+      "evidence_url": "https://apps.ankiweb.net/",
+      "label_basis": "Flashcard and spaced-repetition study application"
+    },
+    {
+      "app_name": "zotero.exe",
+      "display_name": "Zotero",
+      "label": "learning",
+      "evidence_url": "https://www.zotero.org/download/",
+      "label_basis": "Research and citation-management application"
+    },
+    {
+      "app_name": "calibre.exe",
+      "display_name": "calibre",
+      "label": "learning",
+      "evidence_url": "https://calibre-ebook.com/download_windows",
+      "label_basis": "E-book reading and library application"
+    },
+    {
+      "app_name": "geogebra.exe",
+      "display_name": "GeoGebra",
+      "label": "learning",
+      "evidence_url": "https://www.geogebra.org/download",
+      "label_basis": "Mathematics education application"
+    },
+    {
+      "app_name": "freecad.exe",
+      "display_name": "FreeCAD",
+      "label": "learning",
+      "evidence_url": "https://www.freecad.org/downloads.php",
+      "label_basis": "Engineering design and learning application"
+    },
+    {
+      "app_name": "blender.exe",
+      "display_name": "Blender",
+      "label": "learning",
+      "evidence_url": "https://www.blender.org/download/",
+      "label_basis": "3D creation and digital-skills learning application"
+    },
+    {
+      "app_name": "rstudio.exe",
+      "display_name": "RStudio Desktop",
+      "label": "learning",
+      "evidence_url": "https://posit.co/download/rstudio-desktop/",
+      "label_basis": "Statistics programming and learning tool"
+    },
+    {
+      "app_name": "matlab.exe",
+      "display_name": "MATLAB",
+      "label": "learning",
+      "evidence_url": "https://www.mathworks.com/products/matlab.html",
+      "label_basis": "Mathematics and engineering learning application"
+    },
+    {
+      "app_name": "octave-gui.exe",
+      "display_name": "GNU Octave",
+      "label": "learning",
+      "evidence_url": "https://octave.org/download",
+      "label_basis": "Numerical computing and learning application"
+    },
+    {
+      "app_name": "lyx.exe",
+      "display_name": "LyX",
+      "label": "learning",
+      "evidence_url": "https://www.lyx.org/Download",
+      "label_basis": "Academic document-authoring application"
+    },
+    {
+      "app_name": "texstudio.exe",
+      "display_name": "TeXstudio",
+      "label": "learning",
+      "evidence_url": "https://www.texstudio.org/",
+      "label_basis": "LaTeX and academic writing application"
+    },
+    {
+      "app_name": "obsidian.exe",
+      "display_name": "Obsidian",
+      "label": "learning",
+      "evidence_url": "https://obsidian.md/download",
+      "label_basis": "Knowledge-management and study application"
+    },
+    {
+      "app_name": "draw.io.exe",
+      "display_name": "draw.io Desktop",
+      "label": "learning",
+      "evidence_url": "https://github.com/jgraph/drawio-desktop/releases",
+      "label_basis": "Diagram authoring and learning application"
+    },
+    {
+      "app_name": "scratch 3.exe",
+      "display_name": "Scratch Desktop",
+      "label": "learning",
+      "evidence_url": "https://scratch.mit.edu/download",
+      "label_basis": "Educational programming application"
+    },
+    {
+      "app_name": "epicgameslauncher.exe",
+      "display_name": "Epic Games Launcher",
+      "label": "entertainment",
+      "evidence_url": "https://store.epicgames.com/en-US/download",
+      "label_basis": "Video-game distribution and launch application"
+    },
+    {
+      "app_name": "galaxyclient.exe",
+      "display_name": "GOG GALAXY",
+      "label": "entertainment",
+      "evidence_url": "https://www.gog.com/galaxy",
+      "label_basis": "Video-game library and launch application"
+    },
+    {
+      "app_name": "eadesktop.exe",
+      "display_name": "EA app",
+      "label": "entertainment",
+      "evidence_url": "https://www.ea.com/ea-app",
+      "label_basis": "Video-game distribution and launch application"
+    },
+    {
+      "app_name": "ubisoftconnect.exe",
+      "display_name": "Ubisoft Connect",
+      "label": "entertainment",
+      "evidence_url": "https://ubisoftconnect.com/",
+      "label_basis": "Video-game distribution and launch application"
+    },
+    {
+      "app_name": "battle.net.exe",
+      "display_name": "Battle.net",
+      "label": "entertainment",
+      "evidence_url": "https://download.battle.net/",
+      "label_basis": "Video-game distribution and launch application"
+    },
+    {
+      "app_name": "riotclientservices.exe",
+      "display_name": "Riot Client",
+      "label": "entertainment",
+      "evidence_url": "https://www.riotgames.com/",
+      "label_basis": "Video-game launch application"
+    },
+    {
+      "app_name": "leagueclient.exe",
+      "display_name": "League of Legends Client",
+      "label": "entertainment",
+      "evidence_url": "https://www.leagueoflegends.com/",
+      "label_basis": "Video-game client"
+    },
+    {
+      "app_name": "minecraftlauncher.exe",
+      "display_name": "Minecraft Launcher",
+      "label": "entertainment",
+      "evidence_url": "https://www.minecraft.net/en-us/download",
+      "label_basis": "Video-game launch application"
+    },
+    {
+      "app_name": "rockstargameslauncher.exe",
+      "display_name": "Rockstar Games Launcher",
+      "label": "entertainment",
+      "evidence_url": "https://socialclub.rockstargames.com/rockstar-games-launcher",
+      "label_basis": "Video-game distribution and launch application"
+    },
+    {
+      "app_name": "playnite.desktopapp.exe",
+      "display_name": "Playnite",
+      "label": "entertainment",
+      "evidence_url": "https://github.com/JosefNemec/Playnite",
+      "label_basis": "Video-game library and launch application"
+    },
+    {
+      "app_name": "hd-player.exe",
+      "display_name": "BlueStacks App Player",
+      "label": "entertainment",
+      "evidence_url": "https://www.bluestacks.com/",
+      "label_basis": "Android game and application player"
+    },
+    {
+      "app_name": "tidal.exe",
+      "display_name": "TIDAL",
+      "label": "entertainment",
+      "evidence_url": "https://tidal.com/download",
+      "label_basis": "Music streaming application"
+    },
+    {
+      "app_name": "itunes.exe",
+      "display_name": "Apple iTunes",
+      "label": "entertainment",
+      "evidence_url": "https://support.apple.com/downloads/itunes",
+      "label_basis": "Music and media playback application"
+    },
+    {
+      "app_name": "wmplayer.exe",
+      "display_name": "Windows Media Player Legacy",
+      "label": "entertainment",
+      "evidence_url": "https://support.microsoft.com/windows/windows-media-player",
+      "label_basis": "Audio and video playback application"
+    },
+    {
+      "app_name": "potplayermini64.exe",
+      "display_name": "PotPlayer",
+      "label": "entertainment",
+      "evidence_url": "https://potplayer.daum.net/",
+      "label_basis": "Audio and video playback application"
+    },
+    {
+      "app_name": "mpv.exe",
+      "display_name": "mpv",
+      "label": "entertainment",
+      "evidence_url": "https://mpv.io/installation/",
+      "label_basis": "Audio and video playback application"
+    },
+    {
+      "app_name": "foobar2000.exe",
+      "display_name": "foobar2000",
+      "label": "entertainment",
+      "evidence_url": "https://www.foobar2000.org/download",
+      "label_basis": "Music playback application"
+    },
+    {
+      "app_name": "winamp.exe",
+      "display_name": "Winamp",
+      "label": "entertainment",
+      "evidence_url": "https://www.winamp.com/downloads/",
+      "label_basis": "Music playback application"
+    },
+    {
+      "app_name": "plex.exe",
+      "display_name": "Plex Desktop",
+      "label": "entertainment",
+      "evidence_url": "https://www.plex.tv/media-server-downloads/",
+      "label_basis": "Media streaming and playback application"
+    },
+    {
+      "app_name": "kodi.exe",
+      "display_name": "Kodi",
+      "label": "entertainment",
+      "evidence_url": "https://kodi.tv/download/windows/",
+      "label_basis": "Media-center and playback application"
+    },
+    {
+      "app_name": "musicbee.exe",
+      "display_name": "MusicBee",
+      "label": "entertainment",
+      "evidence_url": "https://www.getmusicbee.com/downloads/",
+      "label_basis": "Music library and playback application"
+    },
+    {
+      "app_name": "brave.exe",
+      "display_name": "Brave Browser",
+      "label": "browsers",
+      "evidence_url": "https://brave.com/download/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "opera.exe",
+      "display_name": "Opera",
+      "label": "browsers",
+      "evidence_url": "https://www.opera.com/download",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "vivaldi.exe",
+      "display_name": "Vivaldi",
+      "label": "browsers",
+      "evidence_url": "https://vivaldi.com/download/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "iexplore.exe",
+      "display_name": "Internet Explorer",
+      "label": "browsers",
+      "evidence_url": "https://learn.microsoft.com/en-us/lifecycle/faq/internet-explorer-microsoft-edge",
+      "label_basis": "Legacy web browser executable retained as a labelled alias"
+    },
+    {
+      "app_name": "chromium.exe",
+      "display_name": "Chromium",
+      "label": "browsers",
+      "evidence_url": "https://www.chromium.org/getting-involved/download-chromium/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "librewolf.exe",
+      "display_name": "LibreWolf",
+      "label": "browsers",
+      "evidence_url": "https://librewolf.net/installation/windows/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "waterfox.exe",
+      "display_name": "Waterfox",
+      "label": "browsers",
+      "evidence_url": "https://www.waterfox.net/download/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "floorp.exe",
+      "display_name": "Floorp",
+      "label": "browsers",
+      "evidence_url": "https://floorp.app/en/download/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "palemoon.exe",
+      "display_name": "Pale Moon",
+      "label": "browsers",
+      "evidence_url": "https://www.palemoon.org/download.shtml",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "basilisk.exe",
+      "display_name": "Basilisk",
+      "label": "browsers",
+      "evidence_url": "https://www.basilisk-browser.org/download.shtml",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "thorium.exe",
+      "display_name": "Thorium Browser",
+      "label": "browsers",
+      "evidence_url": "https://thorium.rocks/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "duckduckgo.exe",
+      "display_name": "DuckDuckGo Browser",
+      "label": "browsers",
+      "evidence_url": "https://duckduckgo.com/windows",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "arc.exe",
+      "display_name": "Arc Browser",
+      "label": "browsers",
+      "evidence_url": "https://arc.net/download",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "maxthon.exe",
+      "display_name": "Maxthon",
+      "label": "browsers",
+      "evidence_url": "https://www.maxthon.com/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "whale.exe",
+      "display_name": "Naver Whale",
+      "label": "browsers",
+      "evidence_url": "https://whale.naver.com/en/download/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "seamonkey.exe",
+      "display_name": "SeaMonkey",
+      "label": "browsers",
+      "evidence_url": "https://www.seamonkey-project.org/releases/",
+      "label_basis": "Internet suite and web browser executable"
+    },
+    {
+      "app_name": "qutebrowser.exe",
+      "display_name": "qutebrowser",
+      "label": "browsers",
+      "evidence_url": "https://qutebrowser.org/doc/install.html#windows",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "falkon.exe",
+      "display_name": "Falkon",
+      "label": "browsers",
+      "evidence_url": "https://apps.kde.org/falkon/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "midori.exe",
+      "display_name": "Midori Browser",
+      "label": "browsers",
+      "evidence_url": "https://astian.org/midori-browser/",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "sidekick.exe",
+      "display_name": "Sidekick Browser",
+      "label": "browsers",
+      "evidence_url": "https://www.meetsidekick.com/download",
+      "label_basis": "Web browser executable"
+    },
+    {
+      "app_name": "wavebox.exe",
+      "display_name": "Wavebox",
+      "label": "browsers",
+      "evidence_url": "https://wavebox.io/download",
+      "label_basis": "Web workspace browser executable"
+    },
+    {
+      "app_name": "cmd.exe",
+      "display_name": "Windows Command Prompt",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/cmd",
+      "label_basis": "System shell outside the three named app categories"
+    },
+    {
+      "app_name": "powershell.exe",
+      "display_name": "Windows PowerShell",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows",
+      "label_basis": "System shell outside the three named app categories"
+    },
+    {
+      "app_name": "pwsh.exe",
+      "display_name": "PowerShell",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows",
+      "label_basis": "System shell outside the three named app categories"
+    },
+    {
+      "app_name": "conhost.exe",
+      "display_name": "Windows Console Host",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/windows/console/definitions",
+      "label_basis": "System component outside the three named app categories"
+    },
+    {
+      "app_name": "regedit.exe",
+      "display_name": "Registry Editor",
+      "label": "unknown",
+      "evidence_url": "https://support.microsoft.com/windows/how-to-open-registry-editor-in-windows-10-2d4d360f-0f95-217d-5bbd-6b1b7f8f2e65",
+      "label_basis": "System administration utility outside the three named app categories"
+    },
+    {
+      "app_name": "mspaint.exe",
+      "display_name": "Microsoft Paint",
+      "label": "unknown",
+      "evidence_url": "https://apps.microsoft.com/detail/9pcfs5b6t72h",
+      "label_basis": "Graphics utility outside the three named app categories"
+    },
+    {
+      "app_name": "snippingtool.exe",
+      "display_name": "Windows Snipping Tool",
+      "label": "unknown",
+      "evidence_url": "https://apps.microsoft.com/detail/9mz95kl8mr0l",
+      "label_basis": "Screenshot utility outside the three named app categories"
+    },
+    {
+      "app_name": "control.exe",
+      "display_name": "Windows Control Panel",
+      "label": "unknown",
+      "evidence_url": "https://support.microsoft.com/windows/open-control-panel-in-windows",
+      "label_basis": "System settings utility outside the three named app categories"
+    },
+    {
+      "app_name": "mmc.exe",
+      "display_name": "Microsoft Management Console",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/troubleshoot/windows-server/system-management-components/what-is-microsoft-management-console",
+      "label_basis": "System administration utility outside the three named app categories"
+    },
+    {
+      "app_name": "windowsterminal.exe",
+      "display_name": "Windows Terminal",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/windows/terminal/install",
+      "label_basis": "Terminal utility outside the three named app categories"
+    },
+    {
+      "app_name": "procexp64.exe",
+      "display_name": "Process Explorer",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/sysinternals/downloads/process-explorer",
+      "label_basis": "System diagnostic utility outside the three named app categories"
+    },
+    {
+      "app_name": "procmon64.exe",
+      "display_name": "Process Monitor",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/sysinternals/downloads/procmon",
+      "label_basis": "System diagnostic utility outside the three named app categories"
+    },
+    {
+      "app_name": "autoruns64.exe",
+      "display_name": "Autoruns",
+      "label": "unknown",
+      "evidence_url": "https://learn.microsoft.com/en-us/sysinternals/downloads/autoruns",
+      "label_basis": "System diagnostic utility outside the three named app categories"
+    },
+    {
+      "app_name": "winrar.exe",
+      "display_name": "WinRAR",
+      "label": "unknown",
+      "evidence_url": "https://www.rarlab.com/download.htm",
+      "label_basis": "Archive utility outside the three named app categories"
+    },
+    {
+      "app_name": "everything.exe",
+      "display_name": "Everything",
+      "label": "unknown",
+      "evidence_url": "https://www.voidtools.com/downloads/",
+      "label_basis": "File search utility outside the three named app categories"
+    },
+    {
+      "app_name": "keepass.exe",
+      "display_name": "KeePass",
+      "label": "unknown",
+      "evidence_url": "https://keepass.info/download.html",
+      "label_basis": "Password-management utility outside the three named app categories"
+    },
+    {
+      "app_name": "keepassxc.exe",
+      "display_name": "KeePassXC",
+      "label": "unknown",
+      "evidence_url": "https://keepassxc.org/download/",
+      "label_basis": "Password-management utility outside the three named app categories"
+    },
+    {
+      "app_name": "filezilla.exe",
+      "display_name": "FileZilla Client",
+      "label": "unknown",
+      "evidence_url": "https://filezilla-project.org/download.php?type=client",
+      "label_basis": "File-transfer utility outside the three named app categories"
+    },
+    {
+      "app_name": "putty.exe",
+      "display_name": "PuTTY",
+      "label": "unknown",
+      "evidence_url": "https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html",
+      "label_basis": "Remote-access utility outside the three named app categories"
+    },
+    {
+      "app_name": "winscp.exe",
+      "display_name": "WinSCP",
+      "label": "unknown",
+      "evidence_url": "https://winscp.net/eng/download.php",
+      "label_basis": "File-transfer utility outside the three named app categories"
+    },
+    {
+      "app_name": "docker desktop.exe",
+      "display_name": "Docker Desktop",
+      "label": "unknown",
+      "evidence_url": "https://docs.docker.com/desktop/setup/install/windows-install/",
+      "label_basis": "Container-development utility outside the three named app categories"
+    }
+  ]
+}
