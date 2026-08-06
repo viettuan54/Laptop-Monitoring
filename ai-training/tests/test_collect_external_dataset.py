@@ -258,7 +258,7 @@ class ExternalDatasetCollectionTest(unittest.TestCase):
             with self.assertRaisesRegex(CollectionError, "safe HTTPS"):
                 run_collection(config_path=config, output_dir=root / "output")
 
-    def test_project_app_catalog_has_at_least_25_records_per_label(self):
+    def test_project_app_catalog_has_at_least_50_records_per_label(self):
         catalog_path = (
             TRAINING_ROOT / "content_classification" / "reviewed_app_catalog.json"
         )
@@ -268,7 +268,7 @@ class ExternalDatasetCollectionTest(unittest.TestCase):
 
         self.assertEqual(set(counts), expected_labels)
         for label in expected_labels:
-            self.assertGreaterEqual(counts[label], 25, label)
+            self.assertGreaterEqual(counts[label], 50, label)
 
 
 if __name__ == "__main__":

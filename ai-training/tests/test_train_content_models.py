@@ -18,6 +18,11 @@ from content_classification.content_model import (
     stratified_group_split,
     validate_model,
 )
+from content_classification.hybrid_content_classifier import (
+    build_exact_lookup,
+    route_content_classification,
+    validate_exact_lookup,
+)
 from content_classification.validate_dataset import load_taxonomy
 from training.train_content_models import (
     load_training_config,
@@ -128,6 +133,74 @@ class ContentModelTrainingTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "must be 0.7"):
             validate_model(model)
 
+    def test_hybrid_router_prefers_reviewed_exact_match_and_enforces_model_gate(self):
+        classes = ["learning", "entertainment", "browsers", "unknown"]
+        records = [
+            {"app_name": f"{label}.exe", "display_name": label, "label": label}
+            for label in classes
+        ]
+        model = fit_model(
+            records,
+            "apps",
+            classes,
+            {"minimum_n": 2, "maximum_n": 3},
+        )
+        lookup = build_exact_lookup(
+            records,
+            "apps",
+            classes,
+            dataset_sha256="a" * 64,
+            generated_at="2026-08-06T00:00:00+00:00",
+        )
+
+        exact = route_content_classification(model, lookup, "  LEARNING.EXE  ")
+        unknown = route_content_classification(model, lookup, "not-reviewed.exe")
+        no_lookup = route_content_classification(model, None, "not-reviewed.exe")
+
+        self.assertEqual(validate_exact_lookup(lookup), lookup)
+        self.assertEqual(exact["decision_source"], "exact_lookup")
+        self.assertEqual(exact["label"], "learning")
+        self.assertFalse(exact["requires_gemini"])
+        self.assertEqual(unknown["decision_source"], "gemini_required")
+        self.assertEqual(unknown["reason"], "model_not_deployment_approved")
+        self.assertIsNone(unknown["label"])
+        self.assertTrue(no_lookup["requires_gemini"])
+
+    def test_hybrid_router_uses_only_approved_high_confidence_model(self):
+        classes = ["learning", "entertainment", "browsers", "unknown"]
+        records = [
+            {
+                "app_name": f"{label}-pattern-{index}.exe",
+                "display_name": label,
+                "label": label,
+            }
+            for label in classes
+            for index in range(8)
+        ]
+        model = fit_model(
+            records,
+            "apps",
+            classes,
+            {"minimum_n": 2, "maximum_n": 4},
+            temperature=0.1,
+        )
+        model["deployment_approved"] = True
+
+        accepted = route_content_classification(
+            model, None, "learning-pattern-new.exe"
+        )
+        self.assertEqual(accepted["decision_source"], "trained_model")
+        self.assertEqual(accepted["label"], "learning")
+        self.assertGreaterEqual(accepted["confidence"], 0.7)
+
+        model["temperature"] = 100.0
+        fallback = route_content_classification(
+            model, None, "learning-pattern-new.exe"
+        )
+        self.assertEqual(fallback["decision_source"], "gemini_required")
+        self.assertEqual(fallback["reason"], "model_confidence_below_threshold")
+        self.assertIsNone(fallback["label"])
+
     def test_end_to_end_training_writes_two_json_artifacts_and_report(self):
         taxonomy = load_taxonomy()
         with tempfile.TemporaryDirectory() as temporary:
@@ -197,11 +270,24 @@ class ContentModelTrainingTest(unittest.TestCase):
             )
 
             self.assertTrue((output_dir / "web_content_model_v1.json").is_file())
+            self.assertTrue((output_dir / "app_exact_lookup_v1.json").is_file())
             self.assertTrue((output_dir / "evaluation_report.json").is_file())
 
         self.assertEqual(report["confidence_threshold"], 0.7)
         self.assertEqual(app_model["resource_type"], "apps")
-        self.assertEqual(app_model["model_type"], "char_ngram_multinomial_nb")
+        self.assertEqual(app_model["model_type"], "app_metadata_char_ngram_ensemble")
+        self.assertEqual(
+            app_model["runtime_metadata_fields"],
+            ["product_name", "file_description"],
+        )
+        self.assertEqual(
+            app_model["training_summary"]["fit_scope"],
+            "train_only_with_validation_calibration",
+        )
+        self.assertEqual(report["resources"]["apps"]["exact_lookup"]["record_count"], 32)
+        self.assertFalse(
+            report["resources"]["apps"]["exact_lookup"]["held_out_generalization_claim"]
+        )
         self.assertIn("test_metrics", report["resources"]["websites"])
 
 

@@ -15,11 +15,13 @@ from collections import Counter, defaultdict
 from content_classification.validate_dataset import normalize_app_name, normalize_domain
 
 
-MODEL_VERSION = "1.0.0"
+MODEL_VERSION = "1.2.0"
 MODEL_TYPE = "char_ngram_multinomial_nb"
+APP_ENSEMBLE_MODEL_TYPE = "app_metadata_char_ngram_ensemble"
 SPLIT_NAMES = ("train", "validation", "test")
 COMMON_SECOND_LEVEL_SUFFIXES = {"ac", "co", "com", "edu", "gov", "net", "org"}
 TOKEN_RE = re.compile(r"[a-z0-9]+")
+ALPHA_NUMERIC_PART_RE = re.compile(r"[a-z]+|[0-9]+")
 
 
 def stable_digest(value: str, seed: str = "content-model-v1") -> str:
@@ -180,19 +182,37 @@ def extract_features(resource_type: str, key: str, config: dict) -> Counter:
     for token in tokens:
         if len(token) >= 2:
             features[f"token:{token}"] += 1
+        for part in ALPHA_NUMERIC_PART_RE.findall(token):
+            if len(part) >= 2:
+                features[f"part:{part}"] += 1
     features[f"length:{min(12, len(key) // 5)}"] = 1
-    features[f"digits:{min(5, sum(character.isdigit() for character in key) // 2)}"] = 1
+    digit_count = sum(character.isdigit() for character in key)
+    alpha_count = sum(character.isalpha() for character in key)
+    features[f"digits:{min(5, digit_count // 2)}"] = 1
+    digit_ratio_bucket = min(
+        5, round(5 * digit_count / max(1, digit_count + alpha_count))
+    )
+    features[f"digit-ratio:{digit_ratio_bucket}"] = 1
     features[f"hyphens:{min(5, key.count('-'))}"] = 1
+    features[f"token-count:{min(8, len(tokens))}"] = 1
 
     if resource_type == "websites":
         labels = key.split(".")
         features[f"tld:{labels[-1]}"] = 1
         features[f"depth:{min(6, len(labels))}"] = 1
+        primary_label = labels[-2] if len(labels) >= 2 else labels[0]
+        features[f"primary-length:{min(12, len(primary_label) // 3)}"] = 1
+        features[f"primary-hyphens:{min(5, primary_label.count('-'))}"] = 1
         if len(labels) >= 2:
             features[f"suffix:{'.'.join(labels[-2:])}"] = 1
     else:
         extension = key.rsplit(".", 1)[-1] if "." in key else "none"
         features[f"extension:{extension}"] = 1
+        stem = key.rsplit(".", 1)[0]
+        features[f"stem-length:{min(12, len(stem) // 3)}"] = 1
+        for part in ALPHA_NUMERIC_PART_RE.findall(stem):
+            if len(part) >= 2:
+                features[f"stem-part:{part}"] += 1
     return features
 
 
@@ -262,6 +282,44 @@ def fit_model(
     return validate_model(model)
 
 
+def fit_app_ensemble_model(
+    name_model: dict,
+    metadata_model: dict,
+    *,
+    app_name_weight: float,
+    ensemble_temperature: float,
+    training_metadata: dict | None = None,
+) -> dict:
+    """Combine independently trained process-name and product-metadata models."""
+    validate_model(name_model)
+    validate_model(metadata_model)
+    if name_model["resource_type"] != "apps" or metadata_model["resource_type"] != "apps":
+        raise ValueError("app ensemble branches must both classify apps")
+    if name_model["classes"] != metadata_model["classes"]:
+        raise ValueError("app ensemble branches must use identical classes")
+    if not 0.0 <= app_name_weight <= 1.0:
+        raise ValueError("app_name_weight must be between zero and one")
+    if not math.isfinite(ensemble_temperature) or ensemble_temperature <= 0:
+        raise ValueError("ensemble_temperature must be positive")
+    model = {
+        "model_version": MODEL_VERSION,
+        "model_type": APP_ENSEMBLE_MODEL_TYPE,
+        "resource_type": "apps",
+        "classes": list(name_model["classes"]),
+        "key_field": "app_name",
+        "metadata_field": "display_name",
+        "runtime_metadata_fields": ["product_name", "file_description"],
+        "confidence_threshold": float(name_model["confidence_threshold"]),
+        "app_name_weight": float(app_name_weight),
+        "ensemble_temperature": float(ensemble_temperature),
+        "name_model": name_model,
+        "metadata_model": metadata_model,
+        "training_summary": dict(training_metadata or {}),
+        "deployment_approved": False,
+    }
+    return validate_model(model)
+
+
 def _softmax(logits: dict[str, float], temperature: float) -> dict[str, float]:
     if not math.isfinite(temperature) or temperature <= 0:
         raise ValueError("temperature must be positive")
@@ -286,7 +344,43 @@ def predict_logits(model: dict, value: str) -> dict[str, float]:
     return logits
 
 
-def predict_model(model: dict, value: str) -> dict:
+def _power_calibrate(probabilities: dict[str, float], temperature: float) -> dict[str, float]:
+    powered = {
+        label: max(probability, 1e-15) ** (1.0 / temperature)
+        for label, probability in probabilities.items()
+    }
+    denominator = sum(powered.values())
+    return {label: probability / denominator for label, probability in powered.items()}
+
+
+def predict_model(model: dict, value: str, metadata_value: str | None = None) -> dict:
+    if model.get("model_type") == APP_ENSEMBLE_MODEL_TYPE:
+        name_result = predict_model(model["name_model"], value)
+        if not isinstance(metadata_value, str) or not metadata_value.strip():
+            return {
+                **name_result,
+                "conclusive": False,
+                "metadata_available": False,
+            }
+        metadata_result = predict_model(model["metadata_model"], metadata_value)
+        weight = model["app_name_weight"]
+        mixed = {
+            label: (
+                weight * name_result["probabilities"][label]
+                + (1.0 - weight) * metadata_result["probabilities"][label]
+            )
+            for label in model["classes"]
+        }
+        probabilities = _power_calibrate(mixed, model["ensemble_temperature"])
+        predicted = max(model["classes"], key=lambda label: probabilities[label])
+        confidence = probabilities[predicted]
+        return {
+            "label": predicted,
+            "confidence": confidence,
+            "conclusive": confidence >= model["confidence_threshold"],
+            "probabilities": probabilities,
+            "metadata_available": True,
+        }
     probabilities = _softmax(predict_logits(model, value), model["temperature"])
     predicted = max(model["classes"], key=lambda label: probabilities[label])
     confidence = probabilities[predicted]
@@ -349,7 +443,8 @@ def evaluate_model(model: dict, records: list[dict]) -> dict:
     calibration_bins = [dict(count=0, confidence=0.0, correct=0) for _ in range(10)]
     for record in records:
         actual = record["label"]
-        result = predict_model(model, record[key_field])
+        metadata_value = record.get("display_name") if model["resource_type"] == "apps" else None
+        result = predict_model(model, record[key_field], metadata_value)
         predicted = result["label"]
         confidence = result["confidence"]
         supports[actual] += 1
@@ -431,7 +526,8 @@ def validate_model(model: dict) -> dict:
         raise ValueError("content model must be an object")
     if model.get("model_version") != MODEL_VERSION:
         raise ValueError("unsupported content model version")
-    if model.get("model_type") != MODEL_TYPE:
+    model_type = model.get("model_type")
+    if model_type not in {MODEL_TYPE, APP_ENSEMBLE_MODEL_TYPE}:
         raise ValueError("unsupported content model type")
     if model.get("resource_type") not in {"apps", "websites"}:
         raise ValueError("invalid content model resource_type")
@@ -444,6 +540,29 @@ def validate_model(model: dict) -> dict:
     threshold = model.get("confidence_threshold")
     if not isinstance(threshold, (int, float)) or threshold != 0.7:
         raise ValueError("content model confidence_threshold must be 0.7")
+    if model_type == APP_ENSEMBLE_MODEL_TYPE:
+        if model["resource_type"] != "apps":
+            raise ValueError("metadata ensemble is only supported for apps")
+        if model.get("metadata_field") != "display_name":
+            raise ValueError("app ensemble metadata_field is incompatible")
+        runtime_fields = model.get("runtime_metadata_fields")
+        if runtime_fields != ["product_name", "file_description"]:
+            raise ValueError("app ensemble runtime_metadata_fields are invalid")
+        weight = model.get("app_name_weight")
+        temperature = model.get("ensemble_temperature")
+        if not isinstance(weight, (int, float)) or not 0 <= weight <= 1:
+            raise ValueError("app ensemble weight is invalid")
+        if not isinstance(temperature, (int, float)) or not math.isfinite(temperature) or temperature <= 0:
+            raise ValueError("app ensemble temperature is invalid")
+        for branch_name in ("name_model", "metadata_model"):
+            branch = model.get(branch_name)
+            validate_model(branch)
+            if branch["resource_type"] != "apps" or branch["classes"] != classes:
+                raise ValueError("app ensemble branch is incompatible")
+        if not isinstance(model.get("deployment_approved"), bool):
+            raise ValueError("content model deployment_approved must be boolean")
+        return model
+
     for field in ("alpha", "temperature"):
         value = model.get(field)
         if not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:

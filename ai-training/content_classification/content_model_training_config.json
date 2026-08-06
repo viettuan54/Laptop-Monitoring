@@ -22,6 +22,11 @@
         ],
         "alphas": [0.1, 0.3, 1.0, 3.0]
       },
+      "ensemble_search": {
+        "branch_candidates": 5,
+        "app_name_weights": [0.6, 0.7, 0.8, 0.9],
+        "temperatures": [0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.75, 1.0]
+      },
       "acceptance": {
         "minimum_total_samples_per_class": 20,
         "minimum_test_samples_per_class": 5,

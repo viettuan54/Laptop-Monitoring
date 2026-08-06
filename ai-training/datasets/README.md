@@ -135,11 +135,12 @@ Nguồn và giấy phép được khai báo tại
 `content_classification/external_sources.json`. Pipeline mặc định dùng:
 
 - Wikidata (CC0) để lấy domain có loại thực thể rõ ràng cho `education`,
-  `entertainment`, `social` và nhóm âm `unknown`;
+  `entertainment`, `social` và nhóm âm `unknown` gồm trang tin tức, chợ trực
+  tuyến và cổng thông tin tổng hợp;
 - PhishDestroy active-domain feed (CC0) cho `unsafe`;
 - `reviewed_app_catalog.json` cho tên process Windows đã đối chiếu thủ công.
 
-Catalog ứng dụng phiên bản `1.1.0` có 100 process, tương ứng 25 mẫu cho mỗi nhãn
+Catalog ứng dụng phiên bản `2.0.0` có 200 process, tương ứng 50 mẫu cho mỗi nhãn
 `learning`, `entertainment`, `browsers` và `unknown`. Khi thêm bản ghi phải khai
 báo đủ `app_name`, `display_name`, `label`, `evidence_url` HTTPS và
 `label_basis`; collector sẽ từ chối toàn bộ catalog nếu thiếu căn cứ nguồn.
@@ -149,7 +150,7 @@ Chạy từ thư mục gốc dự án:
 ```powershell
 & .\ai-training\.venv\Scripts\python.exe `
   .\ai-training\content_classification\collect_external_dataset.py `
-  --max-per-source 150
+  --max-per-source 300
 ```
 
 Kết quả được ghi vào `ai-training/datasets/content/`:
@@ -181,10 +182,12 @@ trực tiếp file CSV sinh ra. Dùng cache khi không có mạng:
 
 Hai model độc lập dùng Multinomial Naive Bayes trên character n-gram:
 
-- app model chỉ nhận `app_name`;
+- app model là ensemble hai nhánh: `app_name` và metadata không nhạy cảm lấy từ
+  executable (`ProductName` hoặc `FileDescription`); tuyệt đối không dùng window
+  title, tên tài liệu hay URL đang mở;
 - web model chỉ nhận `domain`;
-- `display_name` và `title` không được dùng làm feature để tránh train-serving
-  skew vì Agent không gửi các trường này khi inference.
+- `display_name` trong CSV là dữ liệu đại diện để train nhánh metadata ứng dụng;
+  `title` website không được dùng làm feature.
 
 Cấu hình feature, hyperparameter search và deployment gate nằm trong
 `content_classification/content_model_training_config.json`. Chạy:
@@ -200,13 +203,17 @@ Pipeline thực hiện các bước sau:
 2. chia `60%/20%/20%` thành train/validation/test bằng seed cố định;
 3. gom các subdomain cùng họ vào đúng một split để giảm rò rỉ;
 4. chọn n-gram/alpha và hiệu chỉnh temperature chỉ trên validation;
-5. mở test sau khi đã chọn cấu hình, tính accuracy, macro-F1, confusion matrix,
+5. web model được refit trên `train + validation`; app ensemble giữ train-only
+   và dùng validation để calibration vì refit làm mất hiệu lực operating
+   temperature; tuyệt đối không đưa test vào bước fit;
+6. mở test sau khi đã chọn cấu hình, tính accuracy, macro-F1, confusion matrix,
    calibration, coverage và accuracy tại `confidence >= 0.70`;
-6. đặt `deployment_approved` theo toàn bộ gate, không tự hạ gate để model đạt.
+7. đặt `deployment_approved` theo toàn bộ gate, không tự hạ gate để model đạt.
 
 Kết quả nằm tại `ai-training/artifacts/content_classification/`:
 
 - `app_content_model_v1.json`;
+- `app_exact_lookup_v1.json`;
 - `web_content_model_v1.json`;
 - `evaluation_report.json`.
 
@@ -214,3 +221,14 @@ Các artifact được `.gitignore`. Không chép model vào Agent khi
 `deployment_approved = false`; lúc đó tiếp tục thu thập/gán nhãn dữ liệu và
 train lại. Model confidence dưới `0.70` luôn dành cho nhánh Gemini fallback ở
 giai đoạn tích hợp inference.
+
+Đối với ứng dụng, thứ tự Hybrid Pipeline là:
+
+1. tên process có trong exact lookup: dùng nhãn catalog với `confidence = 1.0`;
+2. không có exact-match: chỉ dùng model nếu artifact đã đạt deployment gate và
+   confidence từ `0.70`;
+3. model chưa đạt gate hoặc confidence thấp hơn `0.70`: bắt buộc gọi Gemini.
+
+Exact lookup được kiểm tra toàn vẹn trên catalog đã duyệt, không được báo cáo như
+độ chính xác tổng quát hóa trên held-out test. Coverage kết hợp thực tế phải đo
+lại bằng log identifier ẩn danh từ Agent.

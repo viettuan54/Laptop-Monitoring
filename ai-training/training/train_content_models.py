@@ -18,12 +18,15 @@ if str(TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(TRAINING_ROOT))
 
 from content_classification.content_model import (
+    APP_ENSEMBLE_MODEL_TYPE,
     calibrate_temperature,
     evaluate_model,
+    fit_app_ensemble_model,
     fit_model,
     stratified_group_split,
     validate_model,
 )
+from content_classification.hybrid_content_classifier import build_exact_lookup
 from content_classification.validate_dataset import (
     DatasetContractError,
     load_taxonomy,
@@ -131,6 +134,24 @@ def load_training_config(path: Path | str = DEFAULT_CONFIG_PATH) -> dict:
                 raise ContentTrainingError(f"{resource_type} search n-gram range is invalid")
         if any(not isinstance(value, (int, float)) or value <= 0 for value in alphas):
             raise ContentTrainingError(f"{resource_type} search alpha is invalid")
+        if resource_type == "apps":
+            ensemble = resource.get("ensemble_search")
+            if not isinstance(ensemble, dict):
+                raise ContentTrainingError("apps ensemble_search is missing")
+            weights = ensemble.get("app_name_weights")
+            temperatures = ensemble.get("temperatures")
+            branch_candidates = ensemble.get("branch_candidates")
+            if (
+                not isinstance(weights, list)
+                or not weights
+                or any(not isinstance(value, (int, float)) or not 0 <= value <= 1 for value in weights)
+                or not isinstance(temperatures, list)
+                or not temperatures
+                or any(not isinstance(value, (int, float)) or value <= 0 for value in temperatures)
+                or not isinstance(branch_candidates, int)
+                or branch_candidates < 1
+            ):
+                raise ContentTrainingError("apps ensemble_search is invalid")
         acceptance = resource.get("acceptance")
         if not isinstance(acceptance, dict) or set(acceptance) != required_gates:
             raise ContentTrainingError(f"{resource_type} acceptance gates are incomplete")
@@ -325,6 +346,163 @@ def select_hyperparameters(
     return selected["model"], selected["calibration"], search_report
 
 
+def _app_records_for_field(records: list[dict], field: str) -> list[dict]:
+    return [dict(record, app_name=record[field]) for record in records]
+
+
+def _fit_app_branch_candidates(
+    train_records: list[dict],
+    validation_records: list[dict],
+    field: str,
+    classes: list[str],
+    taxonomy: dict,
+    resource_config: dict,
+    training_metadata: dict,
+) -> list[dict]:
+    train_view = _app_records_for_field(train_records, field)
+    validation_view = _app_records_for_field(validation_records, field)
+    candidates = []
+    for minimum_n, maximum_n in resource_config["search_grid"]["ngram_ranges"]:
+        for alpha in resource_config["search_grid"]["alphas"]:
+            feature_config = {"minimum_n": minimum_n, "maximum_n": maximum_n}
+            model = fit_model(
+                train_view,
+                "apps",
+                classes,
+                feature_config,
+                alpha=float(alpha),
+                confidence_threshold=taxonomy["confidence_threshold"],
+                training_metadata={**training_metadata, "input_field": field},
+            )
+            temperature, calibration = calibrate_temperature(
+                model, validation_view, maximum=12.0
+            )
+            model["temperature"] = temperature
+            metrics = evaluate_model(model, validation_view)
+            candidates.append(
+                {
+                    "model": model,
+                    "field": field,
+                    "feature_config": feature_config,
+                    "alpha": float(alpha),
+                    "calibration": calibration,
+                    "metrics": metrics,
+                }
+            )
+    keep = resource_config["ensemble_search"]["branch_candidates"]
+    return sorted(
+        candidates,
+        key=lambda item: (
+            item["metrics"]["macro_f1"],
+            item["metrics"]["accuracy"],
+            -item["metrics"]["expected_calibration_error"],
+        ),
+        reverse=True,
+    )[:keep]
+
+
+def select_app_ensemble_hyperparameters(
+    train_records: list[dict],
+    validation_records: list[dict],
+    classes: list[str],
+    taxonomy: dict,
+    resource_config: dict,
+    training_metadata: dict,
+) -> tuple[dict, dict, dict]:
+    name_candidates = _fit_app_branch_candidates(
+        train_records,
+        validation_records,
+        "app_name",
+        classes,
+        taxonomy,
+        resource_config,
+        training_metadata,
+    )
+    metadata_candidates = _fit_app_branch_candidates(
+        train_records,
+        validation_records,
+        "display_name",
+        classes,
+        taxonomy,
+        resource_config,
+        training_metadata,
+    )
+    candidates = []
+    for name_candidate in name_candidates:
+        for metadata_candidate in metadata_candidates:
+            for weight in resource_config["ensemble_search"]["app_name_weights"]:
+                for ensemble_temperature in resource_config["ensemble_search"]["temperatures"]:
+                    model = fit_app_ensemble_model(
+                        name_candidate["model"],
+                        metadata_candidate["model"],
+                        app_name_weight=float(weight),
+                        ensemble_temperature=float(ensemble_temperature),
+                        training_metadata=training_metadata,
+                    )
+                    metrics = evaluate_model(model, validation_records)
+                    candidates.append(
+                        {
+                            "model": model,
+                            "name": name_candidate,
+                            "metadata": metadata_candidate,
+                            "metrics": metrics,
+                            "score": _validation_selection_score(
+                                metrics, resource_config["acceptance"]
+                            ),
+                        }
+                    )
+    selected = max(
+        candidates,
+        key=lambda item: (
+            item["score"],
+            -item["model"]["app_name_weight"],
+            -item["model"]["ensemble_temperature"],
+        ),
+    )
+    calibration = {
+        "method": "validation_grid_search_dual_field_selective_operating_point",
+        "name_branch": selected["name"]["calibration"],
+        "metadata_branch": selected["metadata"]["calibration"],
+        "ensemble_temperature": selected["model"]["ensemble_temperature"],
+        "app_name_weight": selected["model"]["app_name_weight"],
+        "selection_dataset": "validation",
+    }
+    ranked = sorted(candidates, key=lambda item: item["score"], reverse=True)
+    search_report = {
+        "selection_dataset": "validation",
+        "selection_rule": (
+            "select app-name and product-metadata branches plus an operating "
+            "temperature using validation deployment gates"
+        ),
+        "candidate_count": len(candidates),
+        "selected": {
+            "name_feature_config": selected["name"]["feature_config"],
+            "name_alpha": selected["name"]["alpha"],
+            "name_temperature": selected["name"]["model"]["temperature"],
+            "metadata_feature_config": selected["metadata"]["feature_config"],
+            "metadata_alpha": selected["metadata"]["alpha"],
+            "metadata_temperature": selected["metadata"]["model"]["temperature"],
+            "app_name_weight": selected["model"]["app_name_weight"],
+            "ensemble_temperature": selected["model"]["ensemble_temperature"],
+            "validation_metrics": selected["metrics"],
+        },
+        "top_candidates": [
+            {
+                "name_feature_config": item["name"]["feature_config"],
+                "name_alpha": item["name"]["alpha"],
+                "metadata_feature_config": item["metadata"]["feature_config"],
+                "metadata_alpha": item["metadata"]["alpha"],
+                "app_name_weight": item["model"]["app_name_weight"],
+                "ensemble_temperature": item["model"]["ensemble_temperature"],
+                "selection_score": list(item["score"]),
+                "validation_metrics": item["metrics"],
+            }
+            for item in ranked[:25]
+        ],
+    }
+    return selected["model"], calibration, search_report
+
+
 def train_resource_model(
     resource_type: str,
     dataset_path: Path,
@@ -352,16 +530,70 @@ def train_resource_model(
         "split_strategy": split_metadata["strategy"],
         "train_key_sha256": split_metadata["counts"]["train"]["key_sha256"],
     }
-    model, calibration, hyperparameter_selection = select_hyperparameters(
-        resource_type,
-        splits["train"],
-        splits["validation"],
-        classes,
-        taxonomy,
-        resource_config,
-        training_metadata,
+    if resource_type == "apps":
+        selection_model, calibration, hyperparameter_selection = (
+            select_app_ensemble_hyperparameters(
+                splits["train"],
+                splits["validation"],
+                classes,
+                taxonomy,
+                resource_config,
+                training_metadata,
+            )
+        )
+    else:
+        selection_model, calibration, hyperparameter_selection = select_hyperparameters(
+            resource_type,
+            splits["train"],
+            splits["validation"],
+            classes,
+            taxonomy,
+            resource_config,
+            training_metadata,
+        )
+    validation_metrics = evaluate_model(selection_model, splits["validation"])
+    is_app_ensemble = selection_model["model_type"] == APP_ENSEMBLE_MODEL_TYPE
+    final_fit_records = (
+        splits["train"]
+        if is_app_ensemble
+        else splits["train"] + splits["validation"]
     )
-    validation_metrics = evaluate_model(model, splits["validation"])
+    final_training_metadata = {
+        **training_metadata,
+        "fit_scope": (
+            "train_only_with_validation_calibration"
+            if is_app_ensemble
+            else "train_plus_validation_after_hyperparameter_selection"
+        ),
+        "record_count_before_final_test": len(final_fit_records),
+        "fit_key_sha256": hashlib.sha256(
+            "\n".join(
+                sorted(record[headers[0]] for record in final_fit_records)
+            ).encode("utf-8")
+        ).hexdigest(),
+    }
+    if is_app_ensemble:
+        model = selection_model
+        model["training_summary"].update(final_training_metadata)
+        model["training_summary"]["record_count"] = len(final_fit_records)
+        model["training_summary"]["class_counts"] = dict(
+            sorted(Counter(record["label"] for record in final_fit_records).items())
+        )
+        model["training_summary"]["vocabulary_size"] = (
+            model["name_model"]["training_summary"]["vocabulary_size"]
+            + model["metadata_model"]["training_summary"]["vocabulary_size"]
+        )
+    else:
+        model = fit_model(
+            final_fit_records,
+            resource_type,
+            classes,
+            selection_model["feature_config"],
+            alpha=selection_model["alpha"],
+            confidence_threshold=taxonomy["confidence_threshold"],
+            temperature=selection_model["temperature"],
+            training_metadata=final_training_metadata,
+        )
     test_metrics = evaluate_model(model, splits["test"])
     acceptance = evaluate_acceptance(
         records,
@@ -370,9 +602,19 @@ def train_resource_model(
         resource_config["acceptance"],
     )
     limitations = [
-        "Evaluation covers identifier text only; display_name/title are intentionally excluded.",
         "A held-out identifier-family split reduces leakage but does not prove cross-source generalization.",
     ]
+    if resource_type == "apps":
+        limitations.append(
+            "App inference requires non-sensitive executable ProductName/FileDescription metadata; missing metadata must fall back to Gemini."
+        )
+    else:
+        limitations.append(
+            "Website evaluation covers domain text only; title is intentionally excluded."
+        )
+        limitations.append(
+            "Temperature is selected from train-only validation predictions, then reused after the final train-plus-validation refit."
+        )
     if not acceptance["gates"][0]["passed"]:
         limitations.append(
             "At least one class has too few independently labelled samples for deployment."
@@ -384,8 +626,27 @@ def train_resource_model(
             "hyperparameter_selection": {
                 "candidate_count": hyperparameter_selection["candidate_count"],
                 "selection_dataset": "validation",
-                "selected_feature_config": model["feature_config"],
-                "selected_alpha": model["alpha"],
+                "selected_feature_config": (
+                    {
+                        "app_name": model["name_model"]["feature_config"],
+                        "display_name": model["metadata_model"]["feature_config"],
+                    }
+                    if model["model_type"] == APP_ENSEMBLE_MODEL_TYPE
+                    else model["feature_config"]
+                ),
+                "selected_alpha": (
+                    {
+                        "app_name": model["name_model"]["alpha"],
+                        "display_name": model["metadata_model"]["alpha"],
+                    }
+                    if model["model_type"] == APP_ENSEMBLE_MODEL_TYPE
+                    else model["alpha"]
+                ),
+                "final_fit_scope": (
+                    "train_only_with_validation_calibration"
+                    if is_app_ensemble
+                    else "train_plus_validation"
+                ),
             },
             "held_out_evaluation": {
                 "test_key_sha256": split_metadata["counts"]["test"]["key_sha256"],
@@ -411,12 +672,37 @@ def train_resource_model(
             "validation_status": validation["status"],
         },
         "split": split_metadata,
-        "feature_config": model["feature_config"],
-        "alpha": model["alpha"],
+        "model_type": model["model_type"],
+        "feature_config": (
+            {
+                "app_name": model["name_model"]["feature_config"],
+                "display_name": model["metadata_model"]["feature_config"],
+            }
+            if model["model_type"] == APP_ENSEMBLE_MODEL_TYPE
+            else model["feature_config"]
+        ),
+        "alpha": (
+            {
+                "app_name": model["name_model"]["alpha"],
+                "display_name": model["metadata_model"]["alpha"],
+            }
+            if model["model_type"] == APP_ENSEMBLE_MODEL_TYPE
+            else model["alpha"]
+        ),
         "vocabulary_size": model["training_summary"]["vocabulary_size"],
         "calibration": calibration,
         "hyperparameter_selection": hyperparameter_selection,
         "validation_metrics": validation_metrics,
+        "final_fit": {
+            "scope": (
+                "train_only_with_validation_calibration"
+                if is_app_ensemble
+                else "train_plus_validation"
+            ),
+            "record_count": len(final_fit_records),
+            "key_sha256": final_training_metadata["fit_key_sha256"],
+            "test_excluded": True,
+        },
         "test_metrics": test_metrics,
         "acceptance": acceptance,
         "known_limitations": limitations,
@@ -447,10 +733,12 @@ def train_all(
     taxonomy = load_taxonomy()
     resources = {}
     output_models = {}
+    output_lookups = {}
     for resource_type, dataset_name in (("apps", "apps.csv"), ("websites", "websites.csv")):
+        dataset_path = dataset_dir / dataset_name
         model, report = train_resource_model(
             resource_type,
-            dataset_dir / dataset_name,
+            dataset_path,
             taxonomy,
             config,
         )
@@ -464,13 +752,41 @@ def train_all(
         }
         resources[resource_type] = report
         output_models[resource_type] = str(output_path)
+        if resource_type == "apps":
+            app_classes = taxonomy["resources"]["app"]["labels"]
+            app_records = load_records(
+                dataset_path, ("app_name", "display_name", "label")
+            )
+            lookup = build_exact_lookup(
+                app_records,
+                "apps",
+                app_classes,
+                dataset_sha256=report["dataset"]["sha256"],
+                generated_at=_now_iso(),
+            )
+            lookup_path = output_dir / "app_exact_lookup_v1.json"
+            _write_json_atomic(lookup_path, lookup)
+            output_lookups[resource_type] = str(lookup_path)
+            report["exact_lookup"] = {
+                "evaluation_kind": "deterministic_catalog_integrity_check",
+                "held_out_generalization_claim": False,
+                "ready_for_runtime": True,
+                "record_count": lookup["record_count"],
+                "label_counts": lookup["label_counts"],
+                "known_catalog_accuracy": 1.0,
+                "artifact": {
+                    "path": str(lookup_path),
+                    "sha256": _sha256(lookup_path),
+                    "size_bytes": lookup_path.stat().st_size,
+                },
+            }
 
     overall_approved = all(
         report["acceptance"]["passed"] for report in resources.values()
     )
     combined = _round_metrics(
         {
-            "report_version": "1.0.0",
+            "report_version": "1.2.0",
             "generated_at": _now_iso(),
             "taxonomy_version": taxonomy["taxonomy_version"],
             "confidence_threshold": taxonomy["confidence_threshold"],
@@ -481,6 +797,25 @@ def train_all(
             "status": "approved" if overall_approved else "candidate_rejected",
             "deployment_approved": overall_approved,
             "models": output_models,
+            "lookups": output_lookups,
+            "hybrid_pipeline": {
+                "order": ["exact_lookup", "approved_model_at_confidence_0.70", "gemini"],
+                "model_gate_required": True,
+                "resource_modes": {
+                    "apps": (
+                        "exact_lookup_then_model_then_gemini"
+                        if resources["apps"]["acceptance"]["passed"]
+                        else "exact_lookup_then_gemini_model_disabled"
+                    ),
+                    "websites": (
+                        "model_then_gemini"
+                        if resources["websites"]["acceptance"]["passed"]
+                        else "gemini_model_disabled"
+                    ),
+                },
+                "combined_real_traffic_coverage": None,
+                "coverage_note": "Requires an Agent traffic evaluation set; catalog integrity is not a held-out generalization metric.",
+            },
             "resources": resources,
         }
     )
