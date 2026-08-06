@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://child-monitor.local/schemas/web-classification-record-1.0.0.json",
+  "title": "Child Monitor website classification CSV record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["domain", "title", "label"],
+  "properties": {
+    "domain": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 253
+    },
+    "title": {
+      "type": "string",
+      "maxLength": 500
+    },
+    "label": {
+      "enum": [
+        "education",
+        "entertainment",
+        "social",
+        "unsafe",
+        "unknown"
+      ]
+    }
+  }
+}

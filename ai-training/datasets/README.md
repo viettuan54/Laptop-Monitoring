@@ -88,3 +88,43 @@ Mỗi phiên `capture_landmarks.py` tạo:
 Manifest phải có `image_storage = "disabled"`. Dataset mặc định không chứa ảnh
 hoặc pose world landmark; `pose_landmarks` lưu tọa độ chuẩn hóa mà công cụ đã
 nhận từ MediaPipe.
+
+## 7. Dataset phân loại ứng dụng và website
+
+Taxonomy chuẩn nằm tại `schema/content_classification_taxonomy.json`:
+
+- ứng dụng: `learning`, `entertainment`, `browsers`, `unknown`;
+- website: `education`, `entertainment`, `social`, `unsafe`, `unknown`;
+- ngưỡng chấp nhận model tự huấn luyện: `confidence >= 0.70`.
+
+CSV ứng dụng phải có đúng header:
+
+```csv
+app_name,display_name,label
+```
+
+CSV website phải có đúng header:
+
+```csv
+domain,title,label
+```
+
+Chỉ lưu domain, không đưa scheme, path, query string, token hoặc thông tin tài
+khoản vào dataset. Tên ứng dụng phải là tên file, không phải đường dẫn cài đặt.
+Dữ liệu CSV thật trong `datasets/content/` được `.gitignore`; hai file
+`*.example.csv` chỉ là mẫu contract, không phải dữ liệu train production.
+
+Kiểm tra cả hai dataset:
+
+```powershell
+.\.venv\Scripts\python.exe .\content_classification\validate_dataset.py `
+  --apps .\datasets\content\apps.csv `
+  --websites .\datasets\content\websites.csv `
+  --minimum-samples-per-label 1 `
+  --report .\datasets\content\reports\validation.json
+```
+
+Tool trả exit code `0` khi đạt, `1` khi dataset có lỗi và `2` khi schema/file
+không thể đọc. Các lỗi được kiểm tra gồm header sai, nhãn ngoài taxonomy, dữ
+liệu quá độ dài, control character, app path, domain/URL không hợp lệ, key trùng,
+xung đột nhãn, thiếu lớp và mất cân bằng lớp từ `5:1` trở lên.

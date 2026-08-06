@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://child-monitor.local/schemas/content-classification-taxonomy-1.0.0.json",
+  "title": "Child Monitor content classification taxonomy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "taxonomy_version",
+    "confidence_threshold",
+    "resources"
+  ],
+  "properties": {
+    "taxonomy_version": {
+      "const": "1.0.0"
+    },
+    "confidence_threshold": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["app", "web"],
+      "properties": {
+        "app": {
+          "$ref": "#/$defs/resource"
+        },
+        "web": {
+          "$ref": "#/$defs/resource"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key_field", "display_field", "labels"],
+      "properties": {
+        "key_field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "display_field": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 50
+        },
+        "labels": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{1,29}$"
+          }
+        }
+      }
+    }
+  }
+}

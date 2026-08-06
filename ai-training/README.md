@@ -10,6 +10,11 @@ Mọi công cụ thu thập và huấn luyện phải dùng:
 - `datasets/schema/landmark_record.schema.json` để kiểm tra từng bản ghi.
 - `datasets/README.md` làm hướng dẫn gán nhãn.
 
+Phân loại nội dung ứng dụng/website dùng taxonomy riêng tại
+`datasets/schema/content_classification_taxonomy.json`. Trước khi train, bắt
+buộc chạy `content_classification/validate_dataset.py`; chỉ dataset có exit code
+`0` mới được chuyển sang bước chia train/validation/test.
+
 Không lưu ảnh, tên, email, token, device secret hoặc face embedding nhận dạng
 trong dataset mặc định.
 

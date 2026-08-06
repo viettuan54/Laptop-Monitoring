@@ -1,0 +1,27 @@
+{
+  "taxonomy_version": "1.0.0",
+  "confidence_threshold": 0.7,
+  "resources": {
+    "app": {
+      "key_field": "app_name",
+      "display_field": "display_name",
+      "labels": [
+        "learning",
+        "entertainment",
+        "browsers",
+        "unknown"
+      ]
+    },
+    "web": {
+      "key_field": "domain",
+      "display_field": "title",
+      "labels": [
+        "education",
+        "entertainment",
+        "social",
+        "unsafe",
+        "unknown"
+      ]
+    }
+  }
+}
