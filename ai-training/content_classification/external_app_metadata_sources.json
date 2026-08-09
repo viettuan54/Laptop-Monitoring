@@ -1,0 +1,38 @@
+{
+  "config_version": "1.0.0",
+  "user_agent": "ChildMonitorDatasetCollector/1.0 (academic project; contact: local-project)",
+  "license": "CC0-1.0",
+  "license_url": "https://www.wikidata.org/wiki/Wikidata:Licensing",
+  "endpoint": "https://query.wikidata.org/sparql",
+  "minimum_records_per_label": 16,
+  "sources": [
+    {
+      "id": "wikidata-app-learning",
+      "label": "learning",
+      "class_ids": ["Q13741", "Q131212", "Q207170"],
+      "class_names": ["integrated development environment", "text editor", "office suite"],
+      "max_records": 400
+    },
+    {
+      "id": "wikidata-app-entertainment",
+      "label": "entertainment",
+      "class_ids": ["Q7889", "Q210337", "Q758895"],
+      "class_names": ["video game", "media player software", "audio player software"],
+      "max_records": 400
+    },
+    {
+      "id": "wikidata-app-browsers",
+      "label": "browsers",
+      "class_ids": ["Q6368"],
+      "class_names": ["web browser"],
+      "max_records": 400
+    },
+    {
+      "id": "wikidata-app-unknown",
+      "label": "unknown",
+      "class_ids": ["Q312466", "Q732970"],
+      "class_names": ["utility software", "file manager"],
+      "max_records": 400
+    }
+  ]
+}

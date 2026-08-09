@@ -1,8 +1,8 @@
 """Auditable character n-gram models for app/domain classification.
 
 The artifact is plain JSON rather than pickle so the Agent can validate it
-before loading.  Training and inference deliberately use only the identifier
-available at runtime: app_name for applications and domain for websites.
+before loading. Training and inference use app_name plus non-sensitive
+ProductName/FileDescription for applications, and domain for websites.
 """
 
 from __future__ import annotations
@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import math
 import re
+import unicodedata
 from collections import Counter, defaultdict
 
 from content_classification.validate_dataset import normalize_app_name, normalize_domain
@@ -34,6 +35,16 @@ def canonical_key(resource_type: str, value: str) -> str:
     if resource_type == "websites":
         return normalize_domain(value)
     raise ValueError("resource_type must be apps or websites")
+
+
+def normalize_app_metadata_value(value: str) -> str:
+    """Normalize ProductName/FileDescription without treating it as a file path."""
+    candidate = unicodedata.normalize("NFKC", value).strip().casefold()
+    if not candidate or len(candidate) > 150:
+        raise ValueError("app metadata must contain 1 to 150 characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in candidate):
+        raise ValueError("app metadata cannot contain control characters")
+    return " ".join(candidate.replace("/", " ").replace("\\", " ").split())
 
 
 def leakage_group(resource_type: str, key: str) -> str:
@@ -362,7 +373,9 @@ def predict_model(model: dict, value: str, metadata_value: str | None = None) ->
                 "conclusive": False,
                 "metadata_available": False,
             }
-        metadata_result = predict_model(model["metadata_model"], metadata_value)
+        metadata_result = predict_model(
+            model["metadata_model"], normalize_app_metadata_value(metadata_value)
+        )
         weight = model["app_name_weight"]
         mixed = {
             label: (

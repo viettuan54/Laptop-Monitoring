@@ -178,6 +178,33 @@ trực tiếp file CSV sinh ra. Dùng cache khi không có mạng:
   --offline
 ```
 
+#### Dataset metadata ứng dụng bên ngoài
+
+Nhánh metadata ứng dụng dùng một dataset riêng, không thu lại lịch sử từ Agent.
+Nguồn/lớp Wikidata và giấy phép CC0 được khai báo trong
+`content_classification/external_app_metadata_sources.json`. Chạy:
+
+```powershell
+& .\ai-training\.venv\Scripts\python.exe `
+  .\ai-training\content_classification\collect_external_app_metadata.py
+```
+
+Collector tạo các file sau trong `ai-training/datasets/content/`:
+
+- `app_metadata.csv` với contract `product_name,label`;
+- `app_metadata_provenance.jsonl` để truy vết Wikidata item, nguồn và giấy phép;
+- `reports/app_metadata_collection.json` và raw cache để audit/chạy offline.
+
+Dataset này chỉ huấn luyện nhánh `display_name` đại diện cho
+`ProductName/FileDescription`. Trainer loại mọi product family trùng với
+validation/test trước khi fit và ghi số lượng loại vào evaluation report. Nó
+không được dùng để tạo `app_exact_lookup_v1.json`; lookup vẫn chỉ lấy từ catalog
+process đã duyệt. Xung đột nhãn bị cách ly, không tự chọn nhãn.
+
+Agent không gửi lịch sử sử dụng để xây dựng hoặc cập nhật dataset. Khi phụ huynh
+bật phân loại, Agent chỉ gửi `app_name`, `ProductName` và `FileDescription` cần
+cho request inference hiện tại. Khi tắt phân loại, không gọi model/Gemini.
+
 ### 7.2. Train và đánh giá hai model
 
 Hai model độc lập dùng Multinomial Naive Bayes trên character n-gram:
@@ -186,7 +213,8 @@ Hai model độc lập dùng Multinomial Naive Bayes trên character n-gram:
   executable (`ProductName` hoặc `FileDescription`); tuyệt đối không dùng window
   title, tên tài liệu hay URL đang mở;
 - web model chỉ nhận `domain`;
-- `display_name` trong CSV là dữ liệu đại diện để train nhánh metadata ứng dụng;
+- `display_name` trong catalog và `product_name` trong dataset ngoài được dùng
+  để train nhánh metadata ứng dụng;
   `title` website không được dùng làm feature.
 
 Cấu hình feature, hyperparameter search và deployment gate nằm trong
@@ -199,9 +227,11 @@ Cấu hình feature, hyperparameter search và deployment gate nằm trong
 
 Pipeline thực hiện các bước sau:
 
-1. chạy lại validator cho cả hai CSV;
+1. chạy lại validator cho hai CSV catalog/domain và kiểm tra contract
+   `app_metadata.csv`;
 2. chia `60%/20%/20%` thành train/validation/test bằng seed cố định;
-3. gom các subdomain cùng họ vào đúng một split để giảm rò rỉ;
+3. gom các subdomain cùng họ vào đúng một split; loại metadata ngoài trùng với
+   product family ở validation/test trước khi fit;
 4. chọn n-gram/alpha và hiệu chỉnh temperature chỉ trên validation;
 5. web model được refit trên `train + validation`; app ensemble giữ train-only
    và dùng validation để calibration vì refit làm mất hiệu lực operating
@@ -230,5 +260,5 @@ giai đoạn tích hợp inference.
 3. model chưa đạt gate hoặc confidence thấp hơn `0.70`: bắt buộc gọi Gemini.
 
 Exact lookup được kiểm tra toàn vẹn trên catalog đã duyệt, không được báo cáo như
-độ chính xác tổng quát hóa trên held-out test. Coverage kết hợp thực tế phải đo
-lại bằng log identifier ẩn danh từ Agent.
+độ chính xác tổng quát hóa trên held-out test. Dữ liệu Agent gửi trong request
+inference không được nhập ngược vào dataset train.

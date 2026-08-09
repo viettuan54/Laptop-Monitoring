@@ -49,4 +49,5 @@ ai-training/datasets/content/*.csv
 ai-training/datasets/content/reports/
 ai-training/datasets/content/raw-cache/
 ai-training/datasets/content/record_provenance.jsonl
+ai-training/datasets/content/app_metadata_provenance.jsonl
 .runtime/

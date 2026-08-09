@@ -14,6 +14,7 @@ from content_classification.content_model import (
     evaluate_model,
     fit_model,
     leakage_group,
+    normalize_app_metadata_value,
     predict_model,
     stratified_group_split,
     validate_model,
@@ -25,7 +26,9 @@ from content_classification.hybrid_content_classifier import (
 )
 from content_classification.validate_dataset import load_taxonomy
 from training.train_content_models import (
+    ContentTrainingError,
     load_training_config,
+    prepare_external_app_metadata,
     train_all,
 )
 
@@ -132,6 +135,12 @@ class ContentModelTrainingTest(unittest.TestCase):
         model["confidence_threshold"] = 0.75
         with self.assertRaisesRegex(ValueError, "must be 0.7"):
             validate_model(model)
+
+    def test_product_metadata_normalization_does_not_treat_name_as_path(self):
+        self.assertEqual(
+            normalize_app_metadata_value(" Visual C/C++ Runtime "),
+            "visual c c++ runtime",
+        )
 
     def test_hybrid_router_prefers_reviewed_exact_match_and_enforces_model_gate(self):
         classes = ["learning", "entertainment", "browsers", "unknown"]
@@ -242,6 +251,18 @@ class ContentModelTrainingTest(unittest.TestCase):
                 ("domain", "title", "label"),
                 web_rows,
             )
+            self._write_csv(
+                dataset_dir / "app_metadata.csv",
+                ("product_name", "label"),
+                [
+                    {
+                        "product_name": f"External {label} product {index}",
+                        "label": label,
+                    }
+                    for label in taxonomy["resources"]["app"]["labels"]
+                    for index in range(2)
+                ],
+            )
             config = load_training_config()
             config.pop("_ratio_values")
             for resource in config["resources"].values():
@@ -289,6 +310,45 @@ class ContentModelTrainingTest(unittest.TestCase):
             report["resources"]["apps"]["exact_lookup"]["held_out_generalization_claim"]
         )
         self.assertIn("test_metrics", report["resources"]["websites"])
+
+    def test_external_app_metadata_is_branch_only_and_held_out_safe(self):
+        train = [
+            {"app_name": "alpha.exe", "display_name": "Alpha", "label": "learning"}
+        ]
+        validation = [
+            {"app_name": "beta.exe", "display_name": "Beta Player", "label": "entertainment"}
+        ]
+        test = [
+            {"app_name": "gamma.exe", "display_name": "Gamma Browser", "label": "browsers"}
+        ]
+        external = [
+            {"product_name": "Delta Utility", "label": "unknown"},
+            {"product_name": "Beta Player™", "label": "entertainment"},
+            {"product_name": "Gamma Browser", "label": "browsers"},
+            {"product_name": "Alpha", "label": "learning"},
+        ]
+
+        records, summary = prepare_external_app_metadata(
+            external, train, validation, test
+        )
+
+        self.assertEqual(summary["included_record_count"], 1)
+        self.assertEqual(summary["excluded_held_out_family_count"], 2)
+        self.assertEqual(summary["excluded_train_duplicate_count"], 1)
+        self.assertEqual(records[-1]["display_name"], "Delta Utility")
+        self.assertNotIn("product_name", records[-1])
+
+    def test_external_metadata_conflict_with_reviewed_train_catalog_is_rejected(self):
+        train = [
+            {"app_name": "alpha.exe", "display_name": "Alpha", "label": "learning"}
+        ]
+        with self.assertRaises(ContentTrainingError):
+            prepare_external_app_metadata(
+                [{"product_name": "Alpha", "label": "unknown"}],
+                train,
+                [],
+                [],
+            )
 
 
 if __name__ == "__main__":

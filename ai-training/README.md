@@ -20,6 +20,12 @@ Công cụ tải các nguồn CC0 đã cho phép, chuẩn hóa domain/tên proce
 ghi xung đột vào hàng đợi duyệt, lưu provenance rồi tự chạy validator. Chi tiết
 và lệnh PowerShell nằm trong `datasets/README.md`.
 
+Metadata sản phẩm ứng dụng được mở rộng độc lập bằng
+`content_classification/collect_external_app_metadata.py`. Công cụ lấy tên phần
+mềm đã có sẵn từ Wikidata theo lớp được khai báo, tạo `app_metadata.csv` và chỉ
+đưa dữ liệu này vào nhánh `ProductName/FileDescription`. Nó không lấy lịch sử
+ứng dụng từ Agent và không thêm tên sản phẩm vào exact lookup process.
+
 Catalog ứng dụng phiên bản `2.0.0` hiện có 200 process, cân bằng 50 mẫu cho mỗi
 nhãn `learning`, `entertainment`, `browsers` và `unknown`. Mỗi mẫu phải có nguồn
 HTTPS và căn cứ gán nhãn trước khi collector chấp nhận.
@@ -29,6 +35,8 @@ Train và đánh giá hai model phân loại bằng
 khi Agent nạp; model không đạt gate luôn có `deployment_approved = false`.
 App model phiên bản `1.2.0` kết hợp tên process với metadata không nhạy cảm
 `ProductName/FileDescription`; thiếu metadata thì router bắt buộc dùng Gemini.
+Khi inference, Agent chỉ gửi tên process và hai trường metadata kỹ thuật này;
+request không trở thành dữ liệu train.
 Ứng dụng đã duyệt còn có `app_exact_lookup_v1.json`; router trong
 `content_classification/hybrid_content_classifier.py` ưu tiên exact-match, chỉ
 dùng model đã đạt gate ở confidence từ `0.70`, còn lại yêu cầu Gemini.

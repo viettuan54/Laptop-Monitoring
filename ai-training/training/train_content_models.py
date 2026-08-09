@@ -7,7 +7,9 @@ import csv
 import hashlib
 import json
 import math
+import re
 import sys
+import unicodedata
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -23,6 +25,7 @@ from content_classification.content_model import (
     evaluate_model,
     fit_app_ensemble_model,
     fit_model,
+    normalize_app_metadata_value,
     stratified_group_split,
     validate_model,
 )
@@ -173,6 +176,111 @@ def load_records(path: Path, expected_headers: tuple[str, ...]) -> list[dict]:
             ]
     except UnicodeError as error:
         raise ContentTrainingError(f"Dataset must be UTF-8: {path}") from error
+
+
+def normalize_product_name(value: str) -> str:
+    """Normalize non-sensitive executable product metadata for model training."""
+    candidate = " ".join(unicodedata.normalize("NFKC", value).split()).strip()
+    if not candidate or len(candidate) > 150:
+        raise ContentTrainingError("product_name must contain 1 to 150 characters")
+    if any(ord(character) < 32 or ord(character) == 127 for character in candidate):
+        raise ContentTrainingError("product_name cannot contain control characters")
+    return candidate
+
+
+def app_metadata_family(value: str) -> str:
+    """Return a conservative key used to block metadata leakage across splits."""
+    normalized = normalize_product_name(value).casefold()
+    normalized = re.sub(r"[\u00a9\u00ae\u2122]", " ", normalized)
+    normalized = re.sub(r"(?<=[a-z0-9])tm\b", "", normalized)
+    normalized = re.sub(r"[^\w]+", " ", normalized, flags=re.UNICODE)
+    return " ".join(normalized.split())
+
+
+def load_app_metadata_records(path: Path, classes: list[str]) -> list[dict]:
+    records = load_records(path, ("product_name", "label"))
+    accepted = []
+    owners = {}
+    for index, record in enumerate(records, start=2):
+        product_name = normalize_product_name(record["product_name"])
+        label = record["label"]
+        if label not in classes:
+            raise ContentTrainingError(
+                f"App metadata label outside taxonomy at row {index}: {label}"
+            )
+        family = app_metadata_family(product_name)
+        previous = owners.get(family)
+        if previous is not None:
+            if previous != label:
+                raise ContentTrainingError(
+                    f"Conflicting app metadata labels for product family: {product_name}"
+                )
+            raise ContentTrainingError(
+                f"Duplicate app metadata product family: {product_name}"
+            )
+        owners[family] = label
+        accepted.append({"product_name": product_name, "label": label})
+    if not accepted:
+        raise ContentTrainingError(f"App metadata dataset is empty: {path}")
+    missing = [label for label in classes if label not in set(owners.values())]
+    if missing:
+        raise ContentTrainingError(
+            f"App metadata dataset is missing labels: {', '.join(missing)}"
+        )
+    return accepted
+
+
+def prepare_external_app_metadata(
+    external_records: list[dict],
+    train_records: list[dict],
+    validation_records: list[dict],
+    test_records: list[dict],
+) -> tuple[list[dict], dict]:
+    """Build the metadata branch input while excluding held-out product families."""
+    held_out_families = {
+        app_metadata_family(record["display_name"])
+        for record in validation_records + test_records
+    }
+    train_labels = {
+        app_metadata_family(record["display_name"]): record["label"]
+        for record in train_records
+    }
+    included = []
+    excluded_held_out = []
+    excluded_duplicate = []
+    for record in external_records:
+        family = app_metadata_family(record["product_name"])
+        if family in held_out_families:
+            excluded_held_out.append(record)
+            continue
+        if family in train_labels:
+            if train_labels[family] != record["label"]:
+                raise ContentTrainingError(
+                    "External metadata conflicts with reviewed catalog label for "
+                    f"{record['product_name']}"
+                )
+            excluded_duplicate.append(record)
+            continue
+        included.append(
+            {
+                "app_name": record["product_name"],
+                "display_name": record["product_name"],
+                "label": record["label"],
+            }
+        )
+    metadata_training_records = list(train_records) + included
+    summary = {
+        "source_record_count": len(external_records),
+        "included_record_count": len(included),
+        "excluded_held_out_family_count": len(excluded_held_out),
+        "excluded_train_duplicate_count": len(excluded_duplicate),
+        "fit_record_count": len(metadata_training_records),
+        "included_label_counts": dict(
+            sorted(Counter(record["label"] for record in included).items())
+        ),
+        "leakage_filter": "normalized_product_family_excludes_validation_and_test",
+    }
+    return metadata_training_records, summary
 
 
 def _gate(name: str, actual, requirement: str, passed: bool) -> dict:
@@ -347,7 +455,17 @@ def select_hyperparameters(
 
 
 def _app_records_for_field(records: list[dict], field: str) -> list[dict]:
-    return [dict(record, app_name=record[field]) for record in records]
+    return [
+        dict(
+            record,
+            app_name=(
+                normalize_app_metadata_value(record[field])
+                if field == "display_name"
+                else record[field]
+            ),
+        )
+        for record in records
+    ]
 
 
 def _fit_app_branch_candidates(
@@ -403,6 +521,7 @@ def _fit_app_branch_candidates(
 
 def select_app_ensemble_hyperparameters(
     train_records: list[dict],
+    metadata_training_records: list[dict],
     validation_records: list[dict],
     classes: list[str],
     taxonomy: dict,
@@ -419,7 +538,7 @@ def select_app_ensemble_hyperparameters(
         training_metadata,
     )
     metadata_candidates = _fit_app_branch_candidates(
-        train_records,
+        metadata_training_records,
         validation_records,
         "display_name",
         classes,
@@ -508,6 +627,8 @@ def train_resource_model(
     dataset_path: Path,
     taxonomy: dict,
     config: dict,
+    *,
+    external_app_metadata_path: Path | None = None,
 ) -> tuple[dict, dict]:
     taxonomy_key, headers, _ = _dataset_spec(resource_type)
     classes = taxonomy["resources"][taxonomy_key]["labels"]
@@ -530,10 +651,41 @@ def train_resource_model(
         "split_strategy": split_metadata["strategy"],
         "train_key_sha256": split_metadata["counts"]["train"]["key_sha256"],
     }
+    external_metadata_report = None
     if resource_type == "apps":
+        if external_app_metadata_path is None:
+            raise ContentTrainingError("App metadata dataset path is required")
+        external_app_metadata_path = Path(external_app_metadata_path).resolve()
+        external_records = load_app_metadata_records(
+            external_app_metadata_path, classes
+        )
+        metadata_training_records, external_metadata_report = (
+            prepare_external_app_metadata(
+                external_records,
+                splits["train"],
+                splits["validation"],
+                splits["test"],
+            )
+        )
+        external_metadata_report.update(
+            {
+                "path": str(external_app_metadata_path),
+                "sha256": _sha256(external_app_metadata_path),
+                "used_by": "app_metadata_branch_only",
+                "used_by_exact_lookup": False,
+                "agent_history_used": False,
+            }
+        )
+        training_metadata["external_app_metadata_sha256"] = (
+            external_metadata_report["sha256"]
+        )
+        training_metadata["external_app_metadata_included_count"] = (
+            external_metadata_report["included_record_count"]
+        )
         selection_model, calibration, hyperparameter_selection = (
             select_app_ensemble_hyperparameters(
                 splits["train"],
+                metadata_training_records,
                 splits["validation"],
                 classes,
                 taxonomy,
@@ -576,6 +728,12 @@ def train_resource_model(
         model = selection_model
         model["training_summary"].update(final_training_metadata)
         model["training_summary"]["record_count"] = len(final_fit_records)
+        model["training_summary"]["app_name_branch_record_count"] = len(
+            final_fit_records
+        )
+        model["training_summary"]["metadata_branch_record_count"] = model[
+            "metadata_model"
+        ]["training_summary"]["record_count"]
         model["training_summary"]["class_counts"] = dict(
             sorted(Counter(record["label"] for record in final_fit_records).items())
         )
@@ -700,6 +858,16 @@ def train_resource_model(
                 else "train_plus_validation"
             ),
             "record_count": len(final_fit_records),
+            **(
+                {
+                    "app_name_branch_record_count": len(final_fit_records),
+                    "metadata_branch_record_count": model["metadata_model"][
+                        "training_summary"
+                    ]["record_count"],
+                }
+                if is_app_ensemble
+                else {}
+            ),
             "key_sha256": final_training_metadata["fit_key_sha256"],
             "test_excluded": True,
         },
@@ -707,6 +875,8 @@ def train_resource_model(
         "acceptance": acceptance,
         "known_limitations": limitations,
     }
+    if external_metadata_report is not None:
+        report["external_app_metadata"] = external_metadata_report
     return model, report
 
 
@@ -723,10 +893,14 @@ def _round_metrics(value):
 def train_all(
     *,
     dataset_dir: Path | str = DEFAULT_DATASET_DIR,
+    app_metadata_path: Path | str | None = None,
     config_path: Path | str = DEFAULT_CONFIG_PATH,
     output_dir: Path | str = DEFAULT_OUTPUT_DIR,
 ) -> dict:
     dataset_dir = Path(dataset_dir).resolve()
+    app_metadata_path = Path(
+        app_metadata_path if app_metadata_path is not None else dataset_dir / "app_metadata.csv"
+    ).resolve()
     output_dir = Path(output_dir).resolve()
     config_path = Path(config_path).resolve()
     config = load_training_config(config_path)
@@ -741,6 +915,9 @@ def train_all(
             dataset_path,
             taxonomy,
             config,
+            external_app_metadata_path=(
+                app_metadata_path if resource_type == "apps" else None
+            ),
         )
         _, _, output_name = _dataset_spec(resource_type)
         output_path = output_dir / output_name
@@ -853,6 +1030,12 @@ def parse_args(argv=None):
         description="Train and evaluate app/domain content classifiers."
     )
     parser.add_argument("--dataset-dir", type=Path, default=DEFAULT_DATASET_DIR)
+    parser.add_argument(
+        "--app-metadata",
+        type=Path,
+        default=None,
+        help="External product metadata CSV (defaults to DATASET_DIR/app_metadata.csv).",
+    )
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     return parser.parse_args(argv)
@@ -863,6 +1046,7 @@ def main(argv=None) -> int:
     try:
         report = train_all(
             dataset_dir=args.dataset_dir,
+            app_metadata_path=args.app_metadata,
             config_path=args.config,
             output_dir=args.output_dir,
         )
