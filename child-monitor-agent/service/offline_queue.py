@@ -6,6 +6,8 @@ import logging
 import subprocess
 from datetime import datetime, timedelta
 
+from runtime_paths import agent_root
+
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -23,8 +25,7 @@ class ClosingSQLiteConnection(sqlite3.Connection):
 class OfflineQueue:
     def __init__(self, db_path=None, api_client=None, secure_file=True):
         if db_path is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            db_path = os.path.join(base_dir, "db", "local.db")
+            db_path = os.path.join(agent_root(), "db", "local.db")
             
         self.db_path = db_path
         self.api_client = api_client

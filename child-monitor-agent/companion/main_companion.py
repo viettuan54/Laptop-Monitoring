@@ -2,10 +2,13 @@ import time
 import ctypes
 import logging
 import threading
+import os
+import sys
 from pipe_client import PipeClient
 from app_tracker import AppTracker
 from ui_alerts import UIAlerts
 from edge_vision import EdgeVisionMonitor
+from runtime_paths import agent_root
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -88,5 +91,46 @@ def main():
         except Exception as e:
             logging.error(f"Failed to flush app usage during shutdown: {e}")
 
+
+def run_self_test():
+    """Verify native Edge AI imports and external model deployment."""
+    import cv2
+
+    from mediapipe_runtime import load_mediapipe
+
+    mediapipe = load_mediapipe()
+    models_dir = os.path.join(agent_root(), "models")
+    missing = [
+        name
+        for name in ("face_landmarker.task", "pose_landmarker_lite.task")
+        if not os.path.isfile(os.path.join(models_dir, name))
+    ]
+    if missing:
+        raise FileNotFoundError("Missing Edge AI models: " + ", ".join(missing))
+
+    face_landmarker = mediapipe.tasks.vision.FaceLandmarker.create_from_options(
+        mediapipe.tasks.vision.FaceLandmarkerOptions(
+            base_options=mediapipe.tasks.BaseOptions(
+                model_asset_path=os.path.join(models_dir, "face_landmarker.task")
+            )
+        )
+    )
+    face_landmarker.close()
+    pose_landmarker = mediapipe.tasks.vision.PoseLandmarker.create_from_options(
+        mediapipe.tasks.vision.PoseLandmarkerOptions(
+            base_options=mediapipe.tasks.BaseOptions(
+                model_asset_path=os.path.join(models_dir, "pose_landmarker_lite.task")
+            )
+        )
+    )
+    pose_landmarker.close()
+    print(
+        "ChildMonitorCompanion self-test passed. "
+        f"MediaPipe={mediapipe.__version__}, OpenCV={cv2.__version__}"
+    )
+    return 0
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(run_self_test())
     main()

@@ -17,6 +17,7 @@ from provision_agent import (
     normalize_device_secret,
     normalize_server_url,
     normalize_vision_subject_id,
+    read_device_secret_file,
     write_config_atomic,
 )
 
@@ -84,6 +85,19 @@ class ProvisioningValidationTest(unittest.TestCase):
                     "is_encrypted": True,
                 })
             self.assertTrue(os.path.exists(config_path))
+
+    def test_reads_and_deletes_short_lived_installer_secret(self):
+        secret = "550e8400-e29b-41d4-a716-446655440000"
+        with tempfile.TemporaryDirectory() as temp_dir:
+            secret_path = os.path.join(temp_dir, "device-secret.txt")
+            with open(secret_path, "w", encoding="utf-8") as stream:
+                stream.write(secret + "\n")
+
+            self.assertEqual(
+                read_device_secret_file(secret_path, delete_after=True),
+                secret,
+            )
+            self.assertFalse(os.path.exists(secret_path))
 
 
 if __name__ == "__main__":

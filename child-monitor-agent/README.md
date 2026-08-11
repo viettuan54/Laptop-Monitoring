@@ -1,9 +1,64 @@
 # Child Monitor Agent
 
 Windows Agent gồm một Service chạy dưới `LocalSystem` và Companion chạy trong
-phiên đăng nhập của trẻ. Yêu cầu Windows 10/11, Python 3 và quyền Administrator.
+phiên đăng nhập của trẻ. Bản phát hành được đóng thành một bộ cài `.exe`; máy
+được giám sát không cần cài Python hay tải package từ Internet.
 
-## Cài đặt
+## Cài bằng ChildMonitorSetup.exe (khuyến nghị)
+
+1. Đăng ký thiết bị trên Parent Dashboard để nhận `device_secret`.
+2. Chép `build\output\ChildMonitorSetup-<version>.exe` sang máy Windows 10/11
+   64-bit cần giám sát.
+3. Chọn **Run as administrator**, nhập Backend URL, Device Secret và Subject ID
+   nếu máy đã có profile Edge AI cá nhân.
+4. Setup xác minh credential, mã hóa secret bằng DPAPI LocalMachine, cài
+   `ChildMonitorService` ở chế độ Automatic và khởi động Agent.
+
+Bộ cài là một file duy nhất, nhưng cài hai executable riêng đúng theo mô hình
+bảo mật của Windows:
+
+- `ChildMonitorService.exe` chạy nền dưới `LocalSystem`, đồng bộ dữ liệu và áp
+  dụng policy.
+- `ChildMonitorCompanion.exe` do watchdog mở trong phiên đăng nhập của trẻ để
+  theo dõi ứng dụng, hiển thị cảnh báo và chạy camera/Edge AI.
+
+Không nên ép hai tiến trình này thành một executable chạy cùng một session.
+Service ở Session 0 không thể dùng camera/UI của desktop người dùng một cách
+ổn định.
+
+## Build bộ cài
+
+Máy build cần Windows 64-bit, Python 3.11 64-bit và Inno Setup 6. Mở PowerShell
+tại `child-monitor-agent` rồi chạy:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
+  -Version "1.0.0"
+```
+
+Script cài dependency build vào môi trường Python được chọn, tạo bundle
+PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
+MediaPipe/OpenCV, rồi tạo:
+
+```text
+build\output\ChildMonitorSetup-1.0.0.exe
+```
+
+Để đóng gói model/profile cá nhân vào installer:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
+  -Version "1.0.0" `
+  -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
+  -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
+  -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
+```
+
+Bản build hiện chưa được ký Authenticode. Trước khi phân phối ngoài môi trường
+demo, cần ký code bằng chứng thư của đơn vị để giảm cảnh báo Microsoft
+SmartScreen và bảo đảm nguồn gốc file.
+
+## Cài từ source (dành cho phát triển)
 
 Trước tiên đăng ký thiết bị qua Backend để nhận `device_secret`. Mở PowerShell
 với quyền Administrator tại thư mục `child-monitor-agent`. Agent hỗ trợ Python

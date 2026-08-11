@@ -87,6 +87,26 @@ class ChildMonitorService(ServiceBaseClass):
             )
         self.main()
 
+    def SvcSessionChange(self, event_type, data):
+        """Move Companion/Pipe access when the interactive user session changes."""
+        session_id = getattr(data, "SessionId", data)
+        if self.watchdog:
+            self.watchdog.on_session_change(event_type, session_id)
+
+    def GetAcceptedControls(self):
+        accepted = super().GetAcceptedControls()
+        if win32service:
+            accepted |= win32service.SERVICE_ACCEPT_SESSIONCHANGE
+        return accepted
+
+    def SvcOtherEx(self, control, event_type, data):
+        if (
+            win32service
+            and control == win32service.SERVICE_CONTROL_SESSIONCHANGE
+        ):
+            return self.SvcSessionChange(event_type, data)
+        return super().SvcOtherEx(control, event_type, data)
+
     def main(self):
         logging.info("Initializing ChildMonitorService modules...")
         
@@ -194,15 +214,45 @@ class ChildMonitorService(ServiceBaseClass):
         """Offline Log Sync Loop (60s): Đồng bộ log trong SQLite queue lên backend."""
         self.offline_queue.sync_offline_data(self.api_client)
 
+def run_standalone():
+    logging.info("Starting ChildMonitorService in Standalone / Dev mode...")
+    service_inst = ChildMonitorService(["ChildMonitorService"])
+    try:
+        service_inst.main()
+    except KeyboardInterrupt:
+        logging.info("Standalone service stopped by KeyboardInterrupt.")
+        service_inst.SvcStop()
+
+
+def run_entrypoint():
+    if "--self-test" in sys.argv:
+        from runtime_paths import agent_root
+
+        print(f"ChildMonitorService self-test passed. Agent root: {agent_root()}")
+        return 0
+
+    if not win32serviceutil or not servicemanager:
+        if len(sys.argv) > 1:
+            raise RuntimeError("pywin32 is required for Windows Service commands")
+        run_standalone()
+        return 0
+
+    if getattr(sys, "frozen", False):
+        if len(sys.argv) > 1:
+            return win32serviceutil.HandleCommandLine(ChildMonitorService)
+
+        # The Service Control Manager starts a frozen service without command
+        # arguments. In this mode the executable must host its class directly.
+        servicemanager.Initialize()
+        servicemanager.PrepareToHostSingle(ChildMonitorService)
+        servicemanager.StartServiceCtrlDispatcher()
+        return 0
+
+    if len(sys.argv) > 1:
+        return win32serviceutil.HandleCommandLine(ChildMonitorService)
+    run_standalone()
+    return 0
+
+
 if __name__ == "__main__":
-    if len(sys.argv) > 1 and win32serviceutil:
-        win32serviceutil.HandleCommandLine(ChildMonitorService)
-    else:
-        # Chạy ở dạng Standalone Script (Dev Mode) khi không truyền tham số CLI
-        logging.info("Starting ChildMonitorService in Standalone / Dev mode...")
-        service_inst = ChildMonitorService(["ChildMonitorService"])
-        try:
-            service_inst.main()
-        except KeyboardInterrupt:
-            logging.info("Standalone service stopped by KeyboardInterrupt.")
-            service_inst.SvcStop()
+    sys.exit(run_entrypoint())

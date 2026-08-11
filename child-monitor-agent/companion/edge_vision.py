@@ -27,6 +27,7 @@ from vision_metrics import (
     analyze_posture,
     estimate_eye_distance_cm,
 )
+from runtime_paths import agent_root
 
 
 DEFAULT_CONFIG = {
@@ -142,7 +143,7 @@ class EdgeVisionMonitor:
         self.pipe_client = pipe_client
         self.warning_callback = warning_callback
         self.models_dir = models_dir or os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            agent_root(),
             "models",
         )
         self.face_model_path = os.path.join(self.models_dir, "face_landmarker.task")

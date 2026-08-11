@@ -7,6 +7,8 @@ import time
 from urllib.parse import urlparse
 from datetime import datetime, timedelta
 
+from runtime_paths import agent_root
+
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -14,8 +16,7 @@ class WebTracker:
     def __init__(self, offline_queue, config_dir=None):
         self.offline_queue = offline_queue
         if config_dir is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_dir = os.path.join(base_dir, "config")
+            config_dir = os.path.join(agent_root(), "config")
             
         self.checkpoint_path = os.path.join(config_dir, "tracker_checkpoint.json")
         self.temp_dir = os.path.join(os.path.dirname(config_dir), "temp")

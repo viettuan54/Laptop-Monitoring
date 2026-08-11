@@ -6,6 +6,8 @@ import threading
 import re
 from datetime import datetime
 
+from runtime_paths import agent_root
+
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
@@ -17,8 +19,7 @@ class EnforcementCore:
     def __init__(self, offline_queue, config_dir=None):
         self.offline_queue = offline_queue
         if config_dir is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_dir = os.path.join(base_dir, "config")
+            config_dir = os.path.join(agent_root(), "config")
 
         self.settings_cache_path = os.path.join(config_dir, "settings_cache.json")
         self.hosts_path = r"C:\Windows\System32\drivers\etc\hosts"

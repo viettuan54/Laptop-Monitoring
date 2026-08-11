@@ -20,13 +20,14 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
 
 $python = "$InstallDir\venv\Scripts\python.exe"
 $provisioner = "$InstallDir\installer\provision_agent.py"
+$provisionExe = "$InstallDir\installer\ChildMonitorProvision.exe"
 $config = "$InstallDir\config\local_config.json"
-if (-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $provisioner)) {
+if (-not (Test-Path -LiteralPath $provisionExe) -and
+    (-not (Test-Path -LiteralPath $python) -or -not (Test-Path -LiteralPath $provisioner))) {
     throw "Agent is not installed at $InstallDir."
 }
 
 $arguments = @(
-    $provisioner,
     "--server-url", $ServerUrl,
     "--device-secret", $DeviceSecret,
     "--config-path", $config
@@ -41,7 +42,11 @@ if ($SubjectId) {
     $arguments += @("--vision-subject-id", $SubjectId)
 }
 
-& $python @arguments
+if (Test-Path -LiteralPath $provisionExe -PathType Leaf) {
+    & $provisionExe @arguments
+} else {
+    & $python $provisioner @arguments
+}
 if ($LASTEXITCODE -ne 0) {
     throw "Provisioning failed with exit code $LASTEXITCODE."
 }

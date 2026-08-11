@@ -51,3 +51,7 @@ ai-training/datasets/content/raw-cache/
 ai-training/datasets/content/record_provenance.jsonl
 ai-training/datasets/content/app_metadata_provenance.jsonl
 .runtime/
+child-monitor-agent/build/dist/
+child-monitor-agent/build/work/
+child-monitor-agent/build/release/
+child-monitor-agent/build/output/

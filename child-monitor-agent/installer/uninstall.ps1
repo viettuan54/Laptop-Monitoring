@@ -30,13 +30,19 @@ if (-not ($resolvedInstallDir + '\').StartsWith(
 
 $python = "$resolvedInstallDir\venv\Scripts\python.exe"
 $serviceScript = "$resolvedInstallDir\service\main_service.py"
+$serviceExe = "$resolvedInstallDir\service\ChildMonitorService.exe"
 $service = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 if ($service) {
     if ($service.Status -ne "Stopped") {
         Stop-Service -Name $ServiceName -Force
         $service.WaitForStatus("Stopped", [TimeSpan]::FromSeconds(30))
     }
-    if (Test-Path -LiteralPath $python -PathType Leaf) {
+    if (Test-Path -LiteralPath $serviceExe -PathType Leaf) {
+        & $serviceExe remove
+        if ($LASTEXITCODE -ne 0) {
+            throw "Failed to remove bundled Windows Service."
+        }
+    } elseif (Test-Path -LiteralPath $python -PathType Leaf) {
         & $python $serviceScript remove
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to remove Windows Service."
@@ -50,7 +56,8 @@ if ($service) {
 }
 
 if ($PurgeData) {
-    if (-not (Test-Path -LiteralPath "$resolvedInstallDir\service\main_service.py" -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $serviceExe -PathType Leaf) -and
+        -not (Test-Path -LiteralPath $serviceScript -PathType Leaf)) {
         throw "Refusing to purge: Agent installation marker was not found."
     }
     Remove-Item -LiteralPath $resolvedInstallDir -Recurse -Force

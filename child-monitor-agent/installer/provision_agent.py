@@ -18,6 +18,7 @@ UUID_PATTERN = re.compile(
     re.IGNORECASE,
 )
 SUBJECT_ID_PATTERN = re.compile(r"^subject-[A-Za-z0-9_-]+$")
+MAX_SECRET_FILE_BYTES = 1024
 
 
 def normalize_server_url(value):
@@ -53,6 +54,22 @@ def normalize_vision_subject_id(value):
     if not SUBJECT_ID_PATTERN.fullmatch(subject_id):
         raise ValueError("VisionSubjectId must use the form subject-<safe-id>")
     return subject_id
+
+
+def read_device_secret_file(path, delete_after=False):
+    """Read a short-lived installer secret without placing it on the command line."""
+    resolved_path = os.path.abspath(path)
+    try:
+        if os.path.getsize(resolved_path) > MAX_SECRET_FILE_BYTES:
+            raise ValueError("Device secret file is unexpectedly large")
+        with open(resolved_path, "r", encoding="utf-8-sig") as stream:
+            return stream.read().strip()
+    finally:
+        if delete_after:
+            try:
+                os.remove(resolved_path)
+            except FileNotFoundError:
+                pass
 
 
 def validate_credentials(server_url, device_secret, timeout):
@@ -137,7 +154,14 @@ def main():
         description="Provision or rotate credentials for Child Monitor Agent."
     )
     parser.add_argument("--server-url", required=True)
-    parser.add_argument("--device-secret", required=True)
+    secret_group = parser.add_mutually_exclusive_group(required=True)
+    secret_group.add_argument("--device-secret")
+    secret_group.add_argument("--device-secret-file")
+    parser.add_argument(
+        "--delete-secret-file",
+        action="store_true",
+        help="Delete --device-secret-file immediately after reading it.",
+    )
     parser.add_argument("--config-path", required=True)
     parser.add_argument("--timeout", type=int, default=10)
     parser.add_argument("--vision-subject-id")
@@ -149,7 +173,15 @@ def main():
     args = parser.parse_args()
 
     server_url = normalize_server_url(args.server_url)
-    device_secret = normalize_device_secret(args.device_secret)
+    if args.delete_secret_file and not args.device_secret_file:
+        parser.error("--delete-secret-file requires --device-secret-file")
+    raw_device_secret = args.device_secret
+    if args.device_secret_file:
+        raw_device_secret = read_device_secret_file(
+            args.device_secret_file,
+            delete_after=args.delete_secret_file,
+        )
+    device_secret = normalize_device_secret(raw_device_secret)
     vision_subject_id = normalize_vision_subject_id(args.vision_subject_id)
 
     if not args.skip_validation:

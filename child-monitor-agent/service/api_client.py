@@ -7,6 +7,8 @@ import win32crypt
 import base64
 from urllib.parse import urlparse
 
+from runtime_paths import agent_root
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 class APIClient:
@@ -14,8 +16,7 @@ class APIClient:
 
     def __init__(self, config_path=None):
         if config_path is None:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            config_path = os.path.join(base_dir, "config", "local_config.json")
+            config_path = os.path.join(agent_root(), "config", "local_config.json")
         
         self.config_path = config_path
         self.server_url = "http://localhost:3000"
