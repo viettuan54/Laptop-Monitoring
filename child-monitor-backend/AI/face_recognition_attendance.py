@@ -40,9 +40,10 @@ from mtcnn import MTCNN  # noqa: E402
 SVM_PATH = MODEL_DIR / "svm_facenet.pkl"
 ENCODER_PATH = MODEL_DIR / "label_encoder_facenet.pkl"
 EXPECTED_LABEL = "admin"
-CLASSIFICATION_THRESHOLD = float(os.environ.get("FACE_CLASSIFICATION_THRESHOLD", "0.75"))
-DETECTION_THRESHOLD = float(os.environ.get("FACE_DETECTION_THRESHOLD", "0.90"))
+CLASSIFICATION_THRESHOLD = float(os.environ.get("FACE_CLASSIFICATION_THRESHOLD", "0.6"))
+DETECTION_THRESHOLD = float(os.environ.get("FACE_DETECTION_THRESHOLD", "0.60"))
 RESULT_PREFIX = "SAFENEST_FACE_RESULT:"
+FACENET_INPUT_SIZE = (160, 160)
 
 
 def emit(result):
@@ -57,7 +58,25 @@ def l2(vector):
     return vector / norm
 
 
-def classify_frame(image_path, detector, svm, encoder):
+def create_embedding(face, facenet):
+    """Reproduce the preprocessing used to train the bundled SVM.
+
+    btl_ndkm.py trained the classifier with 160x160 RGB crops that were
+    standardized per image before being passed directly to FaceNet. Using
+    DeepFace.represent with its default `base` normalization produces a
+    different embedding space and makes valid admin faces look unknown.
+    """
+    resized = cv2.resize(face, FACENET_INPUT_SIZE)
+    normalized = resized.astype(np.float32)
+    mean = float(normalized.mean())
+    std = float(normalized.std())
+    normalized = (normalized - mean) / (std + 1e-6)
+    batch = np.expand_dims(normalized, axis=0)
+    embedding = np.asarray(facenet.forward(batch), dtype=np.float32).reshape(-1)
+    return l2(embedding)
+
+
+def classify_frame(image_path, detector, facenet, svm, encoder):
     image = cv2.imread(str(image_path))
     if image is None:
         return {"label": "fail", "confidence": 0.0, "faces_detected": 0}
@@ -76,17 +95,12 @@ def classify_frame(image_path, detector, svm, encoder):
     if face.size == 0:
         return {"label": "fail", "confidence": 0.0, "faces_detected": 1}
 
-    representation = DeepFace.represent(
-        img_path=face,
-        model_name="Facenet",
-        enforce_detection=False,
-        detector_backend="skip",
-    )
-    embedding = l2(representation[0]["embedding"])
+    embedding = create_embedding(face, facenet)
     probabilities = svm.predict_proba([embedding])[0]
-    index = int(np.argmax(probabilities))
-    predicted = str(encoder.inverse_transform([index])[0]).strip().lower()
-    confidence = float(probabilities[index])
+    probability_index = int(np.argmax(probabilities))
+    encoded_class = int(svm.classes_[probability_index])
+    predicted = str(encoder.inverse_transform([encoded_class])[0]).strip().lower()
+    confidence = float(probabilities[probability_index])
 
     return {
         "label": predicted if confidence >= CLASSIFICATION_THRESHOLD else "fail",
@@ -110,9 +124,9 @@ def main():
         encoder = pickle.load(encoder_file)
 
     detector = MTCNN()
-    DeepFace.build_model("Facenet")
+    facenet = DeepFace.build_model("Facenet")
     frames = [
-        classify_frame(path, detector, svm, encoder)
+        classify_frame(path, detector, facenet, svm, encoder)
         for path in image_paths
     ]
     required_matches = max(1, math.ceil(len(frames) * 2 / 3))

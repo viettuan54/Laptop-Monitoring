@@ -107,7 +107,7 @@ FACE_AUTH_REQUIRED_FOR_ADMIN=true
 FACE_PYTHON_BIN=C:\DoAn\Laptopmonitoring\child-monitor-backend\.venv-face\Scripts\python.exe
 FACE_AUTH_TIMEOUT_MS=120000
 FACE_CLASSIFICATION_THRESHOLD=0.75
-FACE_DETECTION_THRESHOLD=0.90
+FACE_DETECTION_THRESHOLD=0.60
 ```
 
 Ảnh chỉ được ghi vào thư mục tạm với tên ngẫu nhiên trong lúc suy luận và bị xóa trong khối `finally`; database chỉ lưu challenge đã băm, không lưu ảnh hoặc embedding mới.
