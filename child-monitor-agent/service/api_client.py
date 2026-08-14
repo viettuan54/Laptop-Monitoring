@@ -11,6 +11,9 @@ from runtime_paths import agent_root
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+DEFAULT_SERVER_URL = "https://api.tuansosad.id.vn"
+
+
 class APIClient:
     CRYPTPROTECT_LOCAL_MACHINE = 0x4
 
@@ -19,7 +22,7 @@ class APIClient:
             config_path = os.path.join(agent_root(), "config", "local_config.json")
         
         self.config_path = config_path
-        self.server_url = "http://localhost:3000"
+        self.server_url = DEFAULT_SERVER_URL
         self.device_secret = None
         self.vision_subject_id = None
         self.suspended = False
@@ -69,7 +72,7 @@ class APIClient:
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            configured_url = data.get("server_url", "http://localhost:3000").rstrip("/")
+            configured_url = data.get("server_url", DEFAULT_SERVER_URL).rstrip("/")
             self.server_url = self.validate_server_url(configured_url)
             
             raw_secret = data.get("device_secret", "")

@@ -33,7 +33,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.0"
+  -Version "1.0.1"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -41,14 +41,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.0.exe
+build\output\ChildMonitorSetup-1.0.1.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.0" `
+  -Version "1.0.1" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -66,7 +66,7 @@ với quyền Administrator tại thư mục `child-monitor-agent`. Agent hỗ t
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\installer\install.ps1 `
-  -ServerUrl "https://api.example.com" `
+  -ServerUrl "https://api.tuansosad.id.vn" `
   -DeviceSecret "00000000-0000-0000-0000-000000000000" `
   -PythonExe "C:\Path\To\Python311\python.exe"
 ```
@@ -130,7 +130,7 @@ Khi cài model/profile đã tạo từ `ai-training`, truyền rõ đường d�
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\installer\install.ps1 `
-  -ServerUrl "https://api.example.com" `
+  -ServerUrl "https://api.tuansosad.id.vn" `
   -DeviceSecret "00000000-0000-0000-0000-000000000000" `
   -SubjectId "subject-001" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
@@ -146,7 +146,7 @@ và runtime chỉ kích hoạt nó khi đúng camera/độ phân giải đã hi�
 ```powershell
 powershell -ExecutionPolicy Bypass -File `
   "C:\Program Files\ChildMonitorAgent\installer\provision.ps1" `
-  -ServerUrl "https://api.example.com" `
+  -ServerUrl "https://api.tuansosad.id.vn" `
   -DeviceSecret "11111111-1111-1111-1111-111111111111"
 ```
 

@@ -1,13 +1,16 @@
 #define MyAppName "Child Monitor Agent"
 #define MyAppPublisher "Laptop Monitoring Project"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.0"
+  #define MyAppVersion "1.0.1"
 #endif
 #ifndef ReleaseRoot
   #define ReleaseRoot "release\ChildMonitorAgent"
 #endif
 #ifndef OutputRoot
   #define OutputRoot "output"
+#endif
+#ifndef DefaultServerUrl
+  #define DefaultServerUrl "https://api.tuansosad.id.vn"
 #endif
 
 [Setup]
@@ -117,7 +120,7 @@ begin
   AgentConfigPage.Add('Device Secret:', True);
   AgentConfigPage.Add('Subject ID (không bắt buộc):', False);
   AgentConfigPage.Values[0] := ExpandConstant(
-    '{param:SERVERURL|http://localhost:3000}'
+    '{param:SERVERURL|{#DefaultServerUrl}}'
   );
   AgentConfigPage.Values[1] := ExpandConstant('{param:DEVICESECRET|}');
   AgentConfigPage.Values[2] := ExpandConstant('{param:SUBJECTID|}');
