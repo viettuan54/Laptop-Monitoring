@@ -144,6 +144,45 @@ class WebTrackingTest(unittest.TestCase):
             tracker.checkpoints["edge:Default"],
             {"visit_time": visit_time, "visit_id": 1},
         )
+        with open(tracker.status_path, "r", encoding="utf-8") as stream:
+            status = json.load(stream)
+        self.assertEqual(status["agent_version"], "1.0.4")
+        self.assertEqual(status["records_discovered"], 1)
+        self.assertEqual(status["records_forwarded"], 1)
+
+    def test_snapshot_fallback_copies_wal_family_when_backup_is_unavailable(self):
+        pipe_client = FakePipeClient()
+        tracker = self._tracker(pipe_client)
+        wal_path = Path(str(self.history_path) + "-wal")
+        shm_path = Path(str(self.history_path) + "-shm")
+        wal_path.write_bytes(b"recent-wal")
+        shm_path.write_bytes(b"shared-memory")
+        snapshot_path = self.root / "snapshot.sqlite"
+        original_connect = companion_web_tracker.sqlite3.connect
+
+        class BrokenBackupConnection:
+            @staticmethod
+            def backup(_destination, **_kwargs):
+                raise TimeoutError("simulated busy browser database")
+
+            @staticmethod
+            def close():
+                pass
+
+        def connect(path, *args, **kwargs):
+            if kwargs.get("uri"):
+                return BrokenBackupConnection()
+            return original_connect(path, *args, **kwargs)
+
+        with patch.object(companion_web_tracker.sqlite3, "connect", side_effect=connect):
+            created = tracker._create_history_snapshot(
+                str(self.history_path), str(snapshot_path)
+            )
+
+        self.assertTrue(created)
+        self.assertTrue(snapshot_path.is_file())
+        self.assertEqual(Path(str(snapshot_path) + "-wal").read_bytes(), b"recent-wal")
+        self.assertEqual(Path(str(snapshot_path) + "-shm").read_bytes(), b"shared-memory")
 
     def test_retry_reuses_id_and_does_not_advance_without_service_ack(self):
         self._insert_visit()

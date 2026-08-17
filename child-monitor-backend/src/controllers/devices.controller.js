@@ -16,13 +16,18 @@ exports.getDevices = async (req, res) => {
       // Lấy danh sách thiết bị của một đứa trẻ cụ thể (được bảo vệ bởi RLS)
       // Không SELECT device_secret – chỉ trả về khi đăng ký lần đầu
       result = await req.db.query(
-        'SELECT device_id, child_id, device_name, device_uid, created_at FROM devices WHERE child_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3',
+        `SELECT device_id, child_id, device_name, device_uid, last_seen_at, created_at
+         FROM devices
+         WHERE child_id = $1
+         ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
         [child_id, limit, offset]
       );
     } else {
       // Lấy toàn bộ thiết bị thuộc quyền sở hữu của phụ huynh hiện tại
       result = await req.db.query(
-        'SELECT device_id, child_id, device_name, device_uid, created_at FROM devices ORDER BY created_at DESC LIMIT $1 OFFSET $2',
+        `SELECT device_id, child_id, device_name, device_uid, last_seen_at, created_at
+         FROM devices
+         ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
         [limit, offset]
       );
     }
@@ -68,7 +73,7 @@ exports.registerDevice = async (req, res) => {
     const result = await req.db.query(
       `INSERT INTO devices(child_id, device_name, device_uid, device_secret)
        VALUES($1, $2, $3, $4)
-       RETURNING device_id, child_id, device_name, device_uid, created_at`,
+       RETURNING device_id, child_id, device_name, device_uid, last_seen_at, created_at`,
       [child_id, device_name, device_uid, hashedSecret]
     );
 
@@ -107,7 +112,8 @@ exports.updateDevice = async (req, res) => {
   try {
     // Nhờ RLS, nếu phụ huynh không sở hữu thiết bị này, câu lệnh UPDATE sẽ không tác động dòng nào
     const result = await req.db.query(
-      'UPDATE devices SET device_name = $1 WHERE device_id = $2 RETURNING device_id, child_id, device_name, device_uid, created_at',
+      `UPDATE devices SET device_name = $1 WHERE device_id = $2
+       RETURNING device_id, child_id, device_name, device_uid, last_seen_at, created_at`,
       [device_name, id]
     );
 
@@ -169,7 +175,7 @@ exports.rotateSecret = async (req, res) => {
       `UPDATE devices
        SET device_secret = $1
        WHERE device_id = $2
-       RETURNING device_id, child_id, device_name, device_uid, created_at`,
+       RETURNING device_id, child_id, device_name, device_uid, last_seen_at, created_at`,
       [newHashedSecret, id]
     );
 

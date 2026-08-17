@@ -4,6 +4,7 @@ import logging
 import threading
 import os
 import sys
+from logging.handlers import RotatingFileHandler
 from pipe_client import PipeClient
 from app_tracker import AppTracker
 from web_tracker import WebTracker
@@ -13,6 +14,32 @@ from runtime_paths import agent_root
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+def configure_file_logging():
+    """Persist diagnostics because the packaged Companion has no console window."""
+    local_app_data = os.environ.get("LOCALAPPDATA") or os.path.join(
+        os.path.expanduser("~"), "AppData", "Local"
+    )
+    log_dir = os.path.join(local_app_data, "ChildMonitorAgent", "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "companion.log")
+    root_logger = logging.getLogger()
+    if not any(
+        isinstance(handler, RotatingFileHandler)
+        and os.path.abspath(getattr(handler, "baseFilename", "")) == os.path.abspath(log_path)
+        for handler in root_logger.handlers
+    ):
+        file_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=1024 * 1024,
+            backupCount=2,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(
+            logging.Formatter("%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s")
+        )
+        root_logger.addHandler(file_handler)
 
 def lock_windows_session():
     """Khóa màn hình Windows."""
@@ -58,7 +85,24 @@ def start_ping_timer(pipe_client, response_callback=None, interval=30):
     t = threading.Thread(target=_ping_loop, daemon=True)
     t.start()
 
+
+def start_web_tracker(web_tracker, interval=3):
+    """Keep Chromium SQLite work away from foreground app tracking."""
+    def _web_loop():
+        logging.info("Browser history tracker loop started")
+        while True:
+            try:
+                web_tracker.poll()
+            except Exception as error:
+                logging.error("Browser history tracker loop error: %s", error, exc_info=True)
+            time.sleep(interval)
+
+    thread = threading.Thread(target=_web_loop, daemon=True, name="WebTracker")
+    thread.start()
+    return thread
+
 def main():
+    configure_file_logging()
     logging.info("UI Companion started in User Session.")
     pipe_client = PipeClient()
     tracker = AppTracker(pipe_client)
@@ -68,6 +112,7 @@ def main():
         warning_callback=UIAlerts.show_vision_warning,
     )
     vision_monitor.start()
+    start_web_tracker(web_tracker)
 
     # Khởi chạy luồng timer 30s PING kiểm tra policy
     start_ping_timer(
@@ -83,10 +128,6 @@ def main():
                 vision_monitor.update_config(policy_response)
                 handle_policy_response(policy_response)
 
-                web_policy_response = web_tracker.poll()
-                if web_policy_response is not None:
-                    vision_monitor.update_config(web_policy_response)
-                    handle_policy_response(web_policy_response)
             except Exception as e:
                 logging.error(f"Companion loop error: {e}")
 

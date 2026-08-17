@@ -143,3 +143,36 @@ test('policy UI exposes and submits both AI classification toggles', () => {
   assert.match(source, /switchRow\('enable_web_classification', 'Phân loại website'/);
   assert.match(source, /'enable_app_classification',[\s\S]*'enable_web_classification'/);
 });
+
+test('policy UI manages allow and block rules for every app and website category', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+
+  assert.match(source, /\/settings\/\$\{state\.selectedChildId\}\/policies/);
+  assert.match(source, /policies\/\$\{resourceType\}\/\$\{category\}/);
+  for (const category of [
+    'learning',
+    'education',
+    'entertainment',
+    'browsers',
+    'social',
+    'unsafe',
+    'unknown',
+  ]) {
+    assert.ok(source.includes(`'${category}'`), `Missing category policy UI for ${category}`);
+  }
+});
+
+test('activity and device UI expose operational monitoring controls', () => {
+  const dashboardSource = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const deviceController = fs.readFileSync(
+    path.resolve(ROOT, '..', 'child-monitor-backend', 'src', 'controllers', 'devices.controller.js'),
+    'utf8'
+  );
+
+  assert.match(dashboardSource, /data-action="export-activity"/);
+  assert.match(dashboardSource, /name="search"/);
+  assert.match(dashboardSource, /function safeExternalUrl/);
+  assert.match(dashboardSource, /function isDeviceOnline/);
+  assert.match(dashboardSource, /Backend đã kết nối/);
+  assert.match(deviceController, /last_seen_at/);
+});
