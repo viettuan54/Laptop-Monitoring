@@ -6,6 +6,7 @@ import os
 import sys
 from pipe_client import PipeClient
 from app_tracker import AppTracker
+from web_tracker import WebTracker
 from ui_alerts import UIAlerts
 from edge_vision import EdgeVisionMonitor
 from runtime_paths import agent_root
@@ -61,6 +62,7 @@ def main():
     logging.info("UI Companion started in User Session.")
     pipe_client = PipeClient()
     tracker = AppTracker(pipe_client)
+    web_tracker = WebTracker(pipe_client)
     vision_monitor = EdgeVisionMonitor(
         pipe_client,
         warning_callback=UIAlerts.show_vision_warning,
@@ -80,6 +82,11 @@ def main():
                 policy_response = tracker.poll()
                 vision_monitor.update_config(policy_response)
                 handle_policy_response(policy_response)
+
+                web_policy_response = web_tracker.poll()
+                if web_policy_response is not None:
+                    vision_monitor.update_config(web_policy_response)
+                    handle_policy_response(web_policy_response)
             except Exception as e:
                 logging.error(f"Companion loop error: {e}")
 

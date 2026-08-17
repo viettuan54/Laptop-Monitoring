@@ -27,6 +27,26 @@ class PipeClient:
             payload["client_record_id"] = client_record_id
         return self._send_and_receive(payload)
 
+    def send_web_tracking(
+        self,
+        url,
+        domain,
+        visit_time,
+        duration_seconds,
+        page_title,
+        client_record_id,
+    ):
+        """Forward one browser-history visit to the privileged Service queue."""
+        return self._send_and_receive({
+            "action": "TRACK_WEB",
+            "url": url,
+            "domain": domain,
+            "visit_time": visit_time,
+            "duration_seconds": duration_seconds,
+            "page_title": page_title,
+            "client_record_id": client_record_id,
+        })
+
     def send_ping(self):
         """Gửi định kỳ PING lên Service để kiểm tra chính sách mà không làm ghi log app mới."""
         payload = {

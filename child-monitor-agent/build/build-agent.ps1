@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.1",
+    [string]$Version = "1.0.3",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -15,7 +15,7 @@ $BuildRoot = $PSScriptRoot
 $AgentRoot = Split-Path -Parent $BuildRoot
 $WorkRoot = Join-Path $BuildRoot "work"
 $DistRoot = Join-Path $BuildRoot "dist"
-$ReleaseRoot = Join-Path $BuildRoot "release\ChildMonitorAgent"
+$ReleaseRoot = Join-Path $BuildRoot "release\ChildMonitorAgent-$Version"
 $OutputRoot = Join-Path $BuildRoot "output"
 
 function Invoke-Checked {

@@ -90,6 +90,35 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         self.queue._sync_apps(FakeApiClient([]))
         self.assertEqual(self._synced_state(), {record_id: 0})
 
+    def test_duplicate_web_record_id_is_idempotent(self):
+        record_id = "f0b43af8-7318-4d73-8a46-3d8452937f93"
+        first_id, inserted = self.queue.enqueue_web_log(
+            "https://www.youtube.com/watch?v=test",
+            "www.youtube.com",
+            "2026-01-01T00:00:00+00:00",
+            duration_seconds=12,
+            page_title="YouTube",
+            client_record_id=record_id,
+        )
+        self.assertTrue(inserted)
+        second_id, inserted = self.queue.enqueue_web_log(
+            "https://www.youtube.com/watch?v=test",
+            "www.youtube.com",
+            "2026-01-01T00:00:00+00:00",
+            duration_seconds=12,
+            page_title="YouTube",
+            client_record_id=record_id,
+        )
+        self.assertFalse(inserted)
+        self.assertEqual(second_id, first_id)
+
+        with self.queue.get_connection() as connection:
+            count = connection.execute(
+                "SELECT COUNT(*) FROM web_logs WHERE client_record_id = ?",
+                (record_id,),
+            ).fetchone()[0]
+        self.assertEqual(count, 1)
+
     def test_vision_alert_is_queued_and_synced_without_images(self):
         record_id, inserted = self.queue.enqueue_vision_alert(
             "posture_warning",

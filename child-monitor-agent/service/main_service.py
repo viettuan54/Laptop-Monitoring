@@ -23,7 +23,6 @@ if BASE_DIR not in sys.path:
 from api_client import APIClient
 from offline_queue import OfflineQueue
 from enforcement_core import EnforcementCore
-from web_tracker import WebTracker
 from pipe_server import PipeServer
 from watchdog import Watchdog
 
@@ -64,7 +63,6 @@ class ChildMonitorService(ServiceBaseClass):
         self.api_client = None
         self.offline_queue = None
         self.enforcement_core = None
-        self.web_tracker = None
         self.pipe_server = None
         self.watchdog = None
 
@@ -82,8 +80,8 @@ class ChildMonitorService(ServiceBaseClass):
         if servicemanager:
             servicemanager.LogMsg(
                 servicemanager.EVENTLOG_INFORMATION_TYPE,
-                servicemanager.SIC_GENERIC_MESSAGE,
-                (self._svc_name_, "Service started successfully.")
+                servicemanager.PYS_SERVICE_STARTED,
+                (self._svc_name_, ""),
             )
         self.main()
 
@@ -114,7 +112,6 @@ class ChildMonitorService(ServiceBaseClass):
         self.api_client = APIClient()
         self.offline_queue = OfflineQueue(api_client=self.api_client)
         self.enforcement_core = EnforcementCore(offline_queue=self.offline_queue)
-        self.web_tracker = WebTracker(offline_queue=self.offline_queue)
         self.pipe_server = PipeServer(
             offline_queue=self.offline_queue,
             enforcement_core=self.enforcement_core,
@@ -140,11 +137,6 @@ class ChildMonitorService(ServiceBaseClass):
             threading.Thread(
                 target=run_forever,
                 args=("ConfigBlacklistLoop", self._config_blacklist_loop_step, 600),
-                daemon=True
-            ),
-            threading.Thread(
-                target=run_forever,
-                args=("WebTrackerLoop", self._web_tracker_loop_step, 15),
                 daemon=True
             ),
             threading.Thread(
@@ -205,10 +197,6 @@ class ChildMonitorService(ServiceBaseClass):
             self.enforcement_core.save_settings_cache(config, blacklisted_domains)
         else:
             logging.warning("Failed to retrieve valid config from backend.")
-
-    def _web_tracker_loop_step(self):
-        """Web Tracker Loop (15s): Đọc lịch sử trình duyệt mới và đẩy vào offline queue."""
-        self.web_tracker.track()
 
     def _offline_sync_loop_step(self):
         """Offline Log Sync Loop (60s): Đồng bộ log trong SQLite queue lên backend."""

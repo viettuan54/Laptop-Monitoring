@@ -3,6 +3,10 @@ import time
 import json
 import logging
 import threading
+import uuid
+from datetime import datetime
+from urllib.parse import urlparse
+
 import win32pipe
 import win32file
 import win32security
@@ -149,6 +153,7 @@ class PipeServer:
         try:
             msg = json.loads(message_str)
             action = msg.get("action")
+            tracking_ack = None
 
             if action == "TRACK_APP":
                 app_name = msg.get("app_name")
@@ -172,6 +177,57 @@ class PipeServer:
                     # Retry cùng client_record_id không được cộng thời gian lần hai.
                     if inserted:
                         self.offline_queue.add_daily_usage(duration_seconds)
+
+            elif action == "TRACK_WEB":
+                url = msg.get("url")
+                domain = msg.get("domain")
+                visit_time = msg.get("visit_time")
+                duration_seconds = msg.get("duration_seconds", 0)
+                page_title = msg.get("page_title")
+                client_record_id = msg.get("client_record_id")
+
+                if not isinstance(url, str) or not url or len(url) > 500:
+                    raise ValueError("Invalid web tracking URL")
+                parsed_url = urlparse(url)
+                if parsed_url.scheme not in {"http", "https"} or not parsed_url.hostname:
+                    raise ValueError("Web tracking URL must use HTTP(S)")
+                if not isinstance(domain, str) or not domain or len(domain) > 200:
+                    raise ValueError("Invalid web tracking domain")
+                if parsed_url.hostname.lower() != domain.lower():
+                    raise ValueError("Web tracking domain does not match URL")
+                if not isinstance(visit_time, str) or len(visit_time) > 64:
+                    raise ValueError("Invalid web tracking visit time")
+                datetime.fromisoformat(visit_time.replace("Z", "+00:00"))
+                if (
+                    isinstance(duration_seconds, bool)
+                    or not isinstance(duration_seconds, int)
+                    or duration_seconds < 0
+                    or duration_seconds > 86400
+                ):
+                    raise ValueError("Invalid web tracking duration")
+                if page_title is not None and (
+                    not isinstance(page_title, str) or len(page_title) > 500
+                ):
+                    raise ValueError("Invalid web tracking page title")
+                try:
+                    canonical_record_id = str(uuid.UUID(str(client_record_id)))
+                except (ValueError, TypeError, AttributeError):
+                    raise ValueError("Invalid web tracking client record ID")
+                if canonical_record_id != client_record_id:
+                    raise ValueError("Web tracking client record ID must be canonical")
+
+                persisted_id, _ = self.offline_queue.enqueue_web_log(
+                    url=url,
+                    domain=domain.lower(),
+                    visit_time=visit_time,
+                    duration_seconds=duration_seconds,
+                    page_title=page_title,
+                    category="unknown",
+                    client_record_id=client_record_id,
+                )
+                if not persisted_id:
+                    raise RuntimeError("Failed to persist browser visit")
+                tracking_ack = persisted_id
 
             elif action == "PING":
                 # Action PING chỉ kiểm tra chính sách mà không ghi nhận sự kiện theo dõi ứng dụng mới
@@ -211,6 +267,8 @@ class PipeServer:
                 "countdown_minutes": countdown_minutes,
                 "vision_config": self._get_vision_config(),
             }
+            if tracking_ack:
+                response_payload["tracking_ack"] = tracking_ack
             response_bytes = json.dumps(response_payload).encode('utf-8')
             win32file.WriteFile(pipe_handle, response_bytes)
 
