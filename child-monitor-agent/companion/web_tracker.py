@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-AGENT_VERSION = "1.0.4"
+AGENT_VERSION = "1.0.5"
 
 
 class WebTracker:
@@ -97,6 +97,7 @@ class WebTracker:
         candidates = (
             ("chrome", os.path.join(self.local_app_data, "Google", "Chrome", "User Data")),
             ("edge", os.path.join(self.local_app_data, "Microsoft", "Edge", "User Data")),
+            ("coccoc", os.path.join(self.local_app_data, "CocCoc", "Browser", "User Data")),
         )
         for browser_name, user_data_path in candidates:
             if os.path.isdir(user_data_path):

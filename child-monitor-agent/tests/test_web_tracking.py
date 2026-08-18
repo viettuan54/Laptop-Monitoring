@@ -146,9 +146,32 @@ class WebTrackingTest(unittest.TestCase):
         )
         with open(tracker.status_path, "r", encoding="utf-8") as stream:
             status = json.load(stream)
-        self.assertEqual(status["agent_version"], "1.0.4")
+        self.assertEqual(status["agent_version"], "1.0.5")
         self.assertEqual(status["records_discovered"], 1)
         self.assertEqual(status["records_forwarded"], 1)
+
+    def test_discovers_coccoc_history_profiles(self):
+        coccoc_history = (
+            self.local_app_data
+            / "CocCoc"
+            / "Browser"
+            / "User Data"
+            / "Default"
+            / "History"
+        )
+        coccoc_history.parent.mkdir(parents=True)
+        coccoc_history.touch()
+        tracker = self._tracker(FakePipeClient())
+
+        browser_paths = dict(tracker.get_browser_user_data_paths())
+        self.assertEqual(
+            browser_paths["coccoc"],
+            str(coccoc_history.parent.parent),
+        )
+        self.assertEqual(
+            tracker.get_profiles_for_browser(browser_paths["coccoc"]),
+            [("Default", str(coccoc_history))],
+        )
 
     def test_snapshot_fallback_copies_wal_family_when_backup_is_unavailable(self):
         pipe_client = FakePipeClient()

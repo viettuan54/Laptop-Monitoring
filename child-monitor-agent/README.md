@@ -20,7 +20,7 @@ bảo mật của Windows:
 - `ChildMonitorService.exe` chạy nền dưới `LocalSystem`, đồng bộ dữ liệu và áp
   dụng policy.
 - `ChildMonitorCompanion.exe` do watchdog mở trong phiên đăng nhập của trẻ để
-  theo dõi ứng dụng/lịch sử Edge hoặc Chrome, hiển thị cảnh báo và chạy
+  theo dõi ứng dụng/lịch sử Edge, Chrome hoặc Cốc Cốc, hiển thị cảnh báo và chạy
   camera/Edge AI. Companion chuyển bản ghi qua Named Pipe để Service lưu vào
   hàng đợi cục bộ và đồng bộ backend.
 
@@ -35,7 +35,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.4"
+  -Version "1.0.5"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -43,14 +43,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.4.exe
+build\output\ChildMonitorSetup-1.0.5.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.4" `
+  -Version "1.0.5" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
