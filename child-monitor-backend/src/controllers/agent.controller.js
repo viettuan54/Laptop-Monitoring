@@ -1,5 +1,10 @@
 const { adminPool } = require('../config/db');
 const { sendPushNotification } = require('../services/notification.service');
+const {
+  WEB_CATEGORIES,
+  classifyWebDomainWithGemini,
+  normalizeDomain,
+} = require('../services/contentClassification.service');
 
 // ────────────────────────────────────────────────────────────────
 // POST /api/agent/heartbeat
@@ -22,7 +27,8 @@ exports.heartbeat = async (req, res) => {
     // Agent sẽ dùng để kiểm tra is_locked, time limit, v.v.
     const settingsResult = await adminPool.query(
       `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog
+              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
+              enable_app_classification, enable_web_classification
        FROM settings
        WHERE child_id = $1`,
       [child_id]
@@ -36,6 +42,8 @@ exports.heartbeat = async (req, res) => {
       enable_webcam_monitoring: false,
       enable_screenshot_review: false,
       enable_keylog: false,
+      enable_app_classification: false,
+      enable_web_classification: false,
     };
 
     res.json({
@@ -62,7 +70,8 @@ exports.getConfig = async (req, res) => {
   try {
     const settingsResult = await adminPool.query(
       `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog
+              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
+              enable_app_classification, enable_web_classification
        FROM settings
        WHERE child_id = $1`,
       [child_id]
@@ -82,6 +91,8 @@ exports.getConfig = async (req, res) => {
       enable_webcam_monitoring: false,
       enable_screenshot_review: false,
       enable_keylog: false,
+      enable_app_classification: false,
+      enable_web_classification: false,
     };
 
     res.json({
@@ -95,6 +106,126 @@ exports.getConfig = async (req, res) => {
   } catch (error) {
     console.error('Get config error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+async function isWebClassificationEnabled(childId) {
+  const result = await adminPool.query(
+    'SELECT enable_web_classification FROM settings WHERE child_id = $1',
+    [childId]
+  );
+  return result.rows[0]?.enable_web_classification === true;
+}
+
+// POST /api/agent/classification/web/fallback
+// Body chỉ chứa domain; URL, page title và lịch sử duyệt web không được gửi Gemini.
+exports.classifyWebFallback = async (req, res) => {
+  let domain;
+  try {
+    domain = normalizeDomain(req.body?.domain);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+  try {
+    if (!await isWebClassificationEnabled(req.device.child_id)) {
+      return res.status(409).json({ message: 'Website classification is disabled' });
+    }
+    const result = await classifyWebDomainWithGemini(domain);
+    return res.json({
+      domain: result.domain,
+      category: result.category,
+      classification_source: result.source,
+    });
+  } catch (error) {
+    if (error.code === 'GEMINI_NOT_CONFIGURED') {
+      return res.status(503).json({ message: 'Gemini fallback is not configured' });
+    }
+    console.error('Web classification fallback error:', error);
+    return res.status(502).json({ message: 'Gemini classification failed' });
+  }
+};
+
+// GET /api/agent/classification/web/unknown-domains
+exports.getUnknownWebDomains = async (req, res) => {
+  const parsedLimit = Number.parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 100)) : 25;
+  try {
+    if (!await isWebClassificationEnabled(req.device.child_id)) {
+      return res.json({ enabled: false, domains: [] });
+    }
+    const result = await adminPool.query(
+      `SELECT DISTINCT domain
+       FROM website_logs
+       WHERE device_id = $1
+         AND category = 'unknown'
+         AND classification_source IN ('pending', 'disabled')
+         AND domain IS NOT NULL
+       ORDER BY domain
+       LIMIT $2`,
+      [req.device.device_id, limit]
+    );
+    const domains = [];
+    const seen = new Set();
+    for (const row of result.rows) {
+      try {
+        const domain = normalizeDomain(row.domain);
+        if (!seen.has(domain)) {
+          domains.push(domain);
+          seen.add(domain);
+        }
+      } catch (error) {
+        // Invalid legacy rows remain untouched and never reach Gemini.
+      }
+    }
+    return res.json({ enabled: true, domains });
+  } catch (error) {
+    console.error('Get unknown web domains error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// POST /api/agent/classification/web/backfill
+exports.backfillWebDomain = async (req, res) => {
+  let domain;
+  try {
+    domain = normalizeDomain(req.body?.domain);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+  const category = req.body?.category;
+  const source = req.body?.classification_source;
+  const confidence = req.body?.classification_confidence;
+  if (!WEB_CATEGORIES.includes(category)) {
+    return res.status(400).json({ message: 'category is outside the web taxonomy' });
+  }
+  if (!['trained_model', 'gemini'].includes(source)) {
+    return res.status(400).json({ message: 'classification_source is invalid' });
+  }
+  if (
+    confidence !== null && confidence !== undefined
+    && (typeof confidence !== 'number' || confidence < 0 || confidence > 1)
+  ) {
+    return res.status(400).json({ message: 'classification_confidence is invalid' });
+  }
+  try {
+    if (!await isWebClassificationEnabled(req.device.child_id)) {
+      return res.status(409).json({ message: 'Website classification is disabled' });
+    }
+    const result = await adminPool.query(
+      `UPDATE website_logs
+       SET category = $1,
+           classification_source = $2,
+           classification_confidence = $3
+       WHERE device_id = $4
+         AND category = 'unknown'
+         AND classification_source IN ('pending', 'disabled')
+         AND lower(domain) IN ($5, 'www.' || $5)`,
+      [category, source, confidence ?? null, req.device.device_id, domain]
+    );
+    return res.json({ domain, category, updated: result.rowCount ?? 0 });
+  } catch (error) {
+    console.error('Backfill web domain error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 

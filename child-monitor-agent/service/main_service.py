@@ -24,7 +24,9 @@ from api_client import APIClient
 from offline_queue import OfflineQueue
 from enforcement_core import EnforcementCore
 from pipe_server import PipeServer
+from content_classifier import ContentClassifier, verify_packaged_content_assets
 from watchdog import Watchdog
+from runtime_paths import agent_root
 
 logging.basicConfig(
     level=logging.INFO,
@@ -65,6 +67,7 @@ class ChildMonitorService(ServiceBaseClass):
         self.enforcement_core = None
         self.pipe_server = None
         self.watchdog = None
+        self.content_classifier = None
 
     def SvcStop(self):
         if win32service:
@@ -112,9 +115,18 @@ class ChildMonitorService(ServiceBaseClass):
         self.api_client = APIClient()
         self.offline_queue = OfflineQueue(api_client=self.api_client)
         self.enforcement_core = EnforcementCore(offline_queue=self.offline_queue)
+        try:
+            self.content_classifier = ContentClassifier()
+            logging.info("Approved website content model loaded.")
+        except Exception as error:
+            # Gemini remains available as a fallback, but the release self-test
+            # prevents a production installer from shipping without the model.
+            logging.error("Could not load local content classifier: %s", error)
         self.pipe_server = PipeServer(
             offline_queue=self.offline_queue,
             enforcement_core=self.enforcement_core,
+            api_client=self.api_client,
+            content_classifier=self.content_classifier,
             vision_subject_id=self.api_client.vision_subject_id,
         )
         
@@ -143,6 +155,11 @@ class ChildMonitorService(ServiceBaseClass):
                 target=run_forever,
                 args=("OfflineSyncLoop", self._offline_sync_loop_step, 60),
                 daemon=True
+            ),
+            threading.Thread(
+                target=run_forever,
+                args=("WebClassificationBackfillLoop", self._web_backfill_loop_step, 600),
+                daemon=True
             )
         ]
 
@@ -152,6 +169,7 @@ class ChildMonitorService(ServiceBaseClass):
         # Thực hiện 1 lần nạp config ban đầu ngay khi start
         try:
             self._config_blacklist_loop_step()
+            self._web_backfill_loop_step()
         except Exception as e:
             logging.warning(f"Initial config fetch failed: {e}")
 
@@ -202,6 +220,12 @@ class ChildMonitorService(ServiceBaseClass):
         """Offline Log Sync Loop (60s): Đồng bộ log trong SQLite queue lên backend."""
         self.offline_queue.sync_offline_data(self.api_client)
 
+    def _web_backfill_loop_step(self):
+        """Reclassify a bounded set of legacy unknown website rows."""
+        updated = self.pipe_server.reclassify_unknown_web_logs(limit=25)
+        if updated:
+            logging.info("Backfilled %s unknown website domain(s).", updated)
+
 def run_standalone():
     logging.info("Starting ChildMonitorService in Standalone / Dev mode...")
     service_inst = ChildMonitorService(["ChildMonitorService"])
@@ -214,8 +238,7 @@ def run_standalone():
 
 def run_entrypoint():
     if "--self-test" in sys.argv:
-        from runtime_paths import agent_root
-
+        verify_packaged_content_assets()
         print(f"ChildMonitorService self-test passed. Agent root: {agent_root()}")
         return 0
 

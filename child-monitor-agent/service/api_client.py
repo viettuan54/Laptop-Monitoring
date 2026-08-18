@@ -12,6 +12,7 @@ from runtime_paths import agent_root
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 DEFAULT_SERVER_URL = "https://api.tuansosad.id.vn"
+WEB_CATEGORIES = {"education", "entertainment", "social", "unsafe", "unknown"}
 
 
 class APIClient:
@@ -199,3 +200,57 @@ class APIClient:
             except Exception as e:
                 logging.error(f"Error parsing json from /api/agent/config: {e}")
         return None
+
+    def classify_web_domain(self, domain, timeout=20):
+        """Call Gemini fallback with only the normalized domain."""
+        res = self.post(
+            "/api/agent/classification/web/fallback",
+            data={"domain": domain},
+            timeout=timeout,
+        )
+        if not res or res.status_code != 200:
+            return None
+        try:
+            payload = res.json()
+            category = payload.get("category")
+            return category if category in WEB_CATEGORIES else None
+        except (ValueError, AttributeError):
+            logging.error("Invalid web classification fallback response.")
+            return None
+
+    def get_unknown_web_domains(self, limit=25, timeout=10):
+        """Fetch distinct unknown domains belonging to this authenticated device."""
+        safe_limit = max(1, min(int(limit), 100))
+        res = self.get(
+            f"/api/agent/classification/web/unknown-domains?limit={safe_limit}",
+            timeout=timeout,
+        )
+        if not res or res.status_code != 200:
+            return []
+        try:
+            domains = res.json().get("domains", [])
+            return [domain for domain in domains if isinstance(domain, str)][:safe_limit]
+        except (ValueError, AttributeError):
+            logging.error("Invalid unknown-domain response.")
+            return []
+
+    def backfill_web_domain(
+        self, domain, category, classification_source, classification_confidence=None,
+        timeout=10
+    ):
+        """Apply one final category to old unknown logs for this device."""
+        if category not in WEB_CATEGORIES:
+            return False
+        if classification_source not in {"trained_model", "gemini"}:
+            return False
+        res = self.post(
+            "/api/agent/classification/web/backfill",
+            data={
+                "domain": domain,
+                "category": category,
+                "classification_source": classification_source,
+                "classification_confidence": classification_confidence,
+            },
+            timeout=timeout,
+        )
+        return bool(res and res.status_code == 200)

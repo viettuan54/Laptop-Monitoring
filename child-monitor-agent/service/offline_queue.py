@@ -62,12 +62,34 @@ class OfflineQueue:
                 url TEXT NOT NULL,
                 domain TEXT,
                 category TEXT DEFAULT 'unknown',
+                classification_source TEXT NOT NULL DEFAULT 'pending',
+                classification_confidence REAL,
                 visit_time TEXT NOT NULL,
                 duration_seconds INTEGER,
                 page_title TEXT,
                 synced INTEGER DEFAULT 0
             )
             """)
+            web_columns = {
+                row[1] for row in cursor.execute("PRAGMA table_info(web_logs)").fetchall()
+            }
+            if "classification_source" not in web_columns:
+                cursor.execute(
+                    "ALTER TABLE web_logs ADD COLUMN classification_source TEXT NOT NULL DEFAULT 'pending'"
+                )
+            if "classification_confidence" not in web_columns:
+                cursor.execute(
+                    "ALTER TABLE web_logs ADD COLUMN classification_confidence REAL"
+                )
+            # Preserve already-classified rows created by older Agent versions.
+            # Without this marker the backend would correctly reject the
+            # contradictory combination category=<known>, source=pending.
+            cursor.execute(
+                """UPDATE web_logs
+                   SET classification_source = 'legacy_agent'
+                   WHERE category <> 'unknown'
+                     AND classification_source = 'pending'"""
+            )
             
             # Bảng lưu tổng thời gian sử dụng máy tính cộng dồn trong ngày
             cursor.execute("""
@@ -134,23 +156,89 @@ class OfflineQueue:
             return None, False
 
     def enqueue_web_log(self, url, domain, visit_time, duration_seconds=None,
-                        page_title=None, category='unknown', client_record_id=None):
+                        page_title=None, category='unknown', client_record_id=None,
+                        classification_source=None, classification_confidence=None):
         """Thêm log truy cập website vào SQLite local và tự sinh client_record_id."""
         client_record_id = client_record_id or str(uuid.uuid4())
+        if classification_source is None:
+            classification_source = (
+                "pending" if category == "unknown" else "legacy_agent"
+            )
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
                 INSERT OR IGNORE INTO web_logs
-                    (client_record_id, url, domain, category, visit_time, duration_seconds, page_title, synced)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-                """, (client_record_id, url, domain, category, visit_time, duration_seconds, page_title))
+                    (client_record_id, url, domain, category, classification_source,
+                     classification_confidence, visit_time, duration_seconds, page_title, synced)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """, (
+                    client_record_id,
+                    url,
+                    domain,
+                    category,
+                    classification_source,
+                    classification_confidence,
+                    visit_time,
+                    duration_seconds,
+                    page_title,
+                ))
                 inserted = cursor.rowcount == 1
                 conn.commit()
             return client_record_id, inserted
         except Exception as e:
             logging.error(f"Failed to enqueue web log: {e}")
             return None, False
+
+    def get_unknown_web_domains(self, limit=25):
+        """Return distinct local domains whose queued category is still unknown."""
+        safe_limit = max(1, min(int(limit), 100))
+        try:
+            with self.get_connection() as conn:
+                rows = conn.execute(
+                    """SELECT DISTINCT lower(domain) AS domain
+                       FROM web_logs
+                       WHERE category = 'unknown'
+                         AND classification_source IN ('pending', 'disabled')
+                         AND domain IS NOT NULL AND domain <> ''
+                       ORDER BY domain
+                       LIMIT ?""",
+                    (safe_limit,),
+                ).fetchall()
+            return [row[0] for row in rows]
+        except Exception as e:
+            logging.error(f"Failed to read unknown web domains: {e}")
+            return []
+
+    def update_unknown_web_category(
+        self, domain, category, classification_source, classification_confidence=None
+    ):
+        """Backfill local queue rows without overwriting an existing final label."""
+        if category not in {"education", "entertainment", "social", "unsafe", "unknown"}:
+            return 0
+        if classification_source not in {"trained_model", "gemini"}:
+            return 0
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    """UPDATE web_logs
+                       SET category = ?, classification_source = ?,
+                           classification_confidence = ?
+                       WHERE category = 'unknown'
+                         AND classification_source IN ('pending', 'disabled')
+                         AND lower(domain) = lower(?)""",
+                    (
+                        category,
+                        classification_source,
+                        classification_confidence,
+                        domain,
+                    ),
+                )
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            logging.error(f"Failed to backfill local web category: {e}")
+            return 0
 
     def enqueue_vision_alert(self, alert_type, message, client_record_id=None):
         """Lưu metadata cảnh báo camera để đồng bộ sau; không nhận dữ liệu ảnh."""
@@ -316,6 +404,8 @@ class OfflineQueue:
                         "url": row["url"],
                         "domain": row["domain"],
                         "category": row["category"],
+                        "classification_source": row["classification_source"],
+                        "classification_confidence": row["classification_confidence"],
                         "visit_time": row["visit_time"],
                         "duration_seconds": row["duration_seconds"],
                         "page_title": row["page_title"]

@@ -8,6 +8,49 @@ const {
 // Hằng số dùng chung cho 2 hàm batch
 // ────────────────────────────────────────────────────────────────
 const BATCH_MAX_RECORDS = 100;
+const WEB_CATEGORIES = ['education', 'entertainment', 'social', 'unsafe', 'unknown'];
+const AGENT_CLASSIFICATION_SOURCES = [
+  'pending',
+  'disabled',
+  'trained_model',
+  'gemini',
+  'legacy_agent',
+];
+
+function defaultWebClassificationSource(category, source) {
+  if (source) return source;
+  return (category || 'unknown') === 'unknown' ? 'pending' : 'legacy_agent';
+}
+
+function validateWebClassification(category, source, confidence) {
+  const normalizedCategory = category || 'unknown';
+  const normalizedSource = defaultWebClassificationSource(normalizedCategory, source);
+  const normalizedConfidence = confidence === undefined ? null : confidence;
+  if (!WEB_CATEGORIES.includes(normalizedCategory)) return 'category is invalid';
+  if (!AGENT_CLASSIFICATION_SOURCES.includes(normalizedSource)) {
+    return 'classification_source is invalid';
+  }
+  if (
+    normalizedConfidence !== null
+    && (typeof normalizedConfidence !== 'number'
+      || normalizedConfidence < 0 || normalizedConfidence > 1)
+  ) {
+    return 'classification_confidence is invalid';
+  }
+  if (['pending', 'disabled'].includes(normalizedSource) && normalizedCategory !== 'unknown') {
+    return 'pending or disabled classification must use category unknown';
+  }
+  if (normalizedSource === 'legacy_agent' && normalizedCategory === 'unknown') {
+    return 'legacy_agent classification must use a known category';
+  }
+  if (
+    normalizedSource === 'trained_model'
+    && (normalizedConfidence === null || normalizedConfidence < 0.7)
+  ) {
+    return 'trained_model confidence must be at least 0.7';
+  }
+  return null;
+}
 
 // ────────────────────────────────────────────────────────────────
 // POST /api/logs/app  – Agent (laptop con) gửi dữ liệu app usage
@@ -59,7 +102,16 @@ exports.logAppUsage = async (req, res) => {
 // Xác thực bằng X-Device-Secret, KHÔNG dùng JWT phụ huynh
 // ────────────────────────────────────────────────────────────────
 exports.logWebsite = async (req, res) => {
-  const { url, domain, category, visit_time, duration_seconds, page_title } = req.body;
+  const {
+    url,
+    domain,
+    category,
+    classification_source,
+    classification_confidence,
+    visit_time,
+    duration_seconds,
+    page_title,
+  } = req.body;
 
   const device_id = req.device.device_id;
 
@@ -79,9 +131,13 @@ exports.logWebsite = async (req, res) => {
   }
 
   // Validate category nếu có
-  const validCategories = ['education', 'entertainment', 'social', 'unsafe', 'unknown'];
-  if (category && !validCategories.includes(category)) {
-    return res.status(400).json({ message: `Invalid category. Allowed: ${validCategories.join(', ')}` });
+  const classificationError = validateWebClassification(
+    category,
+    classification_source,
+    classification_confidence
+  );
+  if (classificationError) {
+    return res.status(400).json({ message: classificationError });
   }
   if (!validateDurationSeconds(duration_seconds)) {
     return res.status(400).json({
@@ -91,9 +147,21 @@ exports.logWebsite = async (req, res) => {
 
   try {
     await adminPool.query(
-      `INSERT INTO website_logs(device_id, url, domain, category, visit_time, duration_seconds, page_title)
-       VALUES($1,$2,$3,$4,$5,$6,$7)`,
-      [device_id, url, domain || null, category || 'unknown', visit_time, duration_seconds ?? null, page_title || null]
+      `INSERT INTO website_logs(
+         device_id, url, domain, category, classification_source,
+         classification_confidence, visit_time, duration_seconds, page_title
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+      [
+        device_id,
+        url,
+        domain || null,
+        category || 'unknown',
+        defaultWebClassificationSource(category, classification_source),
+        classification_confidence ?? null,
+        visit_time,
+        duration_seconds ?? null,
+        page_title || null,
+      ]
     );
     res.status(201).json({ message: 'Website log saved' });
   } catch (error) {
@@ -369,7 +437,6 @@ exports.logWebBatch = async (req, res) => {
     });
   }
 
-  const validWebCategories = ['education', 'entertainment', 'social', 'unsafe', 'unknown'];
   const validRecords = [];
   const skippedReasons = [];
 
@@ -402,8 +469,13 @@ exports.logWebBatch = async (req, res) => {
       skippedReasons.push(`${idx} page_title exceeds 500 chars`);
       continue;
     }
-    if (r.category && !validWebCategories.includes(r.category)) {
-      skippedReasons.push(`${idx} invalid category '${r.category}'`);
+    const classificationError = validateWebClassification(
+      r.category,
+      r.classification_source,
+      r.classification_confidence
+    );
+    if (classificationError) {
+      skippedReasons.push(`${idx} ${classificationError}`);
       continue;
     }
     if (!validateDurationSeconds(r.duration_seconds)) {
@@ -418,6 +490,11 @@ exports.logWebBatch = async (req, res) => {
       url:              r.url.trim().substring(0, 500),
       domain:           r.domain      ? r.domain.trim().substring(0, 200)    : null,
       category:         r.category    || 'unknown',
+      classification_source: defaultWebClassificationSource(
+        r.category,
+        r.classification_source
+      ),
+      classification_confidence: r.classification_confidence ?? null,
       visit_time:       r.visit_time,
       duration_seconds: r.duration_seconds ?? null,
       page_title:       r.page_title  ? r.page_title.trim().substring(0, 500) : null,
@@ -439,25 +516,44 @@ exports.logWebBatch = async (req, res) => {
     const urls       = validRecords.map((r) => r.url);
     const domains    = validRecords.map((r) => r.domain);
     const categories = validRecords.map((r) => r.category);
+    const classificationSources = validRecords.map((r) => r.classification_source);
+    const classificationConfidences = validRecords.map((r) => r.classification_confidence);
     const visitTimes = validRecords.map((r) => r.visit_time);
     const durations  = validRecords.map((r) => r.duration_seconds);
     const pageTitles = validRecords.map((r) => r.page_title);
 
     const result = await adminPool.query(
-      `INSERT INTO website_logs(client_record_id, device_id, url, domain, category, visit_time, duration_seconds, page_title)
+      `INSERT INTO website_logs(
+         client_record_id, device_id, url, domain, category,
+         classification_source, classification_confidence,
+         visit_time, duration_seconds, page_title
+       )
        SELECT
          unnest($1::text[]),
          $2::int,
          unnest($3::text[]),
          unnest($4::text[]),
          unnest($5::web_category[]),
-         unnest($6::timestamptz[]),
-         unnest($7::int[]),
-         unnest($8::text[])
+         unnest($6::text[]),
+         unnest($7::double precision[]),
+         unnest($8::timestamptz[]),
+         unnest($9::int[]),
+         unnest($10::text[])
        ON CONFLICT (client_record_id)
        WHERE client_record_id IS NOT NULL
        DO NOTHING`,
-      [clientIds, device_id, urls, domains, categories, visitTimes, durations, pageTitles]
+      [
+        clientIds,
+        device_id,
+        urls,
+        domains,
+        categories,
+        classificationSources,
+        classificationConfidences,
+        visitTimes,
+        durations,
+        pageTitles,
+      ]
     );
 
     // result.rowCount = số dòng thực sự được INSERT (sau khi ON CONFLICT DO NOTHING lọc trùng)

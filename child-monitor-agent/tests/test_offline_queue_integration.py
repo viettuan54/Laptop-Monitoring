@@ -1,4 +1,5 @@
 import os
+import sqlite3
 import sys
 import tempfile
 import unittest
@@ -118,6 +119,75 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
                 (record_id,),
             ).fetchone()[0]
         self.assertEqual(count, 1)
+
+    def test_unknown_web_rows_are_backfilled_once_with_classification_provenance(self):
+        self.queue.enqueue_web_log(
+            "https://www.youtube.com/watch?v=test",
+            "www.youtube.com",
+            "2026-01-01T00:00:00+00:00",
+            duration_seconds=12,
+            category="unknown",
+            classification_source="disabled",
+        )
+
+        self.assertEqual(
+            self.queue.get_unknown_web_domains(),
+            ["www.youtube.com"],
+        )
+        updated = self.queue.update_unknown_web_category(
+            "www.youtube.com",
+            "entertainment",
+            "gemini",
+            None,
+        )
+        self.assertEqual(updated, 1)
+        self.assertEqual(self.queue.get_unknown_web_domains(), [])
+        with self.queue.get_connection() as connection:
+            row = connection.execute(
+                """SELECT category, classification_source, classification_confidence
+                   FROM web_logs"""
+            ).fetchone()
+        self.assertEqual(row, ("entertainment", "gemini", None))
+
+    def test_existing_known_web_rows_are_marked_as_legacy_during_schema_upgrade(self):
+        legacy_path = os.path.join(self.temp_dir.name, "legacy-queue.db")
+        connection = sqlite3.connect(legacy_path)
+        try:
+            connection.execute(
+                """CREATE TABLE web_logs (
+                       id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       client_record_id TEXT UNIQUE,
+                       url TEXT NOT NULL,
+                       domain TEXT,
+                       category TEXT DEFAULT 'unknown',
+                       visit_time TEXT NOT NULL,
+                       duration_seconds INTEGER,
+                       page_title TEXT,
+                       synced INTEGER DEFAULT 0
+                   )"""
+            )
+            connection.execute(
+                """INSERT INTO web_logs(
+                       client_record_id, url, domain, category, visit_time
+                   ) VALUES (?, ?, ?, ?, ?)""",
+                (
+                    "legacy-known",
+                    "https://school.example/",
+                    "school.example",
+                    "education",
+                    "2026-01-01T00:00:00+00:00",
+                ),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+        upgraded = OfflineQueue(db_path=legacy_path, secure_file=False)
+        with upgraded.get_connection() as connection:
+            row = connection.execute(
+                """SELECT category, classification_source
+                   FROM web_logs WHERE client_record_id = 'legacy-known'"""
+            ).fetchone()
+        self.assertEqual(row, ("education", "legacy_agent"))
 
     def test_vision_alert_is_queued_and_synced_without_images(self):
         record_id, inserted = self.queue.enqueue_vision_alert(

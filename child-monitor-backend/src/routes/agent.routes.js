@@ -14,6 +14,22 @@ router.post('/heartbeat', deviceAuth, agentController.heartbeat);
 // Gọi khi khởi động Agent và mỗi khi cần đồng bộ cấu hình.
 router.get('/config', deviceAuth, agentController.getConfig);
 
+router.post(
+  '/classification/web/fallback',
+  deviceAuth,
+  agentController.classifyWebFallback
+);
+router.get(
+  '/classification/web/unknown-domains',
+  deviceAuth,
+  agentController.getUnknownWebDomains
+);
+router.post(
+  '/classification/web/backfill',
+  deviceAuth,
+  agentController.backfillWebDomain
+);
+
 // ── Vision Alert: Agent gửi kết quả Computer Vision (chỉ metadata, không ảnh)
 // alert_type: posture_warning | stranger_detected | eye_distance_warning
 router.post('/vision-alert', deviceAuth, agentController.sendVisionAlert);

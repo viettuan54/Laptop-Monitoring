@@ -19,14 +19,99 @@ class PipeServer:
     PIPE_NAME = r"\\.\pipe\ChildMonitorAgentPipe"
     VISION_ALERT_TYPES = {"posture_warning", "eye_distance_warning"}
 
-    def __init__(self, offline_queue, enforcement_core, vision_subject_id=None):
+    def __init__(
+        self,
+        offline_queue,
+        enforcement_core,
+        api_client=None,
+        content_classifier=None,
+        vision_subject_id=None,
+    ):
         self.offline_queue = offline_queue
         self.enforcement_core = enforcement_core
+        self.api_client = api_client
+        self.content_classifier = content_classifier
         self.running = False
         self.client_handle = None
         self.current_user_sid = None
         self.lock = threading.Lock()
         self.vision_subject_id = vision_subject_id
+
+    def _web_classification_enabled(self):
+        settings = self.enforcement_core.load_cached_settings()
+        return settings.get("enable_web_classification") is True
+
+    def classify_web_domain(self, domain):
+        """Use local model first and send only the domain to Gemini fallback."""
+        if not self._web_classification_enabled():
+            return {
+                "category": "unknown",
+                "source": "disabled",
+                "confidence": None,
+            }
+
+        if self.content_classifier is not None:
+            try:
+                local_result = self.content_classifier.classify_web(domain)
+                if local_result["label"] is not None:
+                    source = (
+                        "gemini"
+                        if local_result.get("decision_source") == "gemini"
+                        else "trained_model"
+                    )
+                    return {
+                        "category": local_result["label"],
+                        "source": source,
+                        "confidence": (
+                            None if source == "gemini" else local_result["confidence"]
+                        ),
+                    }
+            except Exception as error:
+                logging.error("Local web classification failed: %s", error)
+
+        if self.api_client is not None:
+            category = self.api_client.classify_web_domain(domain)
+            if category is not None:
+                if self.content_classifier is not None:
+                    try:
+                        self.content_classifier.remember_web_label(
+                            domain, category, source="gemini"
+                        )
+                    except Exception as error:
+                        logging.warning("Could not cache Gemini web label: %s", error)
+                return {
+                    "category": category,
+                    "source": "gemini",
+                    "confidence": None,
+                }
+
+        return {"category": "unknown", "source": "pending", "confidence": None}
+
+    def reclassify_unknown_web_logs(self, limit=25):
+        """Backfill local and server-side legacy unknown rows while enabled."""
+        if not self._web_classification_enabled() or self.api_client is None:
+            return 0
+        domains = set(self.offline_queue.get_unknown_web_domains(limit=limit))
+        domains.update(self.api_client.get_unknown_web_domains(limit=limit))
+        updated = 0
+        for domain in sorted(domains)[:limit]:
+            result = self.classify_web_domain(domain)
+            if result["source"] not in {"trained_model", "gemini"}:
+                continue
+            self.offline_queue.update_unknown_web_category(
+                domain,
+                result["category"],
+                result["source"],
+                result["confidence"],
+            )
+            if self.api_client.backfill_web_domain(
+                domain,
+                result["category"],
+                result["source"],
+                result["confidence"],
+            ):
+                updated += 1
+        return updated
 
     def create_security_attributes(self, user_sid=None):
         """Tạo Security Attributes cho Named Pipe để bảo mật SYSTEM, Admins và User SID cụ thể."""
@@ -216,13 +301,16 @@ class PipeServer:
                 if canonical_record_id != client_record_id:
                     raise ValueError("Web tracking client record ID must be canonical")
 
+                classification = self.classify_web_domain(domain)
                 persisted_id, _ = self.offline_queue.enqueue_web_log(
                     url=url,
                     domain=domain.lower(),
                     visit_time=visit_time,
                     duration_seconds=duration_seconds,
                     page_title=page_title,
-                    category="unknown",
+                    category=classification["category"],
+                    classification_source=classification["source"],
+                    classification_confidence=classification["confidence"],
                     client_record_id=client_record_id,
                 )
                 if not persisted_id:

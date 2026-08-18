@@ -1,11 +1,14 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.5",
+    [string]$Version = "1.0.6",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
     [string]$PostureModelPath,
     [string]$PostureProfilePath,
+    [string]$AppContentModelPath,
+    [string]$WebContentModelPath,
+    [string]$AppExactLookupPath,
     [switch]$SkipDependencyInstall,
     [switch]$SkipInstaller
 )
@@ -47,14 +50,18 @@ function Remove-BuildDirectory {
 function Copy-JsonAssetWithHash {
     param(
         [Parameter(Mandatory = $true)][string]$SourcePath,
-        [Parameter(Mandatory = $true)][string]$DestinationName
+        [Parameter(Mandatory = $true)][string]$DestinationName,
+        [switch]$RequireDeploymentApproval
     )
     $resolvedSource = (Resolve-Path -LiteralPath $SourcePath -ErrorAction Stop).Path
     if ([IO.Path]::GetExtension($resolvedSource) -ne ".json") {
         throw "Edge AI asset must be JSON: $resolvedSource"
     }
-    Get-Content -Raw -LiteralPath $resolvedSource -Encoding UTF8 |
-        ConvertFrom-Json -ErrorAction Stop | Out-Null
+    $payload = Get-Content -Raw -LiteralPath $resolvedSource -Encoding UTF8 |
+        ConvertFrom-Json -ErrorAction Stop
+    if ($RequireDeploymentApproval -and $payload.deployment_approved -ne $true) {
+        throw "Content model did not pass its deployment gate: $resolvedSource"
+    }
     $destination = Join-Path "$ReleaseRoot\models" $DestinationName
     Copy-Item -Force -LiteralPath $resolvedSource -Destination $destination
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $destination).Hash.ToLowerInvariant()
@@ -136,6 +143,20 @@ Copy-Item -LiteralPath "$AgentRoot\installer\uninstall.ps1" `
     -Destination "$ReleaseRoot\installer\uninstall.ps1" -Force
 Copy-Item -Path "$AgentRoot\models\*" -Destination "$ReleaseRoot\models" -Force
 
+$WorkspaceRoot = Split-Path -Parent $AgentRoot
+if (-not $AppContentModelPath) {
+    $AppContentModelPath = Join-Path $WorkspaceRoot "ai-training\artifacts\content_classification\app_content_model_v1.json"
+}
+if (-not $WebContentModelPath) {
+    $WebContentModelPath = Join-Path $WorkspaceRoot "ai-training\artifacts\content_classification\web_content_model_v1.json"
+}
+if (-not $AppExactLookupPath) {
+    $AppExactLookupPath = Join-Path $WorkspaceRoot "ai-training\artifacts\content_classification\app_exact_lookup_v1.json"
+}
+Copy-JsonAssetWithHash $AppContentModelPath "app_content_model_v1.json" -RequireDeploymentApproval
+Copy-JsonAssetWithHash $WebContentModelPath "web_content_model_v1.json" -RequireDeploymentApproval
+Copy-JsonAssetWithHash $AppExactLookupPath "app_exact_lookup_v1.json"
+
 $requiredModels = @{
     "face_landmarker.task" = "64184E229B263107BC2B804C6625DB1341FF2BB731874B0BCC2FE6544E0BC9FF"
     "pose_landmarker_lite.task" = "59929E1D1EE95287735DDD833B19CF4AC46D29BC7AFDDBBF6753C459690D574A"
@@ -148,6 +169,18 @@ foreach ($entry in $requiredModels.GetEnumerator()) {
     $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $modelPath).Hash
     if ($actualHash -ne $entry.Value) {
         throw "Edge AI model integrity check failed: $modelPath"
+    }
+}
+
+foreach ($contentAsset in @(
+    "app_content_model_v1.json",
+    "web_content_model_v1.json",
+    "app_exact_lookup_v1.json"
+)) {
+    $contentPath = Join-Path "$ReleaseRoot\models" $contentAsset
+    if (-not (Test-Path -LiteralPath $contentPath -PathType Leaf) -or
+        -not (Test-Path -LiteralPath "$contentPath.sha256" -PathType Leaf)) {
+        throw "Required content model asset is missing: $contentAsset"
     }
 }
 

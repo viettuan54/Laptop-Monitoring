@@ -370,3 +370,95 @@ test('parent classification APIs toggle settings and update only owned policies'
   assert.equal(audit.rows[1].target_id, `${childOne}:web:social`);
   assert.equal(audit.rows[1].metadata.access_action, 'allow');
 });
+
+test('Agent config exposes switches and web backfill becomes visible to parent activity API', async () => {
+  const login = await request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[0], password: 'Integration1!' }),
+  });
+  const parentHeaders = {
+    authorization: `Bearer ${login.body.accessToken}`,
+    'content-type': 'application/json',
+  };
+  const enabled = await request(`/api/settings/${childOne}`, {
+    method: 'PUT',
+    headers: parentHeaders,
+    body: JSON.stringify({
+      enable_app_classification: true,
+      enable_web_classification: true,
+    }),
+  });
+  assert.equal(enabled.status, 200);
+
+  const agentHeaders = {
+    'content-type': 'application/json',
+    'x-device-secret': plaintextDeviceSecret,
+  };
+  const heartbeat = await request('/api/agent/heartbeat', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: '{}',
+  });
+  assert.equal(heartbeat.status, 200);
+  assert.equal(heartbeat.body.config.enable_app_classification, true);
+  assert.equal(heartbeat.body.config.enable_web_classification, true);
+
+  const domain = `legacy-${Date.now()}.example.test`;
+  const clientRecordId = crypto.randomUUID();
+  const inserted = await request('/api/logs/web/batch', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: JSON.stringify({ records: [{
+      client_record_id: clientRecordId,
+      url: `https://${domain}/`,
+      domain,
+      category: 'unknown',
+      classification_source: 'disabled',
+      classification_confidence: null,
+      visit_time: new Date().toISOString(),
+      duration_seconds: 3,
+      page_title: 'Legacy unknown row',
+    }] }),
+  });
+  assert.equal(inserted.status, 201);
+
+  const unknowns = await request('/api/agent/classification/web/unknown-domains?limit=25', {
+    headers: agentHeaders,
+  });
+  assert.equal(unknowns.status, 200);
+  assert.ok(unknowns.body.domains.includes(domain));
+
+  const backfilled = await request('/api/agent/classification/web/backfill', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: JSON.stringify({
+      domain,
+      category: 'education',
+      classification_source: 'trained_model',
+      classification_confidence: 0.91,
+    }),
+  });
+  assert.equal(backfilled.status, 200);
+  assert.equal(backfilled.body.updated, 1);
+
+  const activity = await request(`/api/logs/web?device_id=${deviceOne}&limit=200`, {
+    headers: parentHeaders,
+  });
+  assert.equal(activity.status, 200);
+  const visible = activity.body.data.find((row) => row.log_id && row.domain === domain);
+  assert.equal(visible.category, 'education');
+
+  const disabled = await request(`/api/settings/${childOne}`, {
+    method: 'PUT',
+    headers: parentHeaders,
+    body: JSON.stringify({ enable_web_classification: false }),
+  });
+  assert.equal(disabled.status, 200);
+  const noFallback = await request('/api/agent/classification/web/fallback', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: JSON.stringify({ domain: 'youtube.com' }),
+  });
+  assert.equal(noFallback.status, 409);
+});

@@ -35,7 +35,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.5"
+  -Version "1.0.6"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -43,14 +43,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.5.exe
+build\output\ChildMonitorSetup-1.0.6.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.5" `
+  -Version "1.0.6" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -85,6 +85,22 @@ Installer sẽ:
 
 Máy cài đặt offline có thể truyền `-Wheelhouse <đường-dẫn>` chứa các wheel đã
 tải trước.
+
+## Phân loại nội dung website
+
+Installer đóng gói `web_content_model_v1.json`, `app_content_model_v1.json` và
+`app_exact_lookup_v1.json` cùng checksum SHA-256. Self-test của Service sẽ dừng
+nếu asset bị thiếu, sai checksum hoặc model chưa đạt deployment gate.
+
+Khi `enable_web_classification=true`, Service chỉ đưa domain đã chuẩn hóa vào
+model website cục bộ. Kết quả có confidence từ `0.70` được lưu với nguồn
+`trained_model`; kết quả thấp hơn ngưỡng mới gửi duy nhất domain tới Gemini và
+lưu nguồn `gemini`. Khi công tắc tắt, Agent không gọi model/Gemini và lưu trạng
+thái `disabled`, vì vậy quyền truy cập web vẫn hoạt động bình thường.
+
+Mỗi 10 phút Agent lấy tối đa 25 domain `unknown` cũ ở queue cục bộ và backend để
+phân loại lại. Backfill chỉ cập nhật bản ghi còn `pending/disabled`, không ghi đè
+nhãn đã có.
 
 ## Edge AI: khoảng cách mắt và tư thế
 

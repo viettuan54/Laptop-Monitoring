@@ -17,7 +17,12 @@ param(
 
     [string]$PostureModelPath,
 
-    [string]$PostureProfilePath
+    [string]$PostureProfilePath,
+    [string]$AppContentModelPath,
+
+    [string]$WebContentModelPath,
+
+    [string]$AppExactLookupPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -46,15 +51,19 @@ function Invoke-Checked {
 function Copy-JsonAssetWithHash {
     param(
         [Parameter(Mandatory = $true)][string]$SourcePath,
-        [Parameter(Mandatory = $true)][string]$DestinationName
+        [Parameter(Mandatory = $true)][string]$DestinationName,
+        [switch]$RequireDeploymentApproval
     )
     $resolvedSource = (Resolve-Path -LiteralPath $SourcePath -ErrorAction Stop).Path
     if ([IO.Path]::GetExtension($resolvedSource) -ne ".json") {
         throw "Edge AI asset must be a JSON file: $resolvedSource"
     }
     # Parse before installing so malformed personal profiles fail early.
-    Get-Content -Raw -LiteralPath $resolvedSource -Encoding UTF8 |
-        ConvertFrom-Json -ErrorAction Stop | Out-Null
+    $payload = Get-Content -Raw -LiteralPath $resolvedSource -Encoding UTF8 |
+        ConvertFrom-Json -ErrorAction Stop
+    if ($RequireDeploymentApproval -and $payload.deployment_approved -ne $true) {
+        throw "Content model did not pass its deployment gate: $resolvedSource"
+    }
     $destination = Join-Path "$resolvedInstallDir\models" $DestinationName
     Copy-Item -Force -LiteralPath $resolvedSource -Destination $destination
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $destination).Hash.ToLowerInvariant()
@@ -149,6 +158,20 @@ if ($PostureProfilePath) {
     }
     Copy-JsonAssetWithHash $PostureProfilePath "posture_profile_v1.json"
 }
+
+$workspaceRoot = Split-Path -Parent $AgentRoot
+if (-not $AppContentModelPath) {
+    $AppContentModelPath = Join-Path $workspaceRoot "ai-training\artifacts\content_classification\app_content_model_v1.json"
+}
+if (-not $WebContentModelPath) {
+    $WebContentModelPath = Join-Path $workspaceRoot "ai-training\artifacts\content_classification\web_content_model_v1.json"
+}
+if (-not $AppExactLookupPath) {
+    $AppExactLookupPath = Join-Path $workspaceRoot "ai-training\artifacts\content_classification\app_exact_lookup_v1.json"
+}
+Copy-JsonAssetWithHash $AppContentModelPath "app_content_model_v1.json" -RequireDeploymentApproval
+Copy-JsonAssetWithHash $WebContentModelPath "web_content_model_v1.json" -RequireDeploymentApproval
+Copy-JsonAssetWithHash $AppExactLookupPath "app_exact_lookup_v1.json"
 
 $venvPython = "$resolvedInstallDir\venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPython)) {

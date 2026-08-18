@@ -41,6 +41,8 @@ class EnforcementCore:
             "allowed_end_time": "21:00:00",
             "is_locked": False,
             "enable_webcam_monitoring": False,
+            "enable_app_classification": False,
+            "enable_web_classification": False,
             "blacklisted_domains": []
         }
 
