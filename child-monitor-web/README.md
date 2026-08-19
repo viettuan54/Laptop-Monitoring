@@ -35,7 +35,7 @@ Có thể dùng `npm start` nếu PowerShell cho phép chạy npm script. Chạy
 - Chính sách phân loại: bật/tắt phân loại AI và cấu hình Cho phép/Chặn cho từng
   nhóm ứng dụng, website của mỗi hồ sơ trẻ.
 - Vận hành Agent: trạng thái thiết bị online, lần heartbeat gần nhất, hướng dẫn
-  cài Agent 1.0.5 và trạng thái kết nối Backend ngay trên Dashboard.
+  cài Agent 1.0.7 và trạng thái kết nối Backend ngay trên Dashboard.
 - Hoạt động: tìm kiếm, lọc theo thiết bị/danh mục/thời gian, phân trang cục bộ,
   mở liên kết website an toàn và xuất CSV UTF-8.
 - Admin: thống kê, người dùng, blacklist và audit log.

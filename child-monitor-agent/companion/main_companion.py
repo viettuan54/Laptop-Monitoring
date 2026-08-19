@@ -4,6 +4,8 @@ import logging
 import threading
 import os
 import sys
+import win32api
+import win32event
 from logging.handlers import RotatingFileHandler
 from pipe_client import PipeClient
 from app_tracker import AppTracker
@@ -14,6 +16,10 @@ from runtime_paths import agent_root
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+INSTANCE_MUTEX_NAME = r"Local\ChildMonitorCompanion"
+ERROR_ALREADY_EXISTS = 183
+_instance_mutex = None
 
 
 def configure_file_logging():
@@ -40,6 +46,17 @@ def configure_file_logging():
             logging.Formatter("%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s")
         )
         root_logger.addHandler(file_handler)
+
+
+def acquire_single_instance():
+    """Allow exactly one Companion in each interactive Windows session."""
+    global _instance_mutex
+    mutex = win32event.CreateMutex(None, False, INSTANCE_MUTEX_NAME)
+    if win32api.GetLastError() == ERROR_ALREADY_EXISTS:
+        mutex.Close()
+        return False
+    _instance_mutex = mutex
+    return True
 
 def lock_windows_session():
     """Khóa màn hình Windows."""
@@ -181,4 +198,12 @@ def run_self_test():
 if __name__ == "__main__":
     if "--self-test" in sys.argv:
         sys.exit(run_self_test())
-    main()
+    configure_file_logging()
+    if not acquire_single_instance():
+        logging.info("Another Companion instance already owns this user session; exiting.")
+        sys.exit(0)
+    try:
+        main()
+    finally:
+        if _instance_mutex:
+            _instance_mutex.Close()

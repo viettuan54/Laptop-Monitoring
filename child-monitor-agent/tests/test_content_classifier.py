@@ -5,7 +5,7 @@ import os
 import sys
 import tempfile
 import unittest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 
 AGENT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -110,6 +110,31 @@ class ContentClassifierTest(unittest.TestCase):
             "youtube.com", "entertainment", source="gemini"
         )
 
+    def test_tracking_path_defers_low_confidence_remote_fallback(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_web_classification": True
+        }
+        classifier = Mock()
+        classifier.classify_web.return_value = {
+            "label": None,
+            "confidence": 0.6,
+        }
+        api_client = Mock()
+        server = PipeServer(Mock(), enforcement, api_client, classifier)
+
+        result = server.classify_web_domain(
+            "youtube.com",
+            allow_remote_fallback=False,
+        )
+
+        self.assertEqual(result, {
+            "category": "unknown",
+            "source": "pending",
+            "confidence": None,
+        })
+        api_client.classify_web_domain.assert_not_called()
+
     def test_cached_gemini_result_keeps_its_provenance(self):
         enforcement = Mock()
         enforcement.load_cached_settings.return_value = {
@@ -129,6 +154,53 @@ class ContentClassifierTest(unittest.TestCase):
         self.assertEqual(result["source"], "gemini")
         self.assertIsNone(result["confidence"])
         api_client.classify_web_domain.assert_not_called()
+
+    def test_pipe_processing_error_returns_retryable_response_and_closes_request(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_web_classification": False
+        }
+        queue = Mock()
+        queue.enqueue_app_log.return_value = (None, False)
+        server = PipeServer(queue, enforcement)
+        message = json.dumps({
+            "action": "TRACK_APP",
+            "app_name": "browser.exe",
+            "start_time": "2026-08-19T08:00:00+07:00",
+            "end_time": "2026-08-19T08:00:30+07:00",
+            "duration_seconds": 30,
+            "client_record_id": "app-record",
+        })
+
+        with patch("pipe_server.win32file.WriteFile") as write_file:
+            with self.assertRaises(RuntimeError):
+                server._process_client_message(message, 123)
+
+        response = json.loads(write_file.call_args.args[1].decode("utf-8"))
+        self.assertEqual(response["error"], "processing_failed")
+        self.assertTrue(response["retryable"])
+
+    def test_app_tracking_is_acknowledged_only_after_local_persistence(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {}
+        enforcement.check_policy_status.return_value = (False, "OK", 3600)
+        queue = Mock()
+        queue.enqueue_app_log.return_value = ("app-record", True)
+        server = PipeServer(queue, enforcement)
+        message = json.dumps({
+            "action": "TRACK_APP",
+            "app_name": "browser.exe",
+            "start_time": "2026-08-19T08:00:00+07:00",
+            "end_time": "2026-08-19T08:00:30+07:00",
+            "duration_seconds": 30,
+            "client_record_id": "app-record",
+        })
+
+        with patch("pipe_server.win32file.WriteFile") as write_file:
+            server._process_client_message(message, 123)
+
+        response = json.loads(write_file.call_args.args[1].decode("utf-8"))
+        self.assertEqual(response["tracking_ack"], "app-record")
 
 
 if __name__ == "__main__":

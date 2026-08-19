@@ -146,7 +146,7 @@ class WebTrackingTest(unittest.TestCase):
         )
         with open(tracker.status_path, "r", encoding="utf-8") as stream:
             status = json.load(stream)
-        self.assertEqual(status["agent_version"], "1.0.5")
+        self.assertEqual(status["agent_version"], "1.0.7")
         self.assertEqual(status["records_discovered"], 1)
         self.assertEqual(status["records_forwarded"], 1)
 

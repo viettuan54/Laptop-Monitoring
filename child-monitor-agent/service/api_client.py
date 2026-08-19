@@ -203,10 +203,14 @@ class APIClient:
 
     def classify_web_domain(self, domain, timeout=20):
         """Call Gemini fallback with only the normalized domain."""
-        res = self.post(
+        # Classification is optional background work. A single bounded attempt
+        # avoids accumulating minute-long retry chains when Gemini is unavailable.
+        res = self.request(
+            "POST",
             "/api/agent/classification/web/fallback",
-            data={"domain": domain},
+            payload={"domain": domain},
             timeout=timeout,
+            max_retries=1,
         )
         if not res or res.status_code != 200:
             return None

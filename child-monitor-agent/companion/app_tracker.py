@@ -42,7 +42,10 @@ class AppTracker:
         while self.pending_segments:
             segment = self.pending_segments[0]
             response = self.pipe_client.send_app_tracking(**segment)
-            if response is None:
+            if (
+                not isinstance(response, dict)
+                or response.get("tracking_ack") != segment["client_record_id"]
+            ):
                 break
             self.pending_segments.pop(0)
             last_response = response

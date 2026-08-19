@@ -41,8 +41,13 @@ class PipeServer:
         settings = self.enforcement_core.load_cached_settings()
         return settings.get("enable_web_classification") is True
 
-    def classify_web_domain(self, domain):
-        """Use local model first and send only the domain to Gemini fallback."""
+    def classify_web_domain(self, domain, allow_remote_fallback=True):
+        """Classify locally first; optional remote fallback is reserved for workers.
+
+        The Named Pipe request path must never wait for Gemini. Browser visits are
+        persisted and acknowledged immediately with ``pending`` provenance, then
+        the background backfill worker may resolve low-confidence domains.
+        """
         if not self._web_classification_enabled():
             return {
                 "category": "unknown",
@@ -69,7 +74,7 @@ class PipeServer:
             except Exception as error:
                 logging.error("Local web classification failed: %s", error)
 
-        if self.api_client is not None:
+        if allow_remote_fallback and self.api_client is not None:
             category = self.api_client.classify_web_domain(domain)
             if category is not None:
                 if self.content_classifier is not None:
@@ -259,6 +264,7 @@ class PipeServer:
                     )
                     if not persisted_id:
                         raise RuntimeError("Failed to persist app tracking segment")
+                    tracking_ack = persisted_id
                     # Retry cùng client_record_id không được cộng thời gian lần hai.
                     if inserted:
                         self.offline_queue.add_daily_usage(duration_seconds)
@@ -301,7 +307,10 @@ class PipeServer:
                 if canonical_record_id != client_record_id:
                     raise ValueError("Web tracking client record ID must be canonical")
 
-                classification = self.classify_web_domain(domain)
+                classification = self.classify_web_domain(
+                    domain,
+                    allow_remote_fallback=False,
+                )
                 persisted_id, _ = self.offline_queue.enqueue_web_log(
                     url=url,
                     domain=domain.lower(),
@@ -361,7 +370,19 @@ class PipeServer:
             win32file.WriteFile(pipe_handle, response_bytes)
 
         except Exception as e:
-            logging.error(f"Error processing pipe message: {e}")
+            # Never leave both ends blocked (server waiting for another message
+            # while Companion waits forever for this response). Return a generic
+            # retryable error, then let _handle_client close this pipe instance.
+            logging.error("Error processing pipe message: %s", e, exc_info=True)
+            try:
+                error_payload = json.dumps({
+                    "error": "processing_failed",
+                    "retryable": True,
+                }).encode("utf-8")
+                win32file.WriteFile(pipe_handle, error_payload)
+            except Exception:
+                pass
+            raise
 
     def _get_vision_config(self):
         """Chỉ bật camera khi cờ đồng thuận đã được cache từ backend."""

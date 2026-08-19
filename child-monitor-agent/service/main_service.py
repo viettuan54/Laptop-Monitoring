@@ -3,6 +3,7 @@ import sys
 import time
 import logging
 import threading
+from logging.handlers import RotatingFileHandler
 
 try:
     import servicemanager
@@ -32,6 +33,29 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s"
 )
+
+
+def configure_file_logging():
+    """Persist Service/Watchdog/Named Pipe diagnostics for field recovery."""
+    log_dir = os.path.join(agent_root(), "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, "service.log")
+    root_logger = logging.getLogger()
+    if not any(
+        isinstance(handler, RotatingFileHandler)
+        and os.path.abspath(getattr(handler, "baseFilename", "")) == os.path.abspath(log_path)
+        for handler in root_logger.handlers
+    ):
+        file_handler = RotatingFileHandler(
+            log_path,
+            maxBytes=2 * 1024 * 1024,
+            backupCount=3,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(logging.Formatter(
+            "%(asctime)s [%(levelname)s] [%(threadName)s] %(message)s"
+        ))
+        root_logger.addHandler(file_handler)
 
 def run_forever(name, target_func, interval_seconds, *args):
     """
@@ -109,6 +133,7 @@ class ChildMonitorService(ServiceBaseClass):
         return super().SvcOtherEx(control, event_type, data)
 
     def main(self):
+        configure_file_logging()
         logging.info("Initializing ChildMonitorService modules...")
         
         # Khởi tạo các module lõi
@@ -156,11 +181,6 @@ class ChildMonitorService(ServiceBaseClass):
                 args=("OfflineSyncLoop", self._offline_sync_loop_step, 60),
                 daemon=True
             ),
-            threading.Thread(
-                target=run_forever,
-                args=("WebClassificationBackfillLoop", self._web_backfill_loop_step, 600),
-                daemon=True
-            )
         ]
 
         for t in threads:
@@ -169,9 +189,17 @@ class ChildMonitorService(ServiceBaseClass):
         # Thực hiện 1 lần nạp config ban đầu ngay khi start
         try:
             self._config_blacklist_loop_step()
-            self._web_backfill_loop_step()
         except Exception as e:
             logging.warning(f"Initial config fetch failed: {e}")
+
+        # Start optional/network-dependent classification only after initial
+        # config. It runs independently and can never block Service startup or
+        # the Named Pipe tracking thread.
+        threading.Thread(
+            target=run_forever,
+            args=("WebClassificationBackfillLoop", self._web_backfill_loop_step, 600),
+            daemon=True,
+        ).start()
 
         logging.info("All ChildMonitorService background worker threads initialized.")
 
