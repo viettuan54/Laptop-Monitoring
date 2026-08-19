@@ -5,6 +5,7 @@ const {
   classifyWebDomainWithGemini,
   normalizeDomain,
 } = require('../services/contentClassification.service');
+const { getAgentPolicySnapshot } = require('../services/agentPolicy.service');
 
 // ────────────────────────────────────────────────────────────────
 // POST /api/agent/heartbeat
@@ -23,34 +24,19 @@ exports.heartbeat = async (req, res) => {
     );
     const last_seen_at = updateResult.rows[0]?.last_seen_at ?? new Date();
 
-    // Lấy config hiện tại để trả về ngay cùng response
-    // Agent sẽ dùng để kiểm tra is_locked, time limit, v.v.
-    const settingsResult = await adminPool.query(
-      `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-              enable_app_classification, enable_web_classification
-       FROM settings
-       WHERE child_id = $1`,
-      [child_id]
+    // Trả cả các nhóm allow/block để Agent có thể thực thi ngay sau khi AI
+    // phân loại domain, thay vì chỉ lưu nhãn vào nhật ký.
+    const { config, policy_blocked_domains } = await getAgentPolicySnapshot(
+      adminPool,
+      child_id
     );
-
-    const config = settingsResult.rows[0] || {
-      daily_limit_minutes: 120,
-      allowed_start_time: '07:00:00',
-      allowed_end_time: '21:00:00',
-      is_locked: false,
-      enable_webcam_monitoring: false,
-      enable_screenshot_review: false,
-      enable_keylog: false,
-      enable_app_classification: false,
-      enable_web_classification: false,
-    };
 
     res.json({
       message: 'Heartbeat received',
       server_time: new Date().toISOString(),
       last_seen_at: last_seen_at instanceof Date ? last_seen_at.toISOString() : last_seen_at,
       config,
+      policy_blocked_domains,
     });
   } catch (error) {
     console.error('Heartbeat error:', error);
@@ -68,39 +54,19 @@ exports.getConfig = async (req, res) => {
   const { child_id, device_id, device_name } = req.device;
 
   try {
-    const settingsResult = await adminPool.query(
-      `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-              enable_app_classification, enable_web_classification
-       FROM settings
-       WHERE child_id = $1`,
-      [child_id]
-    );
-
-    // Lấy danh sách blacklist toàn cục do admin quản lý để Agent kiểm tra website cục bộ.
-    // website_blacklist là bảng global (không phân theo child/user) → lấy toàn bộ là đúng thiết kế.
-    const blacklistResult = await adminPool.query(
-      'SELECT domain FROM website_blacklist ORDER BY domain ASC'
-    );
-
-    const config = settingsResult.rows[0] || {
-      daily_limit_minutes: 120,
-      allowed_start_time: '07:00:00',
-      allowed_end_time: '21:00:00',
-      is_locked: false,
-      enable_webcam_monitoring: false,
-      enable_screenshot_review: false,
-      enable_keylog: false,
-      enable_app_classification: false,
-      enable_web_classification: false,
-    };
+    // website_blacklist là danh sách global; policy category bên dưới là theo child.
+    const [policySnapshot, blacklistResult] = await Promise.all([
+      getAgentPolicySnapshot(adminPool, child_id),
+      adminPool.query('SELECT domain FROM website_blacklist ORDER BY domain ASC'),
+    ]);
 
     res.json({
       device_id,
       device_name,
       child_id,
-      config,
+      config: policySnapshot.config,
       blacklisted_domains: blacklistResult.rows.map((r) => r.domain),
+      policy_blocked_domains: policySnapshot.policy_blocked_domains,
       server_time: new Date().toISOString(),
     });
   } catch (error) {

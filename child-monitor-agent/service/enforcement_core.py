@@ -15,6 +15,14 @@ class EnforcementCore:
     HOSTS_MARKER_START = "# === LAPTOP-MONITOR START ==="
     HOSTS_MARKER_END = "# === LAPTOP-MONITOR END ==="
     DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
+    WEB_POLICY_CATEGORIES = {
+        "education",
+        "entertainment",
+        "social",
+        "unsafe",
+        "unknown",
+    }
+    MAX_CLASSIFIED_DOMAINS = 5000
 
     def __init__(self, offline_queue, config_dir=None):
         self.offline_queue = offline_queue
@@ -22,17 +30,26 @@ class EnforcementCore:
             config_dir = os.path.join(agent_root(), "config")
 
         self.settings_cache_path = os.path.join(config_dir, "settings_cache.json")
+        self.web_classification_cache_path = os.path.join(
+            config_dir,
+            "web_classification_cache.json",
+        )
         self.hosts_path = r"C:\Windows\System32\drivers\etc\hosts"
         self.lock = threading.Lock()
+        self.cache_lock = threading.RLock()
 
     def load_cached_settings(self):
         """Đọc cài đặt settings và blacklist đã được cache từ file JSON."""
-        if os.path.exists(self.settings_cache_path):
-            try:
-                with open(self.settings_cache_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                logging.error(f"Failed to read settings cache: {e}")
+        with self.cache_lock:
+            if os.path.exists(self.settings_cache_path):
+                try:
+                    with open(self.settings_cache_path, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    if isinstance(data, dict):
+                        return data
+                    logging.error("Settings cache must contain a JSON object.")
+                except Exception as e:
+                    logging.error(f"Failed to read settings cache: {e}")
 
         # Config mặc định an toàn nếu chưa có cache
         return {
@@ -43,29 +60,173 @@ class EnforcementCore:
             "enable_webcam_monitoring": False,
             "enable_app_classification": False,
             "enable_web_classification": False,
+            "blocked_app_categories": [],
+            "blocked_web_categories": [],
+            "policy_blocked_domains": [],
             "blacklisted_domains": []
         }
 
-    def save_settings_cache(self, config_data, blacklisted_domains=None):
+    def load_web_classification_cache(self):
+        """Đọc ánh xạ domain -> nhãn AI đã xác nhận trên thiết bị này."""
+        with self.cache_lock:
+            if not os.path.exists(self.web_classification_cache_path):
+                return {}
+            try:
+                with open(
+                    self.web_classification_cache_path,
+                    "r",
+                    encoding="utf-8",
+                ) as stream:
+                    payload = json.load(stream)
+                domains = payload.get("domains", {}) if isinstance(payload, dict) else {}
+                if not isinstance(domains, dict):
+                    return {}
+                safe = {}
+                for domain, category in domains.items():
+                    normalized = self.normalize_domain(domain)
+                    if normalized and category in self.WEB_POLICY_CATEGORIES:
+                        safe[normalized] = category
+                return safe
+            except Exception as error:
+                logging.error("Failed to read web classification cache: %s", error)
+                return {}
+
+    @staticmethod
+    def _write_json_atomic(path, payload):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        temporary_path = f"{path}.{os.getpid()}.tmp"
+        with open(temporary_path, "w", encoding="utf-8") as stream:
+            json.dump(payload, stream, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary_path, path)
+
+    def _effective_blocked_domains(self, settings=None, classifications=None):
+        settings = settings if isinstance(settings, dict) else self.load_cached_settings()
+        classifications = (
+            classifications
+            if isinstance(classifications, dict)
+            else self.load_web_classification_cache()
+        )
+        effective = set()
+        for domain in settings.get("blacklisted_domains", []):
+            normalized = self.normalize_domain(domain)
+            if normalized:
+                effective.add(normalized)
+
+        # Tắt phân loại cũng tạm dừng policy theo danh mục, đúng với Dashboard.
+        if settings.get("enable_web_classification") is True:
+            for domain in settings.get("policy_blocked_domains", []):
+                normalized = self.normalize_domain(domain)
+                if normalized:
+                    effective.add(normalized)
+            blocked_categories = {
+                category
+                for category in settings.get("blocked_web_categories", [])
+                if category in self.WEB_POLICY_CATEGORIES
+            }
+            for domain, category in classifications.items():
+                if category in blocked_categories:
+                    effective.add(domain)
+        return sorted(effective)
+
+    def save_settings_cache(
+        self,
+        config_data,
+        blacklisted_domains=None,
+        policy_blocked_domains=None,
+    ):
         """Lưu cài đặt settings và danh sách blacklist vào file cache cục bộ."""
         try:
-            blacklist_was_refreshed = blacklisted_domains is not None
-            cache_data = config_data.copy() if config_data else {}
-            if blacklisted_domains is not None:
-                cache_data["blacklisted_domains"] = blacklisted_domains
-            elif "blacklisted_domains" not in cache_data:
+            with self.cache_lock:
                 existing = self.load_cached_settings()
-                cache_data["blacklisted_domains"] = existing.get("blacklisted_domains", [])
+                classifications = self.load_web_classification_cache()
+                previous_domains = self._effective_blocked_domains(
+                    existing,
+                    classifications,
+                )
+                cache_data = existing.copy()
+                if isinstance(config_data, dict):
+                    cache_data.update(config_data)
+                if blacklisted_domains is not None:
+                    cache_data["blacklisted_domains"] = blacklisted_domains
+                if policy_blocked_domains is not None:
+                    cache_data["policy_blocked_domains"] = policy_blocked_domains
+                self._write_json_atomic(self.settings_cache_path, cache_data)
+                current_domains = self._effective_blocked_domains(
+                    cache_data,
+                    classifications,
+                )
 
-            with open(self.settings_cache_path, "w", encoding="utf-8") as f:
-                json.dump(cache_data, f, indent=2)
-
-            # Heartbeat only refreshes policy fields. Rewrite hosts/flush DNS only
-            # when a full config response explicitly refreshes the blacklist.
-            if blacklist_was_refreshed:
-                self.update_hosts_file(cache_data.get("blacklisted_domains", []))
+            # Heartbeat chứa policy category. Vì vậy chỉ cần policy đổi là hosts
+            # được cập nhật trong chu kỳ 60 giây, không phải chờ config 10 phút.
+            if previous_domains != current_domains:
+                self.update_hosts_file(current_domains)
         except Exception as e:
             logging.error(f"Failed to save settings cache: {e}")
+
+    def remember_web_classification(
+        self,
+        domain,
+        category,
+        classification_source=None,
+    ):
+        """Lưu nhãn đã phân loại và chặn ngay nếu category đang có policy block."""
+        normalized = self.normalize_domain(domain)
+        if not normalized or category not in self.WEB_POLICY_CATEGORIES:
+            return False
+
+        try:
+            with self.cache_lock:
+                settings = self.load_cached_settings()
+                classifications = self.load_web_classification_cache()
+                previous_domains = self._effective_blocked_domains(
+                    settings,
+                    classifications,
+                )
+                existing_category = classifications.get(normalized)
+                # A pending low-confidence visit does not invalidate an older,
+                # already confirmed category for the same domain.
+                if category == "unknown" and existing_category not in {None, "unknown"}:
+                    return normalized in previous_domains
+                if classifications.get(normalized) == category:
+                    return normalized in previous_domains
+
+                # Pop + append keeps recently refreshed entries at the end so a
+                # bounded cache can evict the oldest observations deterministically.
+                classifications.pop(normalized, None)
+                classifications[normalized] = category
+                while len(classifications) > self.MAX_CLASSIFIED_DOMAINS:
+                    classifications.pop(next(iter(classifications)))
+                self._write_json_atomic(
+                    self.web_classification_cache_path,
+                    {"version": 1, "domains": classifications},
+                )
+                current_domains = self._effective_blocked_domains(
+                    settings,
+                    classifications,
+                )
+
+            if previous_domains != current_domains:
+                self.update_hosts_file(current_domains)
+            blocked = normalized in current_domains
+            logging.info(
+                "Website classification policy evaluated: domain=%s category=%s source=%s blocked=%s",
+                normalized,
+                category,
+                classification_source or "unspecified",
+                blocked,
+            )
+            return blocked
+        except Exception as error:
+            logging.error("Failed to persist website classification policy: %s", error)
+            return False
+
+    def apply_cached_web_policy(self):
+        """Áp dụng lại blacklist + policy AI từ cache khi Service khởi động offline."""
+        domains = self._effective_blocked_domains()
+        self.update_hosts_file(domains)
+        return domains
 
     def update_hosts_file(self, blacklisted_domains):
         """Cập nhật file C:\\Windows\\System32\\drivers\\etc\\hosts để chặn domain cấm chủ động."""

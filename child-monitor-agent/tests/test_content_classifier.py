@@ -202,6 +202,114 @@ class ContentClassifierTest(unittest.TestCase):
         response = json.loads(write_file.call_args.args[1].decode("utf-8"))
         self.assertEqual(response["tracking_ack"], "app-record")
 
+    def test_classified_web_visit_is_forwarded_to_enforcement_after_persistence(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_web_classification": True,
+        }
+        enforcement.check_policy_status.return_value = (False, "OK", 3600)
+        classifier = Mock()
+        classifier.classify_web.return_value = {
+            "label": "entertainment",
+            "confidence": 0.95,
+            "decision_source": "trained_model",
+        }
+        queue = Mock()
+        record_id = "7e1459b0-395b-4d85-a3cd-1f6589d578ea"
+        queue.enqueue_web_log.return_value = (record_id, True)
+        server = PipeServer(queue, enforcement, Mock(), classifier)
+        message = json.dumps({
+            "action": "TRACK_WEB",
+            "url": "https://gamevui.vn/play",
+            "domain": "gamevui.vn",
+            "visit_time": "2026-08-19T08:00:00+07:00",
+            "duration_seconds": 3,
+            "page_title": "Game vui",
+            "client_record_id": record_id,
+        })
+
+        with patch("pipe_server.win32file.WriteFile") as write_file:
+            server._process_client_message(message, 123)
+
+        queue.enqueue_web_log.assert_called_once()
+        enforcement.remember_web_classification.assert_called_once_with(
+            "gamevui.vn",
+            "entertainment",
+            "trained_model",
+        )
+        response = json.loads(write_file.call_args.args[1].decode("utf-8"))
+        self.assertEqual(response["tracking_ack"], record_id)
+
+    def test_pending_web_visit_schedules_immediate_background_fallback(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_web_classification": True,
+        }
+        enforcement.check_policy_status.return_value = (False, "OK", 3600)
+        classifier = Mock()
+        classifier.classify_web.return_value = {"label": None, "confidence": 0.4}
+        queue = Mock()
+        record_id = "051575a0-ab87-4030-8a35-f250cbad8c62"
+        queue.enqueue_web_log.return_value = (record_id, True)
+        server = PipeServer(queue, enforcement, Mock(), classifier)
+        server._schedule_web_classification = Mock(return_value=True)
+        message = json.dumps({
+            "action": "TRACK_WEB",
+            "url": "https://gamevui.vn/",
+            "domain": "gamevui.vn",
+            "visit_time": "2026-08-19T08:00:00+07:00",
+            "duration_seconds": 3,
+            "page_title": "Game vui",
+            "client_record_id": record_id,
+        })
+
+        with patch("pipe_server.win32file.WriteFile"):
+            server._process_client_message(message, 123)
+
+        server._schedule_web_classification.assert_called_once_with("gamevui.vn")
+        enforcement.remember_web_classification.assert_called_once_with(
+            "gamevui.vn",
+            "unknown",
+            "pending",
+        )
+
+    def test_background_worker_finalizes_and_enforces_gemini_result(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_web_classification": True,
+        }
+        classifier = Mock()
+        classifier.classify_web.return_value = {"label": None, "confidence": 0.4}
+        api_client = Mock()
+        api_client.classify_web_domain.return_value = "entertainment"
+        queue = Mock()
+        server = PipeServer(queue, enforcement, api_client, classifier)
+        server.running = True
+        server.classification_pending.add("gamevui.vn")
+        server.classification_queue.put("gamevui.vn")
+        server.classification_queue.put(None)
+
+        server._classification_worker()
+
+        queue.update_unknown_web_category.assert_called_once_with(
+            "gamevui.vn",
+            "entertainment",
+            "gemini",
+            None,
+        )
+        enforcement.remember_web_classification.assert_called_once_with(
+            "gamevui.vn",
+            "entertainment",
+            "gemini",
+        )
+        api_client.backfill_web_domain.assert_called_once_with(
+            "gamevui.vn",
+            "entertainment",
+            "gemini",
+            None,
+        )
+        self.assertNotIn("gamevui.vn", server.classification_pending)
+
 
 if __name__ == "__main__":
     unittest.main()

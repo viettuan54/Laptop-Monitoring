@@ -2,8 +2,11 @@ import os
 import time
 import json
 import logging
+import queue
 import threading
 import uuid
+import ctypes
+from ctypes import wintypes
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -36,6 +39,9 @@ class PipeServer:
         self.current_user_sid = None
         self.lock = threading.Lock()
         self.vision_subject_id = vision_subject_id
+        self.classification_queue = queue.Queue()
+        self.classification_pending = set()
+        self.classification_lock = threading.Lock()
 
     def _web_classification_enabled(self):
         settings = self.enforcement_core.load_cached_settings()
@@ -109,6 +115,11 @@ class PipeServer:
                 result["source"],
                 result["confidence"],
             )
+            self.enforcement_core.remember_web_classification(
+                domain,
+                result["category"],
+                result["source"],
+            )
             if self.api_client.backfill_web_domain(
                 domain,
                 result["category"],
@@ -117,6 +128,67 @@ class PipeServer:
             ):
                 updated += 1
         return updated
+
+    def _schedule_web_classification(self, domain):
+        """Đánh thức worker nền cho một domain vừa có kết quả pending."""
+        if not self.running or not self._web_classification_enabled():
+            return False
+        normalized = domain.lower()
+        with self.classification_lock:
+            if normalized in self.classification_pending:
+                return False
+            self.classification_pending.add(normalized)
+        self.classification_queue.put(normalized)
+        return True
+
+    def _classification_worker(self):
+        """Chạy Gemini fallback ngoài luồng Named Pipe để ACK không bị chậm."""
+        while self.running:
+            try:
+                domain = self.classification_queue.get(timeout=1)
+            except queue.Empty:
+                continue
+            if domain is None:
+                self.classification_queue.task_done()
+                break
+            try:
+                result = self.classify_web_domain(domain, allow_remote_fallback=True)
+                if result["source"] not in {"trained_model", "gemini"}:
+                    continue
+                self.offline_queue.update_unknown_web_category(
+                    domain,
+                    result["category"],
+                    result["source"],
+                    result["confidence"],
+                )
+                self.enforcement_core.remember_web_classification(
+                    domain,
+                    result["category"],
+                    result["source"],
+                )
+                if self.api_client is not None:
+                    self.api_client.backfill_web_domain(
+                        domain,
+                        result["category"],
+                        result["source"],
+                        result["confidence"],
+                    )
+                logging.info(
+                    "Completed immediate background classification: domain=%s category=%s source=%s",
+                    domain,
+                    result["category"],
+                    result["source"],
+                )
+            except Exception as error:
+                logging.error(
+                    "Immediate web classification failed for %s: %s",
+                    domain,
+                    error,
+                )
+            finally:
+                with self.classification_lock:
+                    self.classification_pending.discard(domain)
+                self.classification_queue.task_done()
 
     def create_security_attributes(self, user_sid=None):
         """Tạo Security Attributes cho Named Pipe để bảo mật SYSTEM, Admins và User SID cụ thể."""
@@ -148,35 +220,83 @@ class PipeServer:
         sa.SECURITY_DESCRIPTOR = sd
         return sa
 
-    def recreate_pipe(self, new_user_sid=None):
-        """Khởi tạo/Làm mới Pipe Instance khi có sự kiện đổi Session (Switch User)."""
-        logging.info(f"Recreating Pipe Server DACL for User SID: {new_user_sid}")
+    def set_user_sid(self, user_sid):
+        """Set the DACL identity before the first listening pipe is created."""
         with self.lock:
+            self.current_user_sid = user_sid
+
+    @staticmethod
+    def _interrupt_pipe_handle(pipe_handle):
+        """Wake blocking ConnectNamedPipe/ReadFile without a cross-thread close.
+
+        Closing a synchronous pipe handle from a different thread can wait for
+        pending I/O forever. CancelIoEx lets the server thread leave the call
+        and close its own handle before creating a pipe with the new DACL.
+        """
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        cancel_io_ex = kernel32.CancelIoEx
+        cancel_io_ex.argtypes = [wintypes.HANDLE, wintypes.LPVOID]
+        cancel_io_ex.restype = wintypes.BOOL
+
+        if cancel_io_ex(wintypes.HANDLE(int(pipe_handle)), None):
+            return True
+
+        error_code = ctypes.get_last_error()
+        # ERROR_NOT_FOUND means there was no pending I/O in this small race
+        # window. Disconnect a connected instance so the server can still
+        # cycle; any failure means it already moved on by itself.
+        if error_code == 1168:
+            try:
+                win32pipe.DisconnectNamedPipe(pipe_handle)
+                return True
+            except Exception:
+                return False
+        raise ctypes.WinError(error_code)
+
+    def recreate_pipe(self, new_user_sid=None):
+        """Recreate the next Pipe instance when the interactive user changes."""
+        pipe_handle = None
+        with self.lock:
+            if self.current_user_sid == new_user_sid:
+                return False
             self.current_user_sid = new_user_sid
-            if self.client_handle:
-                try:
-                    win32file.CloseHandle(self.client_handle)
-                except Exception:
-                    pass
-                self.client_handle = None
+            pipe_handle = self.client_handle
+
+        logging.info("Recreating Pipe Server DACL for User SID: %s", new_user_sid)
+        if pipe_handle:
+            try:
+                self._interrupt_pipe_handle(pipe_handle)
+            except Exception as error:
+                logging.warning("Could not interrupt Pipe Server I/O: %s", error)
+        return True
 
     def start(self):
         """Khởi chạy luồng Named Pipe Server."""
         self.running = True
         thread = threading.Thread(target=self._server_loop, daemon=True)
         thread.start()
+        classification_thread = threading.Thread(
+            target=self._classification_worker,
+            daemon=True,
+            name="WebClassificationWorker",
+        )
+        classification_thread.start()
         logging.info("Named Pipe Server thread started.")
 
     def stop(self):
         self.running = False
-        # ConnectNamedPipe/ReadFile là blocking; đóng handle để đánh thức server loop.
+        self.classification_queue.put(None)
+        # ConnectNamedPipe/ReadFile are blocking. Cancel their pending I/O and
+        # let the server thread close its own handle; a cross-thread CloseHandle
+        # can otherwise hang Service shutdown indefinitely.
+        pipe_handle = None
         with self.lock:
-            if self.client_handle:
-                try:
-                    win32file.CloseHandle(self.client_handle)
-                except Exception:
-                    pass
-                self.client_handle = None
+            pipe_handle = self.client_handle
+        if pipe_handle:
+            try:
+                self._interrupt_pipe_handle(pipe_handle)
+            except Exception as error:
+                logging.warning("Could not interrupt Pipe Server during stop: %s", error)
 
     def _server_loop(self):
         while self.running:
@@ -325,6 +445,13 @@ class PipeServer:
                 if not persisted_id:
                     raise RuntimeError("Failed to persist browser visit")
                 tracking_ack = persisted_id
+                self.enforcement_core.remember_web_classification(
+                    domain,
+                    classification["category"],
+                    classification["source"],
+                )
+                if classification["source"] == "pending":
+                    self._schedule_web_classification(domain)
 
             elif action == "PING":
                 # Action PING chỉ kiểm tra chính sách mà không ghi nhận sự kiện theo dõi ứng dụng mới

@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy lần lượt toàn bộ migration đến `migration_v17.sql`. Với database hiện có, tối thiểu phải chạy:
+Chạy lần lượt toàn bộ migration đến `migration_v18.sql`. Với database hiện có, tối thiểu phải chạy:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql
@@ -25,9 +25,10 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v14.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v15.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v16.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v17.sql
+psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v18.sql
 ```
 
-`migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ; `migration_v17.sql` lưu nguồn/độ tin cậy của nhãn website và đánh dấu các dòng cần backfill.
+`migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ; `migration_v17.sql` lưu nguồn/độ tin cậy của nhãn website và đánh dấu các dòng cần backfill; `migration_v18.sql` thêm index cho snapshot domain đã phân loại dùng khi Agent đồng bộ policy chặn.
 Hãy dùng role sở hữu schema (thường là `postgres`), vì role chỉ được `GRANT` quyền đọc/ghi không thể chạy `ALTER TABLE`.
 
 API chính sách dành cho phụ huynh:
@@ -44,7 +45,11 @@ API phân loại dành cho Agent (xác thực bằng `X-Device-Secret`):
 - `POST /api/agent/classification/web/backfill`: lưu nhãn cuối cùng cùng `classification_source` và confidence.
 
 `POST /api/agent/heartbeat` và `GET /api/agent/config` đều trả
-`enable_app_classification` và `enable_web_classification`. Cấu hình
+`enable_app_classification`, `enable_web_classification`,
+`blocked_app_categories` và `blocked_web_categories`. Agent dùng snapshot này để
+biến nhãn AI của domain thành quyết định chặn cục bộ. Cả hai endpoint còn trả
+`policy_blocked_domains` lấy từ nhãn mới nhất của dữ liệu đã có;
+`GET /api/agent/config` vẫn trả thêm blacklist tên miền toàn cục. Cấu hình
 `GEMINI_API_KEY` và `GEMINI_MODEL` là bắt buộc nếu muốn dùng fallback Gemini.
 
 Production bắt buộc cấu hình:

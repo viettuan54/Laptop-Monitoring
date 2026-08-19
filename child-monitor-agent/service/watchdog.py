@@ -80,6 +80,31 @@ class Watchdog:
             )
             return None, None
 
+    def prepare_pipe_for_active_session(self):
+        """Prime the first Pipe DACL before its blocking listener is started."""
+        session_id = win32ts.WTSGetActiveConsoleSessionId()
+        if session_id == 0xFFFFFFFF or session_id == 0:
+            logging.info("No active console user session available for initial Pipe DACL.")
+            return False
+
+        user_token, user_sid = self.get_active_session_user_sid(session_id)
+        try:
+            if not user_token or not user_sid:
+                return False
+            if self.pipe_server:
+                self.pipe_server.set_user_sid(user_sid)
+            logging.info(
+                "Prepared Pipe Server DACL for Session %s before listener startup.",
+                session_id,
+            )
+            return True
+        finally:
+            if user_token:
+                try:
+                    user_token.Close()
+                except Exception:
+                    pass
+
     def spawn_companion_process(self):
         """Launch Companion under the active user's token."""
         user_token = None

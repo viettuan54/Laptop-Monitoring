@@ -7,6 +7,7 @@ child-monitor-agent/logs/
 child-monitor-agent/config/local_config.json
 child-monitor-agent/config/settings_cache.json
 child-monitor-agent/config/tracker_checkpoint.json
+child-monitor-agent/config/web_classification_cache.json
 *.db
 *.sqlite
 

@@ -35,7 +35,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.7"
+  -Version "1.0.8"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -43,14 +43,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.7.exe
+build\output\ChildMonitorSetup-1.0.8.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.7" `
+  -Version "1.0.8" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -100,7 +100,18 @@ thái `disabled`, vì vậy quyền truy cập web vẫn hoạt động bình th
 
 Mỗi 10 phút Agent lấy tối đa 25 domain `unknown` cũ ở queue cục bộ và backend để
 phân loại lại. Backfill chỉ cập nhật bản ghi còn `pending/disabled`, không ghi đè
-nhãn đã có.
+nhãn đã có. Riêng domain mới có confidence cục bộ thấp được đưa ngay vào worker
+nền để gọi Gemini mà không giữ luồng Named Pipe; vì vậy quyết định chặn không phải
+đợi vòng backfill định kỳ.
+
+Heartbeat đồng bộ thêm `blocked_web_categories` theo đúng hồ sơ trẻ. Sau khi một
+domain có nhãn cuối cùng, Service lưu ánh xạ vào
+`config/web_classification_cache.json`; nếu nhãn thuộc nhóm đang chọn **Chặn**,
+domain được hợp nhất với blacklist toàn cục và ghi vào khối do Agent quản lý trong
+Windows `hosts`. Backend cũng gửi `policy_blocked_domains` để áp dụng được cả dữ
+liệu đã phân loại trước lúc nâng cấp/cài lại Agent. Đổi policy sang **Cho phép**
+sẽ gỡ domain tương ứng ở heartbeat kế tiếp (tối đa khoảng 60 giây), còn cache giúp
+policy tiếp tục có hiệu lực sau reboot hoặc khi Backend tạm thời mất kết nối.
 
 ## Edge AI: khoảng cách mắt và tư thế
 

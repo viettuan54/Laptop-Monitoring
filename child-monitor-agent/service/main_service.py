@@ -140,6 +140,9 @@ class ChildMonitorService(ServiceBaseClass):
         self.api_client = APIClient()
         self.offline_queue = OfflineQueue(api_client=self.api_client)
         self.enforcement_core = EnforcementCore(offline_queue=self.offline_queue)
+        # Hosts file vốn bền qua reboot, nhưng áp dụng lại từ cache giúp tự sửa
+        # trạng thái nếu file bị phần mềm khác thay đổi khi Agent đang offline.
+        self.enforcement_core.apply_cached_web_policy()
         try:
             self.content_classifier = ContentClassifier()
             logging.info("Approved website content model loaded.")
@@ -157,6 +160,11 @@ class ChildMonitorService(ServiceBaseClass):
         
         # Truyền reference của pipe_server vào Watchdog để tái tạo DACL khi đổi session
         self.watchdog = Watchdog(pipe_server=self.pipe_server)
+
+        # Resolve the interactive user's SID before the blocking Pipe listener
+        # exists. This avoids closing a synchronous ConnectNamedPipe operation
+        # from the Watchdog thread during Service startup.
+        self.watchdog.prepare_pipe_for_active_session()
 
         # 1. Khởi chạy Named Pipe Server
         self.pipe_server.start()
@@ -220,8 +228,17 @@ class ChildMonitorService(ServiceBaseClass):
                 config = payload.get("config")
                 if isinstance(config, dict):
                     # Heartbeat is the fastest policy channel (60s). Preserve the
-                    # blacklist cached by the less frequent full config refresh.
-                    self.enforcement_core.save_settings_cache(config)
+                    # global blacklist, but replace the per-child classified-domain
+                    # snapshot whenever the new backend includes it.
+                    policy_blocked_domains = (
+                        payload.get("policy_blocked_domains")
+                        if "policy_blocked_domains" in payload
+                        else None
+                    )
+                    self.enforcement_core.save_settings_cache(
+                        config,
+                        policy_blocked_domains=policy_blocked_domains,
+                    )
                     logging.info("Applied policy config received with heartbeat.")
             except (ValueError, AttributeError) as e:
                 logging.warning(f"Heartbeat returned invalid JSON: {e}")
@@ -239,8 +256,17 @@ class ChildMonitorService(ServiceBaseClass):
         if data and isinstance(data, dict):
             config = data.get("config") or data.get("settings") or {}
             blacklisted_domains = data.get("blacklisted_domains") or data.get("blacklist") or []
+            policy_blocked_domains = (
+                data.get("policy_blocked_domains")
+                if "policy_blocked_domains" in data
+                else None
+            )
             logging.info(f"Received config update. Blacklisted domains count: {len(blacklisted_domains)}")
-            self.enforcement_core.save_settings_cache(config, blacklisted_domains)
+            self.enforcement_core.save_settings_cache(
+                config,
+                blacklisted_domains,
+                policy_blocked_domains,
+            )
         else:
             logging.warning("Failed to retrieve valid config from backend.")
 

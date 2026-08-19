@@ -395,6 +395,24 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
     'content-type': 'application/json',
     'x-device-secret': plaintextDeviceSecret,
   };
+  const previouslyClassifiedDomain = `gamevui-${Date.now()}.example.test`;
+  const classifiedInsert = await request('/api/logs/web/batch', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: JSON.stringify({ records: [{
+      client_record_id: crypto.randomUUID(),
+      url: `https://${previouslyClassifiedDomain}/`,
+      domain: previouslyClassifiedDomain,
+      category: 'entertainment',
+      classification_source: 'trained_model',
+      classification_confidence: 0.94,
+      visit_time: new Date().toISOString(),
+      duration_seconds: 3,
+      page_title: 'Previously classified entertainment',
+    }] }),
+  });
+  assert.equal(classifiedInsert.status, 201);
+
   const heartbeat = await request('/api/agent/heartbeat', {
     method: 'POST',
     headers: agentHeaders,
@@ -403,6 +421,9 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
   assert.equal(heartbeat.status, 200);
   assert.equal(heartbeat.body.config.enable_app_classification, true);
   assert.equal(heartbeat.body.config.enable_web_classification, true);
+  assert.deepEqual(heartbeat.body.config.blocked_app_categories, ['entertainment']);
+  assert.deepEqual(heartbeat.body.config.blocked_web_categories, ['entertainment', 'unsafe']);
+  assert.ok(heartbeat.body.policy_blocked_domains.includes(previouslyClassifiedDomain));
 
   const domain = `legacy-${Date.now()}.example.test`;
   const clientRecordId = crypto.randomUUID();

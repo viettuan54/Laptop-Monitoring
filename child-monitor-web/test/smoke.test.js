@@ -160,6 +160,7 @@ test('policy UI manages allow and block rules for every app and website category
   ]) {
     assert.ok(source.includes(`'${category}'`), `Missing category policy UI for ${category}`);
   }
+  assert.match(source, /Agent ghi nhớ tên miền đã được AI phân loại/);
 });
 
 test('activity and device UI expose operational monitoring controls', () => {

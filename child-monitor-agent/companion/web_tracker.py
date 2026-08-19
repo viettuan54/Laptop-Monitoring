@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-AGENT_VERSION = "1.0.7"
+AGENT_VERSION = "1.0.8"
 
 
 class WebTracker:
