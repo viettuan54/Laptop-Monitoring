@@ -1,6 +1,8 @@
 import importlib.util
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 AGENT_ROOT = Path(__file__).resolve().parent.parent
@@ -18,6 +20,18 @@ app_tracker_module = load_module(
     AGENT_ROOT / "companion" / "app_tracker.py",
 )
 AppTracker = app_tracker_module.AppTracker
+
+
+def datetime_sequence(values):
+    iterator = iter(values)
+
+    class SequenceDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = next(iterator)
+            return value if tz is None else value.astimezone(tz)
+
+    return SequenceDateTime
 
 
 class FakePipeClient:
@@ -52,6 +66,112 @@ class AppTrackingAcknowledgementTest(unittest.TestCase):
         tracker._send_pending_segments()
         self.assertEqual(tracker.pending_segments, [])
         self.assertEqual(len(pipe_client.calls), 2)
+
+    def test_missing_foreground_closes_segment_before_next_day(self):
+        record_responses = []
+
+        class AckPipe:
+            def __init__(self):
+                self.calls = []
+
+            def send_app_tracking(self, **segment):
+                self.calls.append(segment)
+                record_responses.append(segment)
+                return {"tracking_ack": segment["client_record_id"]}
+
+        pipe_client = AckPipe()
+        tracker = AppTracker(pipe_client)
+        first = datetime(2026, 8, 19, 22, 0, tzinfo=timezone(timedelta(hours=7)))
+        missing = first + timedelta(seconds=5)
+        next_morning = first + timedelta(hours=10)
+        tracker.get_foreground_app_name = Mock(
+            side_effect=["browser.exe", None, "browser.exe"]
+        )
+
+        with patch.object(
+            app_tracker_module,
+            "datetime",
+            datetime_sequence([first, missing, next_morning]),
+        ), patch.object(
+            app_tracker_module.time,
+            "monotonic",
+            side_effect=[100.0, 105.0, 36100.0],
+        ):
+            tracker.poll()
+            tracker.poll()
+            tracker.poll()
+
+        self.assertEqual(len(record_responses), 1)
+        self.assertEqual(record_responses[0]["app_name"], "browser.exe")
+        self.assertEqual(record_responses[0]["duration_seconds"], 5)
+        self.assertEqual(tracker.current_app, "browser.exe")
+        self.assertEqual(tracker.app_start_monotonic, 36100.0)
+
+    def test_large_poll_gap_does_not_bridge_sleep(self):
+        pipe_client = Mock()
+        pipe_client.send_app_tracking.side_effect = lambda **segment: {
+            "tracking_ack": segment["client_record_id"]
+        }
+        tracker = AppTracker(pipe_client)
+        first = datetime(2026, 8, 19, 22, 0, tzinfo=timezone(timedelta(hours=7)))
+        observed = first + timedelta(seconds=6)
+        resumed = first + timedelta(hours=8)
+        tracker.get_foreground_app_name = Mock(
+            side_effect=["browser.exe", "browser.exe", "browser.exe"]
+        )
+
+        with patch.object(
+            app_tracker_module,
+            "datetime",
+            datetime_sequence([first, observed, resumed]),
+        ), patch.object(
+            app_tracker_module.time,
+            "monotonic",
+            side_effect=[100.0, 106.0, 28900.0],
+        ):
+            tracker.poll()
+            tracker.poll()
+            tracker.poll()
+
+        segment = pipe_client.send_app_tracking.call_args.kwargs
+        self.assertEqual(pipe_client.send_app_tracking.call_count, 1)
+        self.assertEqual(segment["duration_seconds"], 6)
+        self.assertEqual(tracker.app_start_monotonic, 28900.0)
+
+    def test_lock_screen_process_is_never_tracked(self):
+        pipe_client = Mock()
+        pipe_client.send_app_tracking.side_effect = lambda **segment: {
+            "tracking_ack": segment["client_record_id"]
+        }
+        tracker = AppTracker(pipe_client)
+        first = datetime(2026, 8, 19, 20, 0, tzinfo=timezone(timedelta(hours=7)))
+        tracker.get_foreground_app_name = Mock(
+            side_effect=["browser.exe", "LockApp.exe", "LockApp.exe"]
+        )
+
+        with patch.object(
+            app_tracker_module,
+            "datetime",
+            datetime_sequence([
+                first,
+                first + timedelta(seconds=5),
+                first + timedelta(seconds=35),
+            ]),
+        ), patch.object(
+            app_tracker_module.time,
+            "monotonic",
+            side_effect=[100.0, 105.0, 135.0],
+        ):
+            tracker.poll()
+            tracker.poll()
+            tracker.poll()
+
+        self.assertEqual(pipe_client.send_app_tracking.call_count, 1)
+        self.assertEqual(
+            pipe_client.send_app_tracking.call_args.kwargs["app_name"],
+            "browser.exe",
+        )
+        self.assertIsNone(tracker.current_app)
 
 
 if __name__ == "__main__":

@@ -196,6 +196,86 @@ test('batch retry is idempotent and acknowledges the same client record ID', asy
   assert.equal(stored.rows[0].category, 'browsers');
 });
 
+test('monthly usage summary splits Vietnam midnight, fills empty days and respects RLS', async () => {
+  const month = '2042-02';
+  const crossingId = crypto.randomUUID();
+  const sameDayId = crypto.randomUUID();
+  const ignoredId = crypto.randomUUID();
+
+  await adminPool.query(
+    `INSERT INTO app_usage(
+       client_record_id, device_id, app_name, category,
+       start_time, end_time, duration_seconds
+     ) VALUES
+       ($1, $4, 'cross-midnight.exe', 'unknown',
+        '2042-02-10T16:59:50Z'::timestamptz, '2042-02-10T17:00:10Z'::timestamptz, 20),
+       ($2, $4, 'same-day.exe', 'unknown',
+        '2042-02-11T03:00:00Z'::timestamptz, '2042-02-11T03:00:10Z'::timestamptz, 10),
+       ($3, $4, 'stale-agent-gap.exe', 'unknown',
+        '2042-02-11T04:00:00Z'::timestamptz, '2042-02-11T04:02:01Z'::timestamptz, 121)`,
+    [crossingId, sameDayId, ignoredId, deviceOne]
+  );
+  await adminPool.query(
+    `INSERT INTO app_usage(
+       device_id, app_name, category,
+       start_time, end_time, duration_seconds
+     ) VALUES(
+       $1, 'LockApp.exe', 'unknown',
+       '2042-02-11T05:00:00Z'::timestamptz,
+       '2042-02-11T05:00:30Z'::timestamptz,
+       30
+     )`,
+    [deviceOne]
+  );
+  await adminPool.query(
+    `INSERT INTO website_logs(device_id, url, domain, category, visit_time, duration_seconds)
+     VALUES($1, 'https://usage-summary.example.test', 'usage-summary.example.test',
+            'education', '2042-02-11T03:00:00Z'::timestamptz, 3600)`,
+    [deviceOne]
+  );
+
+  const loginOne = await request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[0], password: 'Integration1!' }),
+  });
+  const loginTwo = await request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[1], password: 'Integration1!' }),
+  });
+  assert.equal(loginOne.status, 200);
+  assert.equal(loginTwo.status, 200);
+
+  const owned = await request(
+    `/api/logs/usage-summary?month=${month}&device_id=${deviceOne}&child_id=${childOne}`,
+    { headers: { authorization: `Bearer ${loginOne.body.accessToken}` } }
+  );
+  assert.equal(owned.status, 200);
+  assert.equal(owned.body.timezone, 'Asia/Ho_Chi_Minh');
+  assert.equal(owned.body.daily.length, 28);
+  assert.equal(owned.body.daily.find((day) => day.date === '2042-02-10').duration_seconds, 10);
+  assert.equal(owned.body.daily.find((day) => day.date === '2042-02-11').duration_seconds, 20);
+  assert.equal(owned.body.daily.find((day) => day.date === '2042-02-12').duration_seconds, 0);
+  assert.equal(owned.body.month_total_seconds, 30);
+  assert.equal(owned.body.today_seconds, 0);
+  assert.equal(owned.body.ignored_segment_count, 2);
+  assert.equal(owned.body.max_valid_agent_segment_seconds, 120);
+
+  const hiddenByRls = await request(
+    `/api/logs/usage-summary?month=${month}&device_id=${deviceOne}`,
+    { headers: { authorization: `Bearer ${loginTwo.body.accessToken}` } }
+  );
+  assert.equal(hiddenByRls.status, 200);
+  assert.equal(hiddenByRls.body.month_total_seconds, 0);
+  assert.equal(hiddenByRls.body.ignored_segment_count, 0);
+
+  const invalidMonth = await request('/api/logs/usage-summary?month=0000-01', {
+    headers: { authorization: `Bearer ${loginOne.body.accessToken}` },
+  });
+  assert.equal(invalidMonth.status, 400);
+});
+
 test('classification policies have safe defaults and are isolated by RLS', async () => {
   const defaults = await adminPool.query(
     `SELECT resource_type::text AS resource_type, category, action::text AS action
@@ -425,6 +505,31 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
   assert.deepEqual(heartbeat.body.config.blocked_web_categories, ['entertainment', 'unsafe']);
   assert.ok(heartbeat.body.policy_blocked_domains.includes(previouslyClassifiedDomain));
 
+  const blockedAppRecordId = crypto.randomUUID();
+  const blockedAppInsert = await request('/api/logs/app/batch', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: JSON.stringify({ records: [{
+      client_record_id: blockedAppRecordId,
+      app_name: 'sample-game.exe',
+      category: 'entertainment',
+      start_time: new Date().toISOString(),
+      duration_seconds: 15,
+    }] }),
+  });
+  assert.equal(blockedAppInsert.status, 201);
+
+  const appActivity = await request(`/api/logs/app?device_id=${deviceOne}&limit=200`, {
+    headers: parentHeaders,
+  });
+  assert.equal(appActivity.status, 200);
+  const blockedApp = appActivity.body.data.find(
+    (row) => row.client_record_id === blockedAppRecordId || row.app_name === 'sample-game.exe'
+  );
+  assert.equal(blockedApp.access_status, 'blocked');
+  const openBrowser = appActivity.body.data.find((row) => row.app_name === 'msedge.exe');
+  assert.equal(openBrowser.access_status, 'open');
+
   const domain = `legacy-${Date.now()}.example.test`;
   const clientRecordId = crypto.randomUUID();
   const inserted = await request('/api/logs/web/batch', {
@@ -469,6 +574,11 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
   assert.equal(activity.status, 200);
   const visible = activity.body.data.find((row) => row.log_id && row.domain === domain);
   assert.equal(visible.category, 'education');
+  assert.equal(visible.access_status, 'open');
+  const blockedWebsite = activity.body.data.find(
+    (row) => row.domain === previouslyClassifiedDomain
+  );
+  assert.equal(blockedWebsite.access_status, 'blocked');
 
   const disabled = await request(`/api/settings/${childOne}`, {
     method: 'PUT',
@@ -476,6 +586,14 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
     body: JSON.stringify({ enable_web_classification: false }),
   });
   assert.equal(disabled.status, 200);
+  const activityAfterDisable = await request(
+    `/api/logs/web?device_id=${deviceOne}&limit=200`,
+    { headers: parentHeaders }
+  );
+  const reopenedWebsite = activityAfterDisable.body.data.find(
+    (row) => row.domain === previouslyClassifiedDomain
+  );
+  assert.equal(reopenedWebsite.access_status, 'open');
   const noFallback = await request('/api/agent/classification/web/fallback', {
     method: 'POST',
     headers: agentHeaders,

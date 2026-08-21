@@ -2,7 +2,15 @@ const { adminPool } = require('../config/db');
 const {
   validateDurationSeconds,
   MAX_LOG_DURATION_SECONDS,
+  validateAppUsageDurationSeconds,
+  MAX_APP_USAGE_SEGMENT_SECONDS,
 } = require('../utils/validation');
+const {
+  UsageSummaryValidationError,
+  parseUsageSummaryFilters,
+  getUsageSummary,
+} = require('../services/usageSummary.service');
+const { appendAccessStatuses } = require('../services/activityAccessStatus.service');
 
 // ────────────────────────────────────────────────────────────────
 // Hằng số dùng chung cho 2 hàm batch
@@ -76,9 +84,9 @@ exports.logAppUsage = async (req, res) => {
   if (category && !validCategories.includes(category)) {
     return res.status(400).json({ message: `Invalid category. Allowed: ${validCategories.join(', ')}` });
   }
-  if (!validateDurationSeconds(duration_seconds)) {
+  if (!validateAppUsageDurationSeconds(duration_seconds)) {
     return res.status(400).json({
-      message: `duration_seconds must be an integer between 0 and ${MAX_LOG_DURATION_SECONDS}`,
+      message: `duration_seconds must be an integer between 0 and ${MAX_APP_USAGE_SEGMENT_SECONDS}`,
     });
   }
 
@@ -216,7 +224,8 @@ exports.getAppLogs = async (req, res) => {
 
     // req.db đã có RLS context → tự động lọc theo phụ huynh đang đăng nhập
     const result = await req.db.query(queryText, queryParams);
-    res.json({ data: result.rows, limit, offset, count: result.rows.length });
+    const rows = await appendAccessStatuses(req.db, result.rows, 'app');
+    res.json({ data: rows, limit, offset, count: rows.length });
   } catch (error) {
     console.error('Get app logs error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -269,10 +278,34 @@ exports.getWebLogs = async (req, res) => {
 
     // req.db đã có RLS context
     const result = await req.db.query(queryText, queryParams);
-    res.json({ data: result.rows, limit, offset, count: result.rows.length });
+    const rows = await appendAccessStatuses(req.db, result.rows, 'web');
+    res.json({ data: rows, limit, offset, count: rows.length });
   } catch (error) {
     console.error('Get web logs error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// GET /api/logs/usage-summary
+// Return a calendar-month screen-time summary using foreground app usage only.
+// Website activity is intentionally excluded because it overlaps the browser app.
+exports.getUsageSummary = async (req, res) => {
+  let filters;
+  try {
+    filters = parseUsageSummaryFilters(req.query);
+  } catch (error) {
+    if (error instanceof UsageSummaryValidationError) {
+      return res.status(400).json({ message: error.message });
+    }
+    throw error;
+  }
+
+  try {
+    const summary = await getUsageSummary(req.db, filters);
+    return res.json(summary);
+  } catch (error) {
+    console.error('Get usage summary error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };
 
@@ -339,9 +372,9 @@ exports.logAppBatch = async (req, res) => {
       skippedReasons.push(`${idx} invalid category '${r.category}'`);
       continue;
     }
-    if (!validateDurationSeconds(r.duration_seconds)) {
+    if (!validateAppUsageDurationSeconds(r.duration_seconds)) {
       skippedReasons.push(
-        `${idx} duration_seconds must be an integer between 0 and ${MAX_LOG_DURATION_SECONDS}`
+        `${idx} duration_seconds must be an integer between 0 and ${MAX_APP_USAGE_SEGMENT_SECONDS}`
       );
       continue;
     }

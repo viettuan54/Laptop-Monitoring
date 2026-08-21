@@ -24,6 +24,7 @@ router.post('/web', agentLimiter, deviceAuth, logsController.logWebsite);
 // ── 4. Parent Routes (dùng JWT phụ huynh + RLS) ──────────────────────────────
 // Phụ huynh xem lịch sử app/web của con
 // ?device_id=&start=&end=&limit=&offset=
+router.get('/usage-summary', parentLimiter, auth, requireRole('parent'), withRls, logsController.getUsageSummary);
 router.get('/app', parentLimiter, auth, requireRole('parent'), withRls, logsController.getAppLogs);
 router.get('/web', parentLimiter, auth, requireRole('parent'), withRls, logsController.getWebLogs);
 

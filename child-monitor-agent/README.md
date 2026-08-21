@@ -28,6 +28,20 @@ Không nên ép hai tiến trình này thành một executable chạy cùng mộ
 Service ở Session 0 không thể dùng camera/UI hoặc biến môi trường hồ sơ trình
 duyệt của desktop người dùng một cách ổn định.
 
+## Cách tính thời gian sử dụng
+
+Agent chỉ cộng thời gian của ứng dụng foreground khi phiên Windows đang hoạt động.
+Thời gian khóa màn hình, đăng xuất, ngắt kết nối, sleep/hibernate và các tiến trình
+`LockApp.exe`/`LogonUI.exe` không được tính. Mỗi segment ngắn được ghi cùng thời điểm
+bắt đầu/kết thúc có UTC offset; segment đi qua 00:00 được chia vào đúng hai ngày.
+Giới hạn hằng ngày luôn đọc riêng ngày local hiện tại, còn tổng tháng chỉ dùng cho
+báo cáo Dashboard và không tham gia quyết định khóa màn hình.
+
+Khi nâng cấp từ bản Agent cũ, Service tự rebuild bộ đếm của hôm nay và hôm qua từ
+các segment hợp lệ. Các segment xuyên thời gian khóa/ngủ bị loại khỏi bộ đếm và
+không được đồng bộ lại, nhờ vậy số liệu đã phình trong ngày được sửa ngay sau khi
+Service khởi động lại.
+
 ## Build bộ cài
 
 Máy build cần Windows 64-bit, Python 3.11 64-bit và Inno Setup 6. Mở PowerShell
@@ -35,7 +49,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.8"
+  -Version "1.0.9"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -43,14 +57,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.8.exe
+build\output\ChildMonitorSetup-1.0.9.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.8" `
+  -Version "1.0.9" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"

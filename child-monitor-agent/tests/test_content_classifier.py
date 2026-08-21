@@ -161,7 +161,7 @@ class ContentClassifierTest(unittest.TestCase):
             "enable_web_classification": False
         }
         queue = Mock()
-        queue.enqueue_app_log.return_value = (None, False)
+        queue.record_app_usage.return_value = (None, False)
         server = PipeServer(queue, enforcement)
         message = json.dumps({
             "action": "TRACK_APP",
@@ -169,7 +169,7 @@ class ContentClassifierTest(unittest.TestCase):
             "start_time": "2026-08-19T08:00:00+07:00",
             "end_time": "2026-08-19T08:00:30+07:00",
             "duration_seconds": 30,
-            "client_record_id": "app-record",
+            "client_record_id": "bc24f35c-ce48-4c5e-8d99-e4b565056269",
         })
 
         with patch("pipe_server.win32file.WriteFile") as write_file:
@@ -185,7 +185,8 @@ class ContentClassifierTest(unittest.TestCase):
         enforcement.load_cached_settings.return_value = {}
         enforcement.check_policy_status.return_value = (False, "OK", 3600)
         queue = Mock()
-        queue.enqueue_app_log.return_value = ("app-record", True)
+        record_id = "bc24f35c-ce48-4c5e-8d99-e4b565056269"
+        queue.record_app_usage.return_value = (record_id, True)
         server = PipeServer(queue, enforcement)
         message = json.dumps({
             "action": "TRACK_APP",
@@ -193,14 +194,40 @@ class ContentClassifierTest(unittest.TestCase):
             "start_time": "2026-08-19T08:00:00+07:00",
             "end_time": "2026-08-19T08:00:30+07:00",
             "duration_seconds": 30,
-            "client_record_id": "app-record",
+            "client_record_id": record_id,
         })
 
         with patch("pipe_server.win32file.WriteFile") as write_file:
             server._process_client_message(message, 123)
 
         response = json.loads(write_file.call_args.args[1].decode("utf-8"))
-        self.assertEqual(response["tracking_ack"], "app-record")
+        self.assertEqual(response["tracking_ack"], record_id)
+
+    def test_app_tracking_validation_rejects_lock_and_oversized_segments(self):
+        record_id = "bc24f35c-ce48-4c5e-8d99-e4b565056269"
+        valid = {
+            "app_name": "browser.exe",
+            "start_time": "2026-08-19T08:00:00+07:00",
+            "end_time": "2026-08-19T08:00:30+07:00",
+            "duration_seconds": 30,
+            "client_record_id": record_id,
+        }
+
+        invalid_payloads = [
+            {**valid, "app_name": "LockApp.exe"},
+            {**valid, "duration_seconds": 121},
+            {**valid, "duration_seconds": True},
+            {**valid, "start_time": "2026-08-19T08:00:00"},
+            {
+                **valid,
+                "end_time": "2026-08-19T16:00:00+07:00",
+            },
+            {**valid, "client_record_id": "not-a-uuid"},
+        ]
+        for payload in invalid_payloads:
+            with self.subTest(payload=payload):
+                with self.assertRaises(ValueError):
+                    PipeServer.validate_app_tracking_payload(payload)
 
     def test_classified_web_visit_is_forwarded_to_enforcement_after_persistence(self):
         enforcement = Mock()

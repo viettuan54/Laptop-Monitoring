@@ -3,6 +3,8 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import uuid
+from datetime import datetime, timedelta, timezone
 
 AGENT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SERVICE_ROOT = os.path.join(AGENT_ROOT, "service")
@@ -62,6 +64,177 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
             return dict(conn.execute(
                 "SELECT client_record_id, synced FROM app_logs ORDER BY client_record_id"
             ).fetchall())
+
+    def test_atomic_app_record_splits_duration_at_local_midnight(self):
+        record_id = str(uuid.uuid4())
+        persisted_id, inserted = self.queue.record_app_usage(
+            "browser.exe",
+            "2026-08-18T23:59:50+07:00",
+            "2026-08-19T00:00:20+07:00",
+            30,
+            client_record_id=record_id,
+        )
+
+        self.assertTrue(inserted)
+        self.assertEqual(persisted_id, record_id)
+        self.assertEqual(self.queue.get_daily_usage("2026-08-18"), 10)
+        self.assertEqual(self.queue.get_daily_usage("2026-08-19"), 20)
+
+    def test_delayed_app_record_stays_on_its_captured_date(self):
+        self.queue.record_app_usage(
+            "lesson.exe",
+            "2026-01-10T18:00:00+07:00",
+            "2026-01-10T18:00:30+07:00",
+            30,
+            client_record_id=str(uuid.uuid4()),
+        )
+
+        self.assertEqual(self.queue.get_daily_usage("2026-01-10"), 30)
+        self.assertEqual(self.queue.get_daily_usage("2026-01-11"), 0)
+
+    def test_duplicate_app_record_does_not_double_count_daily_usage(self):
+        record_id = str(uuid.uuid4())
+        payload = {
+            "app_name": "school.exe",
+            "start_time": "2026-08-19T08:00:00+07:00",
+            "end_time": "2026-08-19T08:00:30+07:00",
+            "duration_seconds": 30,
+            "client_record_id": record_id,
+        }
+
+        _, first_inserted = self.queue.record_app_usage(**payload)
+        _, second_inserted = self.queue.record_app_usage(**payload)
+
+        self.assertTrue(first_inserted)
+        self.assertFalse(second_inserted)
+        self.assertEqual(self.queue.get_daily_usage("2026-08-19"), 30)
+
+    def test_rebuild_recent_usage_removes_overnight_and_lock_screen_corruption(self):
+        local_tz = datetime.now().astimezone().tzinfo
+        today = datetime.now().date()
+        valid_start = datetime.combine(
+            today,
+            datetime.min.time(),
+            tzinfo=local_tz,
+        ) + timedelta(hours=8)
+
+        with self.queue.get_connection() as connection:
+            rows = [
+                (
+                    str(uuid.uuid4()),
+                    "school.exe",
+                    valid_start.isoformat(),
+                    (valid_start + timedelta(seconds=30)).isoformat(),
+                    30,
+                ),
+                (
+                    str(uuid.uuid4()),
+                    "browser.exe",
+                    valid_start.isoformat(),
+                    (valid_start + timedelta(hours=8)).isoformat(),
+                    8 * 60 * 60,
+                ),
+                (
+                    str(uuid.uuid4()),
+                    "LockApp.exe",
+                    (valid_start + timedelta(minutes=1)).isoformat(),
+                    (valid_start + timedelta(minutes=1, seconds=30)).isoformat(),
+                    30,
+                ),
+            ]
+            connection.executemany(
+                """INSERT INTO app_logs(
+                       client_record_id, app_name, category, start_time, end_time,
+                       duration_seconds, synced
+                   ) VALUES (?, ?, 'unknown', ?, ?, ?, 0)""",
+                rows,
+            )
+            connection.execute(
+                "INSERT OR REPLACE INTO daily_usage(date, seconds_used) VALUES(?, ?)",
+                (today.isoformat(), 99999),
+            )
+            connection.commit()
+
+        repaired, skipped = self.queue.rebuild_recent_daily_usage(days=2)
+
+        self.assertEqual(repaired, 1)
+        self.assertEqual(skipped, 2)
+        self.assertEqual(self.queue.get_daily_usage(today.isoformat()), 30)
+        with self.queue.get_connection() as connection:
+            sync_states = dict(connection.execute(
+                "SELECT app_name, synced FROM app_logs"
+            ).fetchall())
+        self.assertEqual(sync_states["school.exe"], 0)
+        self.assertEqual(sync_states["browser.exe"], 1)
+        self.assertEqual(sync_states["LockApp.exe"], 1)
+
+    def test_schema_upgrade_repairs_recent_usage_once(self):
+        legacy_path = os.path.join(self.temp_dir.name, "legacy-usage.db")
+        local_tz = datetime.now().astimezone().tzinfo
+        today = datetime.now().date()
+        start = datetime.combine(today, datetime.min.time(), tzinfo=local_tz)
+        connection = sqlite3.connect(legacy_path)
+        try:
+            connection.execute(
+                """CREATE TABLE app_logs (
+                       client_record_id TEXT PRIMARY KEY,
+                       app_name TEXT NOT NULL,
+                       category TEXT DEFAULT 'unknown',
+                       start_time TEXT NOT NULL,
+                       end_time TEXT,
+                       duration_seconds INTEGER,
+                       synced INTEGER DEFAULT 0
+                   )"""
+            )
+            connection.execute(
+                """CREATE TABLE daily_usage (
+                       date TEXT PRIMARY KEY,
+                       seconds_used INTEGER DEFAULT 0
+                   )"""
+            )
+            connection.executemany(
+                """INSERT INTO app_logs(
+                       client_record_id, app_name, start_time, end_time,
+                       duration_seconds, synced
+                   ) VALUES (?, ?, ?, ?, ?, 0)""",
+                [
+                    (
+                        str(uuid.uuid4()),
+                        "school.exe",
+                        start.isoformat(),
+                        (start + timedelta(seconds=30)).isoformat(),
+                        30,
+                    ),
+                    (
+                        str(uuid.uuid4()),
+                        "LogonUI.exe",
+                        (start + timedelta(minutes=1)).isoformat(),
+                        (start + timedelta(minutes=1, seconds=30)).isoformat(),
+                        30,
+                    ),
+                ],
+            )
+            connection.execute(
+                "INSERT INTO daily_usage(date, seconds_used) VALUES(?, 50000)",
+                (today.isoformat(),),
+            )
+            connection.commit()
+        finally:
+            connection.close()
+
+        upgraded = OfflineQueue(db_path=legacy_path, secure_file=False)
+
+        self.assertEqual(upgraded.get_daily_usage(today.isoformat()), 30)
+        with upgraded.get_connection() as connection:
+            version = connection.execute(
+                """SELECT value FROM agent_metadata
+                   WHERE key = 'usage_accounting_version'"""
+            ).fetchone()[0]
+            logon_synced = connection.execute(
+                "SELECT synced FROM app_logs WHERE app_name = 'LogonUI.exe'"
+            ).fetchone()[0]
+        self.assertEqual(version, "2")
+        self.assertEqual(logon_synced, 1)
 
     def test_only_backend_acknowledged_records_are_marked_synced(self):
         first_id, inserted = self.queue.enqueue_app_log(

@@ -3,9 +3,22 @@
 
 const API = '/api';
 const DEFAULT_BACKEND_URL = 'https://api.tuansosad.id.vn';
+const USAGE_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 const app = document.querySelector('#app');
 const modalRoot = document.querySelector('#modal-root');
 const toastRoot = document.querySelector('#toast-root');
+
+const INITIAL_CHAT = Object.freeze([
+  Object.freeze({
+    role: 'model',
+    content:
+      'Chào bạn, mình là trợ lý SafeNest. Hãy hỏi mình về cách cân bằng thời gian màn hình hoặc đọc hiểu một tín hiệu hành vi.',
+  }),
+]);
+
+let refreshPromise = null;
+let modalReturnFocus = null;
+let accessibleControlSequence = 0;
 
 const state = {
   accessToken: sessionStorage.getItem('lm_access_token') || '',
@@ -19,6 +32,7 @@ const state = {
   analyses: [],
   appLogs: [],
   webLogs: [],
+  usageSummary: emptyUsageSummary(),
   adminStats: null,
   adminUsers: [],
   pushTokens: [],
@@ -26,22 +40,27 @@ const state = {
   faceRequiredFrames: 3,
   faceStream: null,
   adminUserFilter: {},
+  adminUserOffset: 0,
+  adminUserLimit: 25,
+  blacklistSearch: '',
+  blacklistOffset: 0,
+  blacklistLimit: 25,
+  auditFilter: {},
+  auditOffset: 0,
+  auditLimit: 25,
   activityTab: 'apps',
   activityOffset: 0,
   activityLimit: 50,
   activityViewRows: [],
+  activityFilter: {},
+  alertFilter: {},
   selectedChildId: null,
   selectedDeviceId: null,
   categoryPolicies: {},
   connectionStatus: 'checking',
   lastApiAt: null,
-  chat: [
-    {
-      role: 'model',
-      content:
-        'Chào bạn, mình là trợ lý SafeNest. Hãy hỏi mình về cách cân bằng thời gian màn hình hoặc đọc hiểu một tín hiệu hành vi.',
-    },
-  ],
+  parentLoadErrors: [],
+  chat: INITIAL_CHAT.map((message) => ({ ...message })),
   sidebarOpen: false,
   userMenuOpen: false,
   agentSecret: '',
@@ -88,6 +107,11 @@ const categoryLabels = {
   unsafe: 'Không an toàn',
   unknown: 'Chưa phân loại',
 };
+
+const accessStatusLabels = Object.freeze({
+  blocked: 'Đã chặn',
+  open: 'Đang mở',
+});
 
 const policyCategoryGroups = {
   app: [
@@ -175,6 +199,154 @@ function formatDate(value, withTime = true) {
   }).format(date);
 }
 
+function localDateKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: USAGE_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const byType = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function localMonthKey(date = new Date()) {
+  return localDateKey(date).slice(0, 7);
+}
+
+function localDateFromKey(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ''));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, monthIndex, day, 12));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === monthIndex
+    && date.getUTCDate() === day
+    ? date
+    : null;
+}
+
+function shiftLocalDateKey(value, days) {
+  const date = localDateFromKey(value);
+  if (!date) return '';
+  date.setUTCDate(date.getUTCDate() + days);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function emptyUsageSummary(month = localMonthKey()) {
+  return {
+    month,
+    timezone: '',
+    daily: [],
+    recent_daily: [],
+    month_total_seconds: 0,
+    today_seconds: 0,
+    ignored_segment_count: 0,
+    max_valid_agent_segment_seconds: 0,
+  };
+}
+
+function normalizeUsageSummary(value, requestedMonth = localMonthKey()) {
+  const month = /^\d{4}-\d{2}$/.test(String(value?.month || ''))
+    ? String(value.month)
+    : requestedMonth;
+  const daily = Array.isArray(value?.daily)
+    ? value.daily
+      .map((item) => ({
+        date: String(item?.date || '').slice(0, 10),
+        duration_seconds: Math.max(0, Number(item?.duration_seconds) || 0),
+      }))
+      .filter((item) => localDateFromKey(item.date) && item.date.startsWith(`${month}-`))
+    : [];
+  return {
+    month,
+    timezone: String(value?.timezone || ''),
+    daily,
+    recent_daily: [],
+    month_total_seconds: Math.max(0, Number(value?.month_total_seconds) || 0),
+    today_seconds: Math.max(0, Number(value?.today_seconds) || 0),
+    ignored_segment_count: Math.max(0, Number(value?.ignored_segment_count) || 0),
+    max_valid_agent_segment_seconds: Math.max(
+      0,
+      Number(value?.max_valid_agent_segment_seconds) || 0
+    ),
+  };
+}
+
+async function loadOverviewUsageSummary(today = new Date()) {
+  const currentDate = localDateKey(today);
+  const currentMonth = currentDate.slice(0, 7);
+  const recentStart = shiftLocalDateKey(currentDate, -6);
+  const months = [...new Set([currentMonth, recentStart.slice(0, 7)])];
+  const summaries = await Promise.all(months.map(async (month) => (
+    normalizeUsageSummary(await api(`/logs/usage-summary?month=${month}`), month)
+  )));
+  const current = summaries.find((summary) => summary.month === currentMonth)
+    || emptyUsageSummary(currentMonth);
+  const secondsByDate = new Map(
+    summaries.flatMap((summary) => summary.daily)
+      .map((item) => [item.date, item.duration_seconds])
+  );
+  const recentDaily = Array.from({ length: 7 }, (_, index) => {
+    const key = shiftLocalDateKey(currentDate, index - 6);
+    return { date: key, duration_seconds: secondsByDate.get(key) || 0 };
+  });
+  return { ...current, recent_daily: recentDaily };
+}
+
+function usageMetricParts(seconds) {
+  const minutes = Math.max(0, Math.round((Number(seconds) || 0) / 60));
+  if (minutes < 60) return { value: minutes, unit: 'phút' };
+  return {
+    value: new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 1 }).format(minutes / 60),
+    unit: 'giờ',
+  };
+}
+
+function usageDaysInMonth(summary) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(summary?.month || ''));
+  if (!match) return [];
+  const year = Number(match[1]);
+  const monthIndex = Number(match[2]) - 1;
+  const count = new Date(Date.UTC(year, monthIndex + 1, 0, 12)).getUTCDate();
+  const secondsByDate = new Map((summary.daily || []).map((item) => [item.date, item.duration_seconds]));
+  const todayKey = localDateKey();
+  return Array.from({ length: count }, (_, index) => {
+    const key = `${summary.month}-${String(index + 1).padStart(2, '0')}`;
+    return {
+      date: key,
+      label: String(index + 1),
+      seconds: Math.max(0, Number(secondsByDate.get(key)) || 0),
+      isToday: key === todayKey,
+    };
+  });
+}
+
+function usageRecentDays(summary) {
+  return (summary.recent_daily || []).map((item) => {
+    const date = localDateFromKey(item.date);
+    return {
+      date: item.date,
+      label: date
+        ? new Intl.DateTimeFormat('vi-VN', { weekday: 'short', timeZone: 'UTC' }).format(date)
+        : item.date,
+      seconds: Math.max(0, Number(item.duration_seconds) || 0),
+    };
+  });
+}
+
+function usageMonthLabel(month) {
+  const date = localDateFromKey(`${month}-01`);
+  return date
+    ? new Intl.DateTimeFormat('vi-VN', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(date)
+    : month;
+}
+
 function relativeTime(value) {
   if (!value) return 'Chưa có dữ liệu';
   const diff = Date.now() - new Date(value).getTime();
@@ -200,6 +372,16 @@ function categoryBadge(value) {
   const normalized = String(value || 'unknown').toLowerCase();
   const tone = normalized === 'unsafe' ? 'coral' : normalized === 'unknown' ? 'neutral' : '';
   return `<span class="badge ${tone}">${escapeHtml(categoryLabel(normalized))}</span>`;
+}
+
+function accessStatusLabel(value) {
+  return accessStatusLabels[String(value || 'open').toLowerCase()] || accessStatusLabels.open;
+}
+
+function accessStatusBadge(value) {
+  const normalized = String(value || 'open').toLowerCase();
+  const tone = normalized === 'blocked' ? 'red' : '';
+  return `<span class="badge access-status-badge ${tone}">${escapeHtml(accessStatusLabel(normalized))}</span>`;
 }
 
 function safeExternalUrl(value) {
@@ -267,13 +449,36 @@ function queryString(params) {
   return text ? `?${text}` : '';
 }
 
+function reconcileSelectedId(currentId, items, key) {
+  if (items.some((item) => String(item[key]) === String(currentId))) return currentId;
+  return items[0]?.[key] ?? null;
+}
+
+function paginationMarkup(scope, result, label) {
+  const total = Math.max(0, Number(result.total) || 0);
+  const limit = Math.max(1, Number(result.limit) || 25);
+  const offset = Math.max(0, Number(result.offset) || 0);
+  const count = Array.isArray(result.data) ? result.data.length : 0;
+  const start = count ? offset + 1 : 0;
+  const end = offset + count;
+  const page = Math.floor(offset / limit) + 1;
+  const pages = Math.max(1, Math.ceil(total / limit));
+
+  return `<nav class="pagination" aria-label="Phân trang ${escapeHtml(label)}">
+    <button class="btn btn-secondary btn-sm" data-action="server-page" data-scope="${scope}" data-offset="${Math.max(0, offset - limit)}" ${offset === 0 ? 'disabled' : ''}>Trước</button>
+    <span>Trang ${page}/${pages} · ${start}–${end} / ${total}</span>
+    <button class="btn btn-secondary btn-sm" data-action="server-page" data-scope="${scope}" data-offset="${offset + limit}" ${end >= total ? 'disabled' : ''}>Sau</button>
+  </nav>`;
+}
+
 async function api(path, options = {}, retry = true) {
   const headers = { Accept: 'application/json', ...(options.headers || {}) };
   if (options.body !== undefined && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
-  if (state.accessToken && !options.noAuth) {
-    headers.Authorization = `Bearer ${state.accessToken}`;
+  const requestAccessToken = !options.noAuth ? state.accessToken : '';
+  if (requestAccessToken) {
+    headers.Authorization = `Bearer ${requestAccessToken}`;
   }
   let response;
   try {
@@ -297,7 +502,12 @@ async function api(path, options = {}, retry = true) {
     ? await response.json()
     : { message: await response.text() };
 
-  if (response.status === 401 && retry && state.refreshToken && !path.includes('/auth/refresh')) {
+  if (response.status === 401 && retry && !options.noAuth && state.refreshToken && !path.includes('/auth/refresh')) {
+    // Một request khác có thể vừa xoay token trong lúc request này còn đang bay.
+    // Khi đó chỉ cần thử lại bằng access token mới, không tiêu thụ refresh token lần nữa.
+    if (requestAccessToken && requestAccessToken !== state.accessToken) {
+      return api(path, options, false);
+    }
     const refreshed = await refreshSession();
     if (refreshed) return api(path, options, false);
   }
@@ -311,19 +521,33 @@ async function api(path, options = {}, retry = true) {
 }
 
 async function refreshSession() {
-  try {
-    const result = await api(
-      '/auth/refresh',
-      { method: 'POST', body: { refreshToken: state.refreshToken }, noAuth: true },
-      false
-    );
-    saveSession(result);
-    return true;
-  } catch {
-    clearSession();
-    renderAuth('login');
-    return false;
-  }
+  if (refreshPromise) return refreshPromise;
+  const refreshTokenAtStart = state.refreshToken;
+  if (!refreshTokenAtStart) return false;
+
+  refreshPromise = (async () => {
+    try {
+      const result = await api(
+        '/auth/refresh',
+        { method: 'POST', body: { refreshToken: refreshTokenAtStart }, noAuth: true },
+        false
+      );
+      // Không khôi phục một phiên đã bị người dùng chủ động đăng xuất trong lúc refresh.
+      if (state.refreshToken !== refreshTokenAtStart) return false;
+      saveSession(result);
+      return true;
+    } catch {
+      if (state.refreshToken === refreshTokenAtStart) {
+        clearSession();
+        renderAuth('login');
+      }
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 }
 
 function saveSession(tokens) {
@@ -336,6 +560,9 @@ function saveSession(tokens) {
 
 function clearSession() {
   stopFaceCamera();
+  modalRoot.innerHTML = '';
+  toastRoot.innerHTML = '';
+  modalReturnFocus = null;
   Object.assign(state, {
     accessToken: '',
     refreshToken: '',
@@ -345,7 +572,36 @@ function clearSession() {
     devices: [],
     alerts: [],
     analyses: [],
+    appLogs: [],
+    webLogs: [],
+    usageSummary: emptyUsageSummary(),
+    adminStats: null,
+    adminUsers: [],
+    pushTokens: [],
     faceChallenge: '',
+    faceRequiredFrames: 3,
+    adminUserFilter: {},
+    adminUserOffset: 0,
+    blacklistSearch: '',
+    blacklistOffset: 0,
+    auditFilter: {},
+    auditOffset: 0,
+    activityTab: 'apps',
+    activityOffset: 0,
+    activityViewRows: [],
+    activityFilter: {},
+    alertFilter: {},
+    selectedChildId: null,
+    selectedDeviceId: null,
+    categoryPolicies: {},
+    connectionStatus: 'checking',
+    lastApiAt: null,
+    parentLoadErrors: [],
+    chat: INITIAL_CHAT.map((message) => ({ ...message })),
+    sidebarOpen: false,
+    userMenuOpen: false,
+    agentSecret: '',
+    agentEndpoint: 'heartbeat',
   });
   sessionStorage.removeItem('lm_access_token');
   sessionStorage.removeItem('lm_refresh_token');
@@ -362,6 +618,9 @@ function stopFaceCamera() {
 function toast(title, message = '', type = 'success') {
   const node = document.createElement('div');
   node.className = `toast ${type}`;
+  node.setAttribute('role', type === 'error' ? 'alert' : 'status');
+  node.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+  node.setAttribute('aria-atomic', 'true');
   node.innerHTML = `
     <div class="toast-icon">${type === 'error' ? '!' : '✓'}</div>
     <div><strong>${escapeHtml(title)}</strong><small>${escapeHtml(message)}</small></div>
@@ -372,21 +631,80 @@ function toast(title, message = '', type = 'success') {
 }
 
 function showModal(title, subtitle, body) {
+  if (!modalRoot.firstElementChild) modalReturnFocus = document.activeElement;
+  const describedBy = subtitle ? ' aria-describedby="modal-description"' : '';
   modalRoot.innerHTML = `
-    <div class="modal-backdrop" data-action="close-modal">
-      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-backdrop">
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"${describedBy} tabindex="-1">
         <header class="modal-head">
-          <div><h2 id="modal-title">${escapeHtml(title)}</h2><p>${escapeHtml(subtitle || '')}</p></div>
+          <div><h2 id="modal-title">${escapeHtml(title)}</h2>${subtitle ? `<p id="modal-description">${escapeHtml(subtitle)}</p>` : ''}</div>
           <button class="modal-close" data-action="close-modal" aria-label="Đóng">×</button>
         </header>
         <div class="modal-body">${body}</div>
       </section>
     </div>`;
-  modalRoot.querySelector('.modal').addEventListener('click', (event) => event.stopPropagation());
+  const backdrop = modalRoot.querySelector('.modal-backdrop');
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) closeModal();
+  });
+  requestAnimationFrame(() => {
+    const modal = modalRoot.querySelector('.modal');
+    const firstControl = modal?.querySelector('[autofocus], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])');
+    (firstControl || modal)?.focus();
+  });
 }
 
 function closeModal() {
+  const returnTarget = modalReturnFocus;
   modalRoot.innerHTML = '';
+  modalReturnFocus = null;
+  if (returnTarget && returnTarget.isConnected && typeof returnTarget.focus === 'function') {
+    requestAnimationFrame(() => returnTarget.focus());
+  }
+}
+
+function ensureControlId(control, prefix = 'field') {
+  if (!control.id) control.id = `${prefix}-${++accessibleControlSequence}`;
+  return control.id;
+}
+
+function enhanceFormAccessibility(root) {
+  if (!root?.querySelectorAll) return;
+
+  root.querySelectorAll('button[title]:not([aria-label])').forEach((button) => {
+    button.setAttribute('aria-label', button.title);
+  });
+  root.querySelectorAll('svg:not([aria-label])').forEach((icon) => {
+    icon.setAttribute('aria-hidden', 'true');
+    icon.setAttribute('focusable', 'false');
+  });
+
+  root.querySelectorAll('.field').forEach((field) => {
+    const label = field.querySelector('label');
+    const control = field.querySelector('input:not([type="hidden"]), select, textarea');
+    if (!label || !control || label.contains(control)) return;
+    label.htmlFor = ensureControlId(control);
+
+    const hint = field.querySelector('small');
+    if (hint) {
+      if (!hint.id) hint.id = `${control.id}-hint`;
+      if (!control.getAttribute('aria-describedby')) control.setAttribute('aria-describedby', hint.id);
+    }
+  });
+
+  root.querySelectorAll('.switch-row').forEach((row) => {
+    const control = row.querySelector('input[type="checkbox"]');
+    const title = row.querySelector('.switch-copy strong');
+    const hint = row.querySelector('.switch-copy small');
+    if (!control || !title) return;
+    ensureControlId(control, 'switch');
+    if (!title.id) title.id = `${control.id}-label`;
+    control.setAttribute('aria-labelledby', title.id);
+    if (hint) {
+      if (!hint.id) hint.id = `${control.id}-hint`;
+      control.setAttribute('aria-describedby', hint.id);
+    }
+  });
 }
 
 function emptyState(symbol, title, text, action = '') {
@@ -610,7 +928,8 @@ async function detectRole() {
 }
 
 function navItem(page, label, icon) {
-  return `<li><button class="nav-link ${state.page === page ? 'active' : ''}" data-page="${page}">${
+  const active = state.page === page;
+  return `<li><button class="nav-link ${active ? 'active' : ''}" data-page="${page}" ${active ? 'aria-current="page"' : ''}>${
     icons[icon]
   }<span>${label}</span></button></li>`;
 }
@@ -643,7 +962,7 @@ function renderShell() {
   if (state.role === 'parent' && !parentNav.some(([page]) => page === state.page) && !systemPages.includes(state.page)) state.page = 'overview';
   app.innerHTML = `
     <div class="app-shell">
-      <aside class="sidebar ${state.sidebarOpen ? 'open' : ''}">
+      <aside class="sidebar ${state.sidebarOpen ? 'open' : ''}" id="sidebar-navigation">
         ${brandMarkup()}
         <p class="side-section">${state.role === 'admin' ? 'Điều hành' : 'Gia đình'}</p>
         <nav><ul class="nav-list">${nav.map((item) => navItem(...item)).join('')}</ul></nav>
@@ -657,14 +976,14 @@ function renderShell() {
       ${state.sidebarOpen ? '<div class="mobile-overlay" data-action="toggle-sidebar"></div>' : ''}
       <div class="main-shell">
         <header class="topbar">
-          <button class="btn btn-secondary btn-icon menu-toggle" data-action="toggle-sidebar" aria-label="Mở menu">☰</button>
+          <button class="btn btn-secondary btn-icon menu-toggle" data-action="toggle-sidebar" aria-label="${state.sidebarOpen ? 'Đóng menu' : 'Mở menu'}" aria-controls="sidebar-navigation" aria-expanded="${state.sidebarOpen}">☰</button>
           <div class="topbar-context"><p>${state.role === 'admin' ? 'Không gian quản trị' : 'Không gian gia đình'}</p><strong id="topbar-title">${escapeHtml(pageTitles[state.page]?.[0] || 'SafeNest')}</strong></div>
           <div class="topbar-actions">
             <span id="connection-pill" class="connection-pill ${state.connectionStatus}" title="Trạng thái kết nối API"><i></i><span>${connectionLabel}</span></span>
             ${state.role === 'parent' ? `<button class="notification-button" data-page="alerts" aria-label="Mở cảnh báo" title="Cảnh báo chưa đọc">${icons.alert}${unreadAlerts ? `<b>${Math.min(unreadAlerts, 99)}</b>` : ''}</button>` : ''}
             <div class="user-menu">
-              <button class="avatar" data-action="toggle-user-menu">${state.role === 'admin' ? 'AD' : 'PH'}</button>
-              <div class="user-popover ${state.userMenuOpen ? '' : 'hidden'}">
+              <button class="avatar" data-action="toggle-user-menu" aria-label="Mở menu tài khoản" aria-controls="user-popover" aria-expanded="${state.userMenuOpen}">${state.role === 'admin' ? 'AD' : 'PH'}</button>
+              <div class="user-popover ${state.userMenuOpen ? '' : 'hidden'}" id="user-popover">
                 <div class="identity"><strong>${state.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</strong><small>Mã người dùng #${escapeHtml(state.userId || '—')}</small></div>
                 <button class="popover-button" data-page="account">Tài khoản & bảo mật</button>
                 <button class="popover-button" data-action="logout">Đăng xuất</button>
@@ -672,7 +991,7 @@ function renderShell() {
             </div>
           </div>
         </header>
-        <main id="page-content" class="content"></main>
+        <main id="page-content" class="content" tabindex="-1"></main>
       </div>
     </div>`;
 }
@@ -718,20 +1037,29 @@ function pageHead(page, actions = '') {
 }
 
 async function loadParentCore() {
-  const [children, devices, alerts, analyses, appLogs, webLogs] = await Promise.all([
-    api('/children?limit=200'),
-    api('/devices?limit=200'),
-    api('/alerts?limit=200'),
-    api('/ai-analysis?limit=50'),
-    api('/logs/app?limit=200'),
-    api('/logs/web?limit=200'),
-  ]);
-  state.children = children;
-  state.devices = devices.data || [];
-  state.alerts = alerts.data || [];
-  state.analyses = analyses.data || [];
-  state.appLogs = appLogs.data || [];
-  state.webLogs = webLogs.data || [];
+  const overviewNow = new Date();
+  const usageMonth = localMonthKey(overviewNow);
+  const resources = [
+    { key: 'children', label: 'hồ sơ trẻ', request: api('/children?limit=200'), pick: (value) => value || [] },
+    { key: 'devices', label: 'thiết bị', request: api('/devices?limit=200'), pick: (value) => value.data || [] },
+    { key: 'alerts', label: 'cảnh báo', request: api('/alerts?limit=200'), pick: (value) => value.data || [] },
+    { key: 'analyses', label: 'phân tích AI', request: api('/ai-analysis?limit=50'), pick: (value) => value.data || [] },
+    { key: 'appLogs', label: 'hoạt động ứng dụng', request: api('/logs/app?limit=200'), pick: (value) => value.data || [] },
+    { key: 'webLogs', label: 'hoạt động website', request: api('/logs/web?limit=200'), pick: (value) => value.data || [] },
+    { key: 'usageSummary', label: `tổng hợp sử dụng tháng ${usageMonth}`, request: loadOverviewUsageSummary(overviewNow), pick: (value) => value },
+  ];
+  const results = await Promise.allSettled(resources.map((resource) => resource.request));
+  state.parentLoadErrors = [];
+  results.forEach((result, index) => {
+    const resource = resources[index];
+    if (result.status === 'fulfilled') {
+      state[resource.key] = resource.pick(result.value);
+    } else {
+      state.parentLoadErrors.push(resource.label);
+    }
+  });
+  state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
+  state.selectedDeviceId = reconcileSelectedId(state.selectedDeviceId, state.devices, 'device_id');
   updateAlertIndicator();
 }
 
@@ -746,47 +1074,72 @@ function deviceName(id) {
 async function renderOverview(content) {
   await loadParentCore();
   const unread = state.alerts.filter((item) => !item.is_read).length;
-  const totalSeconds = [...state.appLogs, ...state.webLogs].reduce((sum, item) => sum + (Number(item.duration_seconds) || 0), 0);
+  const usageSummary = state.usageSummary || emptyUsageSummary();
+  const todayUsage = usageMetricParts(usageSummary.today_seconds);
+  const monthUsage = usageMetricParts(usageSummary.month_total_seconds);
+  const monthDays = usageDaysInMonth(usageSummary);
+  const recentDays = usageRecentDays(usageSummary);
+  const recentTotalSeconds = recentDays.reduce((sum, item) => sum + item.seconds, 0);
+  const recentMaxSeconds = Math.max(...recentDays.map((item) => item.seconds), 1);
+  const monthMaxSeconds = Math.max(...monthDays.map((item) => item.seconds), 1);
   const risky = state.analyses.filter((item) => ['high', 'critical'].includes(String(item.risk_level).toLowerCase())).length;
   const onlineDevices = state.devices.filter(isDeviceOnline).length;
-  const hasActivity = state.appLogs.length + state.webLogs.length > 0;
+  const hasActivity = usageSummary.month_total_seconds > 0 || state.appLogs.length + state.webLogs.length > 0;
   const setupSteps = [
     { done: state.children.length > 0, label: 'Tạo hồ sơ trẻ', page: 'children' },
     { done: state.devices.length > 0, label: 'Đăng ký thiết bị', page: 'devices' },
     { done: onlineDevices > 0, label: 'Kết nối Agent', page: 'devices' },
     { done: hasActivity, label: 'Nhận dữ liệu hoạt động', page: 'activity' },
   ];
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - index));
-    const key = date.toISOString().slice(0, 10);
-    const seconds = [...state.appLogs.map((x) => ({ ...x, at: x.start_time })), ...state.webLogs.map((x) => ({ ...x, at: x.visit_time }))]
-      .filter((x) => x.at?.slice(0, 10) === key)
-      .reduce((sum, x) => sum + (Number(x.duration_seconds) || 0), 0);
-    return { label: new Intl.DateTimeFormat('vi-VN', { weekday: 'short' }).format(date), minutes: Math.round(seconds / 60) };
-  });
-  const max = Math.max(...days.map((item) => item.minutes), 1);
-  const categories = [...state.appLogs, ...state.webLogs].reduce((map, item) => {
+  // Danh mục chỉ minh họa phân bổ của các bản ghi gần đây. Metric và hai biểu đồ
+  // thời gian bên dưới luôn dùng endpoint aggregate, không phụ thuộc giới hạn log.
+  const categories = state.appLogs.reduce((map, item) => {
     const key = item.category || 'unknown';
     map[key] = (map[key] || 0) + (Number(item.duration_seconds) || 0);
     return map;
   }, {});
+  const categorySampleSeconds = Object.values(categories).reduce((sum, seconds) => sum + seconds, 0);
   const sortedCategories = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const partialNotice = state.parentLoadErrors.length
+    ? `<section class="card card-pad" role="status"><strong>Một phần dữ liệu chưa tải được</strong><p class="muted">Dashboard vẫn hiển thị dữ liệu khả dụng. Hãy thử làm mới: ${escapeHtml(state.parentLoadErrors.join(', '))}.</p></section>`
+    : '';
+  const usageQualityNotice = usageSummary.ignored_segment_count > 0
+    ? `<aside class="usage-quality-note" role="note"><span aria-hidden="true">i</span><div><strong>Đã bỏ qua ${usageSummary.ignored_segment_count} đoạn thời gian bất thường khi tính thống kê</strong><p>Các đoạn có thể phát sinh khi máy khóa hoặc ngủ${usageSummary.max_valid_agent_segment_seconds ? ` và dài hơn ${duration(usageSummary.max_valid_agent_segment_seconds)}` : ''}. Bản ghi gốc vẫn được giữ nguyên để kiểm tra và đối chiếu.</p></div></aside>`
+    : '';
   content.innerHTML = `
     ${pageHead('overview', '<button class="btn btn-secondary" data-action="refresh-overview">' + icons.refresh + ' Làm mới</button><button class="btn" data-page="ai">✦ Phân tích AI</button>')}
-    <section class="metrics">
-      ${metric('Hồ sơ trẻ', state.children.length, 'đang quản lý', 'child', true)}
+    <section class="dashboard-hero family-dashboard-hero">
+      <div class="dashboard-hero-copy">
+        <span class="hero-status"><i></i>${onlineDevices ? `${onlineDevices} thiết bị đang kết nối` : 'Sẵn sàng đồng hành cùng gia đình'}</span>
+        <p class="eyebrow">Không gian số lành mạnh</p>
+        <h2>Hiểu thói quen hôm nay,<br>cùng con tiến bộ ngày mai.</h2>
+        <p>Theo dõi tín hiệu quan trọng, đặt giới hạn phù hợp và bắt đầu những cuộc trò chuyện tích cực từ một nơi duy nhất.</p>
+        <div class="hero-actions"><button class="btn" data-page="activity">Xem hoạt động</button><button class="btn btn-secondary" data-page="policies">Điều chỉnh chính sách</button></div>
+      </div>
+      <figure class="dashboard-hero-media"><img src="/assets/family-digital-wellbeing.jpg" alt="Gia đình cùng xây dựng thói quen sử dụng thiết bị lành mạnh" width="1200" height="800" decoding="async" fetchpriority="high"></figure>
+    </section>
+    ${partialNotice}
+    ${usageQualityNotice}
+    <section class="metrics usage-metrics">
+      ${metric('Sử dụng hôm nay', todayUsage.value, todayUsage.unit, 'activity', true)}
+      ${metric('Tổng trong tháng', monthUsage.value, monthUsage.unit, 'activity')}
+      ${metric('Hồ sơ trẻ', state.children.length, 'đang quản lý', 'child')}
       ${metric('Thiết bị', state.devices.length, `${onlineDevices} đang online`, 'device')}
-      ${metric('Thời gian ghi nhận', Math.round(totalSeconds / 3600), 'giờ', 'activity')}
       ${metric('Cảnh báo chưa đọc', unread, risky ? `${risky} rủi ro cao` : 'cần xem', 'alert')}
     </section>
     ${setupSteps.every((step) => step.done) ? '' : `<section class="setup-progress card"><div><p class="eyebrow">Thiết lập hệ thống</p><h2>Hoàn tất kết nối gia đình</h2><p>Thực hiện lần lượt để Dashboard nhận đầy đủ ứng dụng và website từ Agent.</p></div><div class="setup-steps">${setupSteps.map((step, index) => `<button class="setup-step ${step.done ? 'done' : ''}" data-page="${step.page}"><span>${step.done ? '✓' : index + 1}</span><strong>${step.label}</strong></button>`).join('')}</div></section>`}
     <section class="dashboard-grid">
       <div class="stack">
         <article class="card">
-          <div class="card-head"><div><h2>Nhịp sử dụng trong 7 ngày</h2><p>Tổng thời lượng ứng dụng và website được Agent ghi nhận.</p></div><span class="badge">${Math.round(totalSeconds / 60)} phút</span></div>
-          <div class="card-body"><div class="chart-wrap">${days
-            .map((day) => `<div class="bar-column"><div class="bar-track" title="${day.minutes} phút"><div class="bar-fill" style="height:${Math.max(3, Math.round((day.minutes / max) * 100))}%"></div></div><small>${escapeHtml(day.label)}</small></div>`)
+          <div class="card-head"><div><h2>Nhịp sử dụng trong 7 ngày</h2><p>Dữ liệu tổng hợp đầy đủ từ Agent, không phụ thuộc số bản ghi đang hiển thị.</p></div><span class="badge">${duration(recentTotalSeconds)}</span></div>
+          <div class="card-body"><div class="chart-wrap usage-week-chart" role="img" aria-label="Biểu đồ thời gian sử dụng ứng dụng trong bảy ngày gần nhất">${recentDays
+            .map((day) => `<div class="bar-column"><span class="bar-value">${Math.round(day.seconds / 60)}p</span><div class="bar-track" title="${escapeHtml(day.date)}: ${duration(day.seconds)}"><div class="bar-fill ${day.seconds ? '' : 'is-empty'}" style="height:${day.seconds ? Math.max(4, Math.round((day.seconds / recentMaxSeconds) * 100)) : 0}%"></div></div><small>${escapeHtml(day.label)}</small></div>`)
+            .join('')}</div></div>
+        </article>
+        <article class="card usage-month-card">
+          <div class="card-head"><div><h2>Từng ngày trong ${escapeHtml(usageMonthLabel(usageSummary.month))}</h2><p>${usageSummary.timezone ? `Múi giờ tổng hợp: ${escapeHtml(usageSummary.timezone)}.` : 'Tổng hợp theo múi giờ của hệ thống.'} Ngày hôm nay được đánh dấu nổi bật.</p></div><span class="badge blue">${duration(usageSummary.month_total_seconds)}</span></div>
+          <div class="card-body usage-month-scroll"><div class="usage-month-chart" style="--usage-day-count:${monthDays.length}" role="img" aria-label="Biểu đồ thời gian sử dụng theo từng ngày trong tháng">${monthDays
+            .map((day) => `<div class="usage-month-day ${day.isToday ? 'is-today' : ''}"><span>${day.seconds ? `${Math.round(day.seconds / 60)}p` : ''}</span><div class="usage-month-track" title="Ngày ${day.label}: ${duration(day.seconds)}"><div class="usage-month-fill" style="height:${day.seconds ? Math.max(3, Math.round((day.seconds / monthMaxSeconds) * 100)) : 0}%"></div></div><small>${day.label}</small></div>`)
             .join('')}</div></div>
         </article>
         <article class="card">
@@ -796,9 +1149,9 @@ async function renderOverview(content) {
       </div>
       <aside class="stack">
         <article class="card card-pad">
-          <p class="eyebrow">Phân bổ nội dung</p>
+          <p class="eyebrow">Phân bổ bản ghi gần đây</p>
           <div class="donut-row">
-            <div class="donut" style="--value:${totalSeconds ? Math.round(((sortedCategories[0]?.[1] || 0) / totalSeconds) * 100) : 0}"><strong>${totalSeconds ? Math.round(((sortedCategories[0]?.[1] || 0) / totalSeconds) * 100) : 0}%</strong></div>
+            <div class="donut" role="img" aria-label="Tỷ lệ danh mục ứng dụng được sử dụng nhiều nhất trong các bản ghi gần đây" style="--value:${categorySampleSeconds ? Math.round(((sortedCategories[0]?.[1] || 0) / categorySampleSeconds) * 100) : 0}"><strong>${categorySampleSeconds ? Math.round(((sortedCategories[0]?.[1] || 0) / categorySampleSeconds) * 100) : 0}%</strong></div>
             <div class="legend">${sortedCategories.map(([name, seconds]) => `<div class="legend-row"><i class="legend-dot"></i><span>${escapeHtml(categoryLabel(name))}</span><b>${duration(seconds)}</b></div>`).join('') || '<span class="muted">Chưa đủ dữ liệu</span>'}</div>
           </div>
         </article>
@@ -848,7 +1201,7 @@ async function renderDevices(content) {
 
 async function renderPolicies(content) {
   state.children = await api('/children?limit=200');
-  if (!state.selectedChildId && state.children.length) state.selectedChildId = state.children[0].child_id;
+  state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
   if (!state.selectedChildId) {
     content.innerHTML = pageHead('policies') + emptyState('⚙', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi cấu hình chính sách.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
     return;
@@ -906,6 +1259,15 @@ function switchRow(name, label, text, checked) {
   return `<div class="switch-row"><div class="switch-copy"><strong>${label}</strong><small>${text}</small></div><label class="switch"><input type="checkbox" name="${name}" ${checked ? 'checked' : ''}><span></span></label></div>`;
 }
 
+function syncAdminRoleEnrollment(form) {
+  const notice = form?.querySelector('[data-face-enrollment-warning]');
+  const confirmation = form?.elements.confirm_face_enrollment;
+  const role = form?.elements.role?.value;
+  const promoting = form?.dataset.originalRole === 'parent' && role === 'admin';
+  if (notice) notice.hidden = !promoting;
+  if (confirmation) confirmation.required = promoting;
+}
+
 async function renderActivity(content) {
   if (!state.devices.length) state.devices = (await api('/devices?limit=200')).data || [];
   const filter = state.activityFilter || {};
@@ -925,7 +1287,8 @@ async function renderActivity(content) {
       ? `${item.app_name || ''} ${deviceName(item.device_id)}`
       : `${item.page_title || ''} ${item.domain || ''} ${item.url || ''} ${deviceName(item.device_id)}`;
     return (!search || text.toLowerCase().includes(search))
-      && (!filter.category || String(item.category || 'unknown') === String(filter.category));
+      && (!filter.category || String(item.category || 'unknown') === String(filter.category))
+      && (!filter.access_status || String(item.access_status || 'open') === String(filter.access_status));
   });
   const maxOffset = Math.max(0, Math.floor(Math.max(0, filteredRows.length - 1) / state.activityLimit) * state.activityLimit);
   state.activityOffset = Math.min(state.activityOffset, maxOffset);
@@ -940,16 +1303,17 @@ async function renderActivity(content) {
       <div class="field"><label>Tìm kiếm</label><input class="input" name="search" value="${escapeHtml(filter.search || '')}" placeholder="${state.activityTab === 'apps' ? 'Tên ứng dụng' : 'YouTube, tên miền hoặc URL'}"></div>
       <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
       <div class="field"><label>Danh mục</label><select class="select" name="category"><option value="">Tất cả danh mục</option>${categories.map(([value, label]) => `<option value="${value}" ${filter.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+      <div class="field"><label>Trạng thái</label><select class="select" name="access_status"><option value="">Tất cả trạng thái</option><option value="blocked" ${filter.access_status === 'blocked' ? 'selected' : ''}>Đã chặn</option><option value="open" ${filter.access_status === 'open' ? 'selected' : ''}>Đang mở</option></select></div>
       <div class="field"><label>Từ thời điểm</label><input class="input" type="datetime-local" name="start" value="${escapeHtml(filter.start || '')}"></div>
       <div class="field"><label>Đến thời điểm</label><input class="input" type="datetime-local" name="end" value="${escapeHtml(filter.end || '')}"></div>
       <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-activity-filter">Xóa lọc</button><button class="btn" type="submit">Áp dụng</button></div>
     </form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
+    <section class="table-card"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Trạng thái</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Trạng thái</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
       if (state.activityTab === 'apps') {
-        return `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td>${formatDate(item.start_time)}</td><td>${formatDate(item.end_time)}</td><td>${duration(item.duration_seconds)}</td></tr>`;
+        return `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.start_time)}</td><td>${formatDate(item.end_time)}</td><td>${duration(item.duration_seconds)}</td></tr>`;
       }
       const externalUrl = safeExternalUrl(item.url);
-      return `<tr><td class="cell-title website-cell"><strong>${escapeHtml(item.page_title || item.domain || item.url)}</strong><small>${escapeHtml(item.domain || item.url)}</small>${externalUrl ? `<a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">Mở website ↗</a>` : ''}</td><td>${categoryBadge(item.category)}</td><td>${formatDate(item.visit_time)}</td><td>${escapeHtml(deviceName(item.device_id))}</td><td>${duration(item.duration_seconds)}</td></tr>`;
+      return `<tr><td class="cell-title website-cell"><strong>${escapeHtml(item.page_title || item.domain || item.url)}</strong><small>${escapeHtml(item.domain || item.url)}</small>${externalUrl ? `<a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">Mở website ↗</a>` : ''}</td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.visit_time)}</td><td>${escapeHtml(deviceName(item.device_id))}</td><td>${duration(item.duration_seconds)}</td></tr>`;
     }).join('')}</tbody></table></div>${rows.length ? `<div class="table-footer"><span>Hiển thị ${state.activityOffset + 1}–${state.activityOffset + rows.length} / ${filteredRows.length} bản ghi gần nhất</span><div class="pagination"><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${Math.max(0, state.activityOffset - state.activityLimit)}" ${state.activityOffset === 0 ? 'disabled' : ''}>Trước</button><span>Trang ${pageNumber}/${pageCount}</span><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${state.activityOffset + state.activityLimit}" ${state.activityOffset + state.activityLimit >= filteredRows.length ? 'disabled' : ''}>Sau</button></div><span>Tổng ${duration(filteredRows.reduce((sum, x) => sum + (Number(x.duration_seconds) || 0), 0))}</span></div>` : emptyState('↗', 'Chưa có dữ liệu', 'Hãy đổi bộ lọc hoặc kiểm tra Agent đang hoạt động.')}</section>`;
 }
 
@@ -962,11 +1326,11 @@ function csvCell(value) {
 function exportActivityCsv() {
   const isApps = state.activityTab === 'apps';
   const headers = isApps
-    ? ['Ứng dụng', 'Danh mục', 'Thiết bị', 'Bắt đầu', 'Kết thúc', 'Thời lượng (giây)']
-    : ['Tiêu đề', 'Tên miền', 'URL', 'Danh mục', 'Thiết bị', 'Truy cập', 'Thời lượng (giây)'];
+    ? ['Ứng dụng', 'Danh mục', 'Trạng thái', 'Thiết bị', 'Bắt đầu', 'Kết thúc', 'Thời lượng (giây)']
+    : ['Tiêu đề', 'Tên miền', 'URL', 'Danh mục', 'Trạng thái', 'Thiết bị', 'Truy cập', 'Thời lượng (giây)'];
   const records = state.activityViewRows.map((item) => isApps
-    ? [item.app_name, categoryLabel(item.category), deviceName(item.device_id), item.start_time, item.end_time, item.duration_seconds]
-    : [item.page_title, item.domain, item.url, categoryLabel(item.category), deviceName(item.device_id), item.visit_time, item.duration_seconds]);
+    ? [item.app_name, categoryLabel(item.category), accessStatusLabel(item.access_status), deviceName(item.device_id), item.start_time, item.end_time, item.duration_seconds]
+    : [item.page_title, item.domain, item.url, categoryLabel(item.category), accessStatusLabel(item.access_status), deviceName(item.device_id), item.visit_time, item.duration_seconds]);
   const csv = `\uFEFF${[headers, ...records].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
@@ -999,16 +1363,18 @@ function alertType(type) {
 }
 
 async function renderAI(content) {
-  if (!state.devices.length) state.devices = (await api('/devices?limit=200')).data || [];
-  state.analyses = (await api('/ai-analysis?limit=50')).data || [];
-  if (!state.selectedDeviceId && state.devices.length) state.selectedDeviceId = state.devices[0].device_id;
+  state.devices = (await api('/devices?limit=200')).data || [];
+  state.selectedDeviceId = reconcileSelectedId(state.selectedDeviceId, state.devices, 'device_id');
+  state.analyses = state.selectedDeviceId
+    ? (await api(`/ai-analysis${queryString({ device_id: state.selectedDeviceId, limit: 50 })}`)).data || []
+    : [];
   content.innerHTML = `
     ${pageHead('ai', `<select class="select" id="ai-device" style="min-width:210px"><option value="">Chọn thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(d.device_id) === String(state.selectedDeviceId) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select>`)}
     <section class="ai-layout">
       <div class="stack">
         <article class="card ai-hero"><h2>Biến dữ liệu hoạt động thành một cuộc trò chuyện tốt hơn.</h2><p>Gemini phân tích ứng dụng và website của thiết bị đã chọn, sau đó lưu insight theo mức độ rủi ro.</p><button class="btn" data-action="run-analysis" ${state.selectedDeviceId ? '' : 'disabled'}>✦ Chạy phân tích mới</button></article>
-        <article class="card"><div class="card-head"><div><h2>Phân tích gần đây</h2><p>Kết quả được lưu trong ai_analysis.</p></div><div><button class="btn btn-secondary btn-sm" data-action="latest-analysis">Kết quả mới nhất</button></div></div><div>${state.analyses.filter((x) => !state.selectedDeviceId || String(x.device_id) === String(state.selectedDeviceId)).map((item) => `<article class="analysis-card"><span class="badge ${escapeHtml(String(item.risk_level).toLowerCase())}">${escapeHtml(item.risk_level)}</span><h4>${escapeHtml(item.behavior_type)}</h4><p>${escapeHtml(item.suggestion)}</p><time>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.analyzed_at)}</time></article>`).join('') || emptyState('✦', 'Chưa có phân tích', 'Chọn thiết bị và chạy phân tích AI đầu tiên.')}</div></article>
-        <article class="card card-pad"><div class="card-head" style="padding:0 0 17px"><div><h2>Báo cáo tóm tắt</h2><p>Tạo báo cáo ngày hoặc tuần bằng Gemini.</p></div></div><div class="form-actions" style="justify-content:flex-start;margin:0"><button class="btn btn-secondary" data-action="summary" data-period="daily">Báo cáo ngày</button><button class="btn btn-secondary" data-action="summary" data-period="weekly">Báo cáo tuần</button></div><div id="summary-result"></div></article>
+        <article class="card"><div class="card-head"><div><h2>Phân tích gần đây</h2><p>Kết quả của riêng thiết bị đang chọn.</p></div><div><button class="btn btn-secondary btn-sm" data-action="latest-analysis" ${state.selectedDeviceId ? '' : 'disabled'}>Kết quả mới nhất</button></div></div><div>${state.analyses.map((item) => `<article class="analysis-card"><span class="badge ${escapeHtml(String(item.risk_level).toLowerCase())}">${escapeHtml(item.risk_level)}</span><h4>${escapeHtml(item.behavior_type)}</h4><p>${escapeHtml(item.suggestion)}</p><time>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.analyzed_at)}</time></article>`).join('') || emptyState('✦', 'Chưa có phân tích', 'Chọn thiết bị và chạy phân tích AI đầu tiên.')}</div></article>
+        <article class="card card-pad"><div class="card-head" style="padding:0 0 17px"><div><h2>Báo cáo tóm tắt</h2><p>Tạo báo cáo ngày hoặc tuần bằng Gemini.</p></div></div><div class="form-actions" style="justify-content:flex-start;margin:0"><button class="btn btn-secondary" data-action="summary" data-period="daily" ${state.selectedDeviceId ? '' : 'disabled'}>Báo cáo ngày</button><button class="btn btn-secondary" data-action="summary" data-period="weekly" ${state.selectedDeviceId ? '' : 'disabled'}>Báo cáo tuần</button></div><div id="summary-result"></div></article>
       </div>
       <aside class="card chat-card"><div class="chat-header"><strong>Cố vấn AI SafeNest</strong><small>Không thay thế tư vấn y khoa hoặc tâm lý.</small></div><div class="chat-messages" id="chat-messages">${state.chat.map((msg) => `<div class="chat-bubble ${msg.role === 'user' ? 'user' : ''}">${escapeHtml(msg.content)}</div>`).join('')}</div><form id="chat-form" class="chat-form"><input class="input" name="message" maxlength="2000" required placeholder="Hỏi về thói quen số..."><button class="btn btn-icon" type="submit">↑</button></form></aside>
     </section>`;
@@ -1016,6 +1382,21 @@ async function renderAI(content) {
     const messages = document.querySelector('#chat-messages');
     if (messages) messages.scrollTop = messages.scrollHeight;
   });
+}
+
+function pushPlatformOptions(provider, selected = '') {
+  const platforms = provider === 'expo'
+    ? [['android', 'Android'], ['ios', 'iOS']]
+    : [['android', 'Android'], ['ios', 'iOS'], ['web', 'Web']];
+  const selectedValue = platforms.some(([value]) => value === selected) ? selected : platforms[0][0];
+  return platforms.map(([value, label]) => `<option value="${value}" ${value === selectedValue ? 'selected' : ''}>${label}</option>`).join('');
+}
+
+function syncPushPlatforms(form) {
+  const provider = form?.elements.provider?.value;
+  const platform = form?.elements.platform;
+  if (!provider || !platform) return;
+  platform.innerHTML = pushPlatformOptions(provider, platform.value);
 }
 
 async function renderAccount(content) {
@@ -1035,7 +1416,7 @@ async function renderAccount(content) {
           <div class="push-token-list">${state.pushTokens.map((item) => `<div class="push-token-row"><div class="list-icon">${item.provider === 'expo' ? 'EX' : 'FC'}</div><div class="list-copy"><strong>${escapeHtml(item.device_name || 'Thiết bị không tên')}</strong><small>${escapeHtml(item.provider.toUpperCase())} · ${escapeHtml(item.platform)} · ${escapeHtml(item.token_hint)}</small>${item.last_error ? `<small class="text-danger">${escapeHtml(item.last_error)}</small>` : ''}</div><span class="badge ${item.is_active ? '' : 'red'}">${item.is_active ? 'Đang nhận' : 'Đã tắt'}</span><button class="kebab danger" data-action="delete-push-token" data-id="${item.push_token_id}" title="Gỡ thiết bị">×</button></div>`).join('') || '<p class="muted">Chưa có thiết bị nhận thông báo.</p>'}</div>
           <form id="push-token-form" class="form-grid push-token-form">
             <div class="field"><label>Nhà cung cấp</label><select class="select" name="provider"><option value="expo">Expo</option><option value="fcm">Firebase FCM</option></select></div>
-            <div class="field"><label>Nền tảng</label><select class="select" name="platform"><option value="android">Android</option><option value="ios">iOS</option><option value="web">Web</option></select></div>
+            <div class="field"><label>Nền tảng</label><select class="select" name="platform">${pushPlatformOptions('expo')}</select><small>Expo hỗ trợ Android/iOS; FCM hỗ trợ thêm Web.</small></div>
             <div class="field full"><label>Tên thiết bị</label><input class="input" name="device_name" maxlength="100" placeholder="Ví dụ: Điện thoại của mẹ"></div>
             <div class="field full"><label>Push token</label><textarea class="textarea" name="token" maxlength="4096" required autocomplete="off" placeholder="ExponentPushToken[...] hoặc FCM registration token"></textarea><small>Token chỉ được gửi đến backend qua HTTPS và không hiển thị lại đầy đủ.</small></div>
             <div class="form-actions field full"><button class="btn" type="submit">Đăng ký thiết bị nhận thông báo</button></div>
@@ -1053,15 +1434,44 @@ async function renderAccount(content) {
 async function renderAdminOverview(content) {
   state.adminStats = await api('/admin/stats');
   const s = state.adminStats;
+  const onlinePercent = s.total_devices ? Math.round((s.devices_online / s.total_devices) * 100) : 0;
+  const offlineDevices = Math.max(0, s.total_devices - s.devices_online);
   content.innerHTML = `
     ${pageHead('admin-overview', '<button class="btn btn-secondary" data-action="reload-page">' + icons.refresh + ' Làm mới</button>')}
+    <section class="dashboard-hero admin-dashboard-hero">
+      <div class="dashboard-hero-copy">
+        <span class="hero-status"><i></i>Trung tâm vận hành SafeNest</span>
+        <p class="eyebrow">Quản trị chủ động</p>
+        <h2>Một góc nhìn rõ ràng<br>cho toàn bộ hệ thống.</h2>
+        <p>Theo dõi quy mô, trạng thái thiết bị và các hành động nhạy cảm để giữ nền tảng ổn định, minh bạch và an toàn.</p>
+        <div class="hero-actions"><button class="btn" data-page="users">Quản lý tài khoản</button><button class="btn btn-secondary" data-page="audit">Xem nhật ký</button></div>
+      </div>
+      <figure class="dashboard-hero-media"><img src="/assets/admin-system-operations.jpg" alt="Quản trị viên theo dõi hoạt động và sức khỏe hệ thống" width="1200" height="800" decoding="async" fetchpriority="high"></figure>
+    </section>
     <section class="metrics">${metric('Người dùng', s.total_users, 'tài khoản', 'child', true)}${metric('Trẻ em', s.total_children, 'hồ sơ', 'child')}${metric('Thiết bị trực tuyến', s.devices_online, `/ ${s.total_devices} thiết bị`, 'device')}${metric('Cảnh báo hôm nay', s.alerts_today, 'tín hiệu', 'alert')}</section>
-    <section class="dashboard-grid"><article class="card card-pad"><p class="eyebrow">Quy mô hệ thống</p><h2>${s.total_devices} thiết bị đang được quản lý</h2><p class="muted">Tỷ lệ trực tuyến hiện tại: ${s.total_devices ? Math.round((s.devices_online / s.total_devices) * 100) : 0}%.</p><div class="donut-row" style="margin-top:25px"><div class="donut" style="--value:${s.total_devices ? Math.round((s.devices_online / s.total_devices) * 100) : 0}"><strong>${s.total_devices ? Math.round((s.devices_online / s.total_devices) * 100) : 0}%</strong></div><div class="legend"><div class="legend-row"><i class="legend-dot"></i><span>Trực tuyến</span><b>${s.devices_online}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Ngoại tuyến</span><b>${Math.max(0, s.total_devices - s.devices_online)}</b></div></div></div></article><aside class="stack"><article class="metric-card"><div class="metric-icon">${icons.policy}</div><p class="metric-label">DANH SÁCH CHẶN TOÀN CỤC</p><div class="metric-value">${s.blacklist_count}<small>tên miền</small></div></article><button class="btn" data-page="blacklist">Quản lý danh sách chặn</button></aside></section>`;
+    <section class="dashboard-grid">
+      <div class="stack">
+        <article class="card card-pad"><p class="eyebrow">Sức khỏe thiết bị</p><h2>${s.total_devices} thiết bị đang được quản lý</h2><p class="muted">Heartbeat trong 5 phút gần nhất được tính là trực tuyến.</p><div class="donut-row" style="margin-top:25px"><div class="donut" role="img" aria-label="${onlinePercent}% thiết bị đang trực tuyến" style="--value:${onlinePercent}"><strong>${onlinePercent}%</strong></div><div class="legend"><div class="legend-row"><i class="legend-dot"></i><span>Trực tuyến</span><b>${s.devices_online}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Ngoại tuyến</span><b>${offlineDevices}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Cảnh báo hôm nay</span><b>${s.alerts_today}</b></div></div></div></article>
+        <article class="card"><div class="card-head"><div><h2>Lối tắt điều hành</h2><p>Đi thẳng đến các khu vực quản trị thường dùng.</p></div></div><div class="card-body list"><button class="list-item" type="button" data-page="users"><span class="list-icon">TK</span><span class="list-copy"><strong>Tài khoản người dùng</strong><small>Xem, khóa, xác minh hoặc thu hồi phiên</small></span><span>→</span></button><button class="list-item" type="button" data-page="blacklist"><span class="list-icon">BL</span><span class="list-copy"><strong>Danh sách chặn toàn cục</strong><small>${s.blacklist_count} tên miền đang được đồng bộ</small></span><span>→</span></button><button class="list-item" type="button" data-page="audit"><span class="list-icon">AU</span><span class="list-copy"><strong>Nhật ký kiểm toán</strong><small>Kiểm tra các thao tác nhạy cảm</small></span><span>→</span></button></div></article>
+      </div>
+      <aside class="stack">
+        <article class="metric-card"><div class="metric-icon">${icons.policy}</div><p class="metric-label">DANH SÁCH CHẶN TOÀN CỤC</p><div class="metric-value">${s.blacklist_count}<small>tên miền</small></div></article>
+        <article class="card card-pad"><p class="eyebrow">Trạng thái vận hành</p><div class="list"><div class="list-item"><div class="list-icon">API</div><div class="list-copy"><strong>Backend API</strong><small>${state.connectionStatus === 'online' ? 'Đã kết nối và phản hồi' : 'Cần kiểm tra kết nối'}</small></div><span class="badge ${state.connectionStatus === 'online' ? '' : 'coral'}">${state.connectionStatus === 'online' ? 'Ổn định' : 'Chú ý'}</span></div><div class="list-item"><div class="list-icon">RL</div><div class="list-copy"><strong>Phân tách dữ liệu gia đình</strong><small>Parent API được bảo vệ bằng JWT và RLS</small></div><span class="badge">Đang bật</span></div><div class="list-item"><div class="list-icon">AL</div><div class="list-copy"><strong>Audit log</strong><small>Ghi nhận thao tác quản trị nhạy cảm</small></div><span class="badge">Đang bật</span></div></div></article>
+      </aside>
+    </section>`;
 }
 
 async function renderUsers(content) {
   const filter = state.adminUserFilter || {};
-  const result = await api('/admin/users' + queryString({ ...filter, limit: 200 }));
+  const result = await api('/admin/users' + queryString({
+    ...filter,
+    limit: state.adminUserLimit,
+    offset: state.adminUserOffset,
+  }));
+  if (!(result.data || []).length && state.adminUserOffset > 0) {
+    state.adminUserOffset = Math.max(0, state.adminUserOffset - state.adminUserLimit);
+    return renderUsers(content);
+  }
   state.adminUsers = result.data || [];
   content.innerHTML = `
     ${pageHead('users', '<button class="btn btn-secondary" data-action="refresh-users">' + icons.refresh + ' Làm mới</button>')}
@@ -1081,32 +1491,51 @@ async function renderUsers(content) {
         <td>${formatDate(u.created_at)}</td>
         <td><div class="row-actions"><button class="btn btn-secondary btn-sm" data-action="view-user" data-id="${u.user_id}">Chi tiết</button><button class="kebab" title="Chỉnh sửa" data-action="edit-user" data-id="${u.user_id}">✎</button><button class="kebab" title="Thu hồi phiên" data-action="revoke-user-sessions" data-id="${u.user_id}">↻</button><button class="kebab danger" title="${isSelf ? 'Không thể xóa chính mình' : 'Xóa tài khoản'}" data-action="delete-user" data-id="${u.user_id}" ${isSelf ? 'disabled' : ''}>×</button></div></td>
       </tr>`;
-    }).join('')}</tbody></table></div>${state.adminUsers.length ? `<div class="table-footer"><span>Hiển thị ${state.adminUsers.length} / ${result.total} tài khoản</span><span>Thao tác quản trị được ghi vào audit log</span></div>` : emptyState('◎', 'Không tìm thấy tài khoản', 'Hãy thay đổi bộ lọc để xem kết quả khác.')}</section>`;
+    }).join('')}</tbody></table></div>${state.adminUsers.length ? `<div class="table-footer"><span>Thao tác quản trị được ghi vào audit log</span>${paginationMarkup('users', result, 'tài khoản')}</div>` : emptyState('◎', 'Không tìm thấy tài khoản', 'Hãy thay đổi bộ lọc để xem kết quả khác.')}</section>`;
 }
 
 async function renderBlacklist(content) {
   const search = state.blacklistSearch || '';
-  const result = await api('/admin/blacklist' + queryString({ search, limit: 200 }));
+  const result = await api('/admin/blacklist' + queryString({
+    search,
+    limit: state.blacklistLimit,
+    offset: state.blacklistOffset,
+  }));
+  if (!(result.data || []).length && state.blacklistOffset > 0) {
+    state.blacklistOffset = Math.max(0, state.blacklistOffset - state.blacklistLimit);
+    return renderBlacklist(content);
+  }
   content.innerHTML = `
     ${pageHead('blacklist', '<button class="btn" data-action="add-blacklist">' + icons.plus + ' Thêm tên miền</button>')}
     <form id="blacklist-search" class="filters" style="grid-template-columns:minmax(220px,1fr) auto"><div class="field"><label>Tìm tên miền</label><input class="input" name="search" value="${escapeHtml(search)}" placeholder="example.com"></div><button class="btn btn-secondary" type="submit">Tìm kiếm</button></form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr><th>Tên miền</th><th>Lý do</th><th>Người thêm</th><th>Ngày thêm</th><th></th></tr></thead><tbody>${result.data.map((item) => `<tr><td><strong>${escapeHtml(item.domain)}</strong></td><td>${escapeHtml(item.reason || '—')}</td><td>${escapeHtml(item.added_by_name || 'Hệ thống')}</td><td>${formatDate(item.created_at)}</td><td><button class="btn btn-danger btn-sm" data-action="delete-blacklist" data-id="${item.blacklist_id}" data-name="${escapeHtml(item.domain)}">Xóa</button></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer"><span>${result.data.length} / ${result.total} tên miền</span></div>` : emptyState('⊘', 'Không tìm thấy tên miền', 'Không có mục nào phù hợp với từ khóa tìm kiếm.')}</section>`;
+    <section class="table-card"><div class="table-scroll"><table><thead><tr><th>Tên miền</th><th>Lý do</th><th>Người thêm</th><th>Ngày thêm</th><th></th></tr></thead><tbody>${result.data.map((item) => `<tr><td><strong>${escapeHtml(item.domain)}</strong></td><td>${escapeHtml(item.reason || '—')}</td><td>${escapeHtml(item.added_by_name || 'Hệ thống')}</td><td>${formatDate(item.created_at)}</td><td><button class="btn btn-danger btn-sm" data-action="delete-blacklist" data-id="${item.blacklist_id}" data-name="${escapeHtml(item.domain)}">Xóa</button></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer">${paginationMarkup('blacklist', result, 'danh sách chặn')}</div>` : emptyState('⊘', 'Không tìm thấy tên miền', 'Không có mục nào phù hợp với từ khóa tìm kiếm.')}</section>`;
 }
 
 async function renderAudit(content) {
   const filter = state.auditFilter || {};
-  const result = await api('/admin/audit-logs' + queryString({ ...filter, limit: 200 }));
+  const result = await api('/admin/audit-logs' + queryString({
+    ...filter,
+    limit: state.auditLimit,
+    offset: state.auditOffset,
+  }));
+  if (!(result.data || []).length && state.auditOffset > 0) {
+    state.auditOffset = Math.max(0, state.auditOffset - state.auditLimit);
+    return renderAudit(content);
+  }
   content.innerHTML = `
     ${pageHead('audit')}
     <form id="audit-filter" class="filters" style="grid-template-columns:repeat(2,minmax(180px,1fr)) 1fr auto"><div class="field"><label>Hành động chính xác</label><input class="input" name="action" value="${escapeHtml(filter.action || '')}" placeholder="settings.update"></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}"></div><div></div><button class="btn" type="submit">Lọc</button></form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Metadata</th></tr></thead><tbody>${result.data.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td>#${item.actor_user_id ?? '—'} <span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></td><td><strong>${escapeHtml(item.action)}</strong></td><td>${escapeHtml(item.target_type || '—')} #${escapeHtml(item.target_id || '—')}</td><td>${escapeHtml(item.ip_address || '—')}</td><td><code>${escapeHtml(JSON.stringify(item.metadata || {}))}</code></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer"><span>${result.data.length} / ${result.total} sự kiện</span></div>` : emptyState('⌁', 'Không có nhật ký', 'Hãy bỏ bộ lọc để xem toàn bộ sự kiện.')}</section>`;
+    <section class="table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Metadata</th></tr></thead><tbody>${result.data.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td>#${item.actor_user_id ?? '—'} <span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></td><td><strong>${escapeHtml(item.action)}</strong></td><td>${escapeHtml(item.target_type || '—')} #${escapeHtml(item.target_id || '—')}</td><td>${escapeHtml(item.ip_address || '—')}</td><td><code>${escapeHtml(JSON.stringify(item.metadata || {}))}</code></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer">${paginationMarkup('audit', result, 'nhật ký kiểm toán')}</div>` : emptyState('⌁', 'Không có nhật ký', 'Hãy bỏ bộ lọc để xem toàn bộ sự kiện.')}</section>`;
 }
 
 const agentEndpoints = {
   heartbeat: { method: 'POST', path: '/agent/heartbeat', label: 'Heartbeat', body: {} },
   config: { method: 'GET', path: '/agent/config', label: 'Cấu hình hiện tại' },
+  'web-fallback': { method: 'POST', path: '/agent/classification/web/fallback', label: 'Phân loại tên miền bằng Gemini', body: { domain: 'example.com' } },
+  'unknown-domains': { method: 'GET', path: '/agent/classification/web/unknown-domains', label: 'Tên miền chờ phân loại', query: { limit: 25 } },
+  'web-backfill': { method: 'POST', path: '/agent/classification/web/backfill', label: 'Cập nhật nhãn tên miền', body: { domain: 'example.com', category: 'education', classification_source: 'trained_model', classification_confidence: 0.92 } },
   vision: { method: 'POST', path: '/agent/vision-alert', label: 'Cảnh báo thị giác', body: { alert_type: 'posture_warning', message: 'Trình diễn: trẻ đang ngồi sai tư thế.' } },
-  app: { method: 'POST', path: '/logs/app', label: 'Hoạt động ứng dụng', body: { app_name: 'Visual Studio Code', category: 'learning', start_time: new Date().toISOString(), duration_seconds: 300 } },
+  app: { method: 'POST', path: '/logs/app', label: 'Hoạt động ứng dụng', body: { app_name: 'Visual Studio Code', category: 'learning', start_time: new Date().toISOString(), duration_seconds: 30 } },
   web: { method: 'POST', path: '/logs/web', label: 'Lượt truy cập website', body: { url: 'https://khanacademy.org', domain: 'khanacademy.org', category: 'education', visit_time: new Date().toISOString(), duration_seconds: 180, page_title: 'Khan Academy' } },
   'app-batch': { method: 'POST', path: '/logs/app/batch', label: 'Lô ứng dụng', body: { records: [{ client_record_id: crypto.randomUUID(), app_name: 'Demo App', category: 'unknown', start_time: new Date().toISOString(), duration_seconds: 60 }] } },
   'web-batch': { method: 'POST', path: '/logs/web/batch', label: 'Lô website', body: { records: [{ client_record_id: crypto.randomUUID(), url: 'https://example.com', domain: 'example.com', category: 'unknown', visit_time: new Date().toISOString(), duration_seconds: 60 }] } },
@@ -1114,6 +1543,8 @@ const agentEndpoints = {
 
 function renderApiLab(content) {
   const selected = agentEndpoints[state.agentEndpoint];
+  const requestData = selected.method === 'GET' ? selected.query : selected.body;
+  const requestLabel = selected.method === 'GET' ? 'Tham số query JSON' : 'Nội dung JSON';
   content.innerHTML = `
     ${pageHead('api-lab')}
     <div class="secret-box" style="margin-bottom:18px"><strong>X-Device-Secret tạm thời</strong><code>${state.agentSecret ? '••••••••' + state.agentSecret.slice(-6) : 'Chưa nhập secret'}</code><button class="btn btn-secondary btn-sm" data-action="set-agent-secret">${state.agentSecret ? 'Thay secret' : 'Nhập secret'}</button> <button class="btn btn-ghost btn-sm" data-action="clear-agent-secret">Xóa khỏi bộ nhớ</button></div>
@@ -1121,7 +1552,7 @@ function renderApiLab(content) {
       <aside class="card endpoint-list">${Object.entries(agentEndpoints).map(([key, endpoint]) => `<button class="endpoint-button ${state.agentEndpoint === key ? 'active' : ''}" data-action="select-agent-endpoint" data-endpoint="${key}"><span class="method ${endpoint.method.toLowerCase()}">${endpoint.method}</span><span><strong>${escapeHtml(endpoint.label)}</strong><small>/api${escapeHtml(endpoint.path)}</small></span></button>`).join('')}</aside>
       <article class="card card-pad">
         <p class="eyebrow">Trình tạo request</p><h2>${escapeHtml(selected.label)}</h2><p class="muted"><strong>${selected.method}</strong> /api${escapeHtml(selected.path)}</p>
-        <form id="agent-request-form"><div class="field"><label>Nội dung JSON</label><textarea class="textarea" name="body" style="min-height:220px" ${selected.method === 'GET' ? 'disabled' : ''}>${selected.body ? escapeHtml(JSON.stringify(selected.body, null, 2)) : ''}</textarea></div><div class="form-actions"><button class="btn" type="submit" ${state.agentSecret ? '' : 'disabled'}>Gửi request</button></div></form>
+        <form id="agent-request-form"><div class="field"><label>${requestLabel}</label><textarea class="textarea" name="request_data" style="min-height:220px" ${requestData === undefined ? 'disabled' : ''}>${requestData === undefined ? '' : escapeHtml(JSON.stringify(requestData, null, 2))}</textarea>${selected.method === 'GET' && requestData !== undefined ? '<small>Giá trị sẽ được mã hóa an toàn vào query string.</small>' : ''}</div><div class="form-actions"><button class="btn" type="submit" ${state.agentSecret ? '' : 'disabled'}>Gửi request</button></div></form>
         <div id="agent-response"></div>
       </article>
     </section>`;
@@ -1138,7 +1569,7 @@ function deviceForm() {
 function agentGuide() {
   const serviceCommand = 'Get-Service ChildMonitorService';
   const companionCommand = "Get-CimInstance Win32_Process -Filter \"Name='ChildMonitorCompanion.exe'\"";
-  return `<div class="agent-guide"><ol><li><strong>Đăng ký thiết bị</strong><p>Tạo thiết bị trên Dashboard và lưu Device Secret được hiển thị một lần.</p></li><li><strong>Cài Agent 1.0.8 trên VMware</strong><p>Chạy file cài đặt bằng quyền Administrator. Backend URL dùng địa chỉ cố định bên dưới.</p><div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép</button></div></li><li><strong>Kiểm tra sau cài đặt</strong><p>Mở PowerShell Administrator và chạy hai lệnh:</p><div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}">Sao chép</button></div><div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(companionCommand)}">Sao chép</button></div></li><li><strong>Xác nhận dữ liệu</strong><p>Mở một ứng dụng và một trang web mới trong Edge, Chrome hoặc Cốc Cốc, chờ 1–2 phút rồi xem trang Hoạt động.</p></li></ol><div class="guide-note">Cloudflare Named Tunnel và Backend vẫn phải đang chạy để Agent kết nối được tới ${DEFAULT_BACKEND_URL}.</div></div>`;
+  return `<div class="agent-guide"><ol><li><strong>Đăng ký thiết bị</strong><p>Tạo thiết bị trên Dashboard và lưu Device Secret được hiển thị một lần.</p></li><li><strong>Cài Agent 1.0.9 trên VMware</strong><p>Chạy file cài đặt bằng quyền Administrator. Backend URL dùng địa chỉ cố định bên dưới.</p><div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép</button></div></li><li><strong>Kiểm tra sau cài đặt</strong><p>Mở PowerShell Administrator và chạy hai lệnh:</p><div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}">Sao chép</button></div><div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(companionCommand)}">Sao chép</button></div></li><li><strong>Xác nhận dữ liệu</strong><p>Mở một ứng dụng và một trang web mới trong Edge, Chrome hoặc Cốc Cốc, chờ 1–2 phút rồi xem trang Hoạt động.</p></li></ol><div class="guide-note">Cloudflare Named Tunnel và Backend vẫn phải đang chạy để Agent kết nối được tới ${DEFAULT_BACKEND_URL}.</div></div>`;
 }
 
 function confirmModal(title, text, action, id, extra = '') {
@@ -1243,36 +1674,62 @@ async function handleSubmit(event) {
       toast('Đã đổi mật khẩu', localizeMessage(result.message));
       await logout(false);
     } else if (form.id === 'push-token-form') {
+      if (data.provider === 'expo' && data.platform === 'web') {
+        throw new Error('Expo chỉ hỗ trợ thông báo trên Android hoặc iOS');
+      }
       await api('/notifications/tokens', { method: 'POST', body: data });
       form.reset();
       toast('Đã đăng ký thiết bị nhận thông báo');
       await renderAccount(document.querySelector('#page-content'));
     } else if (form.id === 'admin-user-filter') {
       state.adminUserFilter = data;
+      state.adminUserOffset = 0;
       await renderUsers(document.querySelector('#page-content'));
     } else if (form.id === 'admin-user-form') {
+      const currentUser = state.adminUsers.find((item) => String(item.user_id) === String(form.dataset.id));
       const body = {
         role: data.role,
         is_active: form.elements.is_active.checked,
         is_verified: form.elements.is_verified.checked,
       };
+      const promotingToAdmin = currentUser?.role === 'parent' && body.role === 'admin';
+      if (promotingToAdmin && !form.elements.confirm_face_enrollment?.checked) {
+        throw new Error('Hãy xác nhận đã chuẩn bị quy trình đăng ký khuôn mặt cho quản trị viên mới');
+      }
       await api(`/admin/users/${form.dataset.id}`, { method: 'PATCH', body });
       closeModal();
       toast('Đã cập nhật tài khoản', 'Các thay đổi quyền hoặc trạng thái đã được áp dụng.');
       await renderUsers(document.querySelector('#page-content'));
     } else if (form.id === 'blacklist-search') {
-      state.blacklistSearch = data.search; await renderBlacklist(document.querySelector('#page-content'));
+      state.blacklistSearch = data.search;
+      state.blacklistOffset = 0;
+      await renderBlacklist(document.querySelector('#page-content'));
     } else if (form.id === 'blacklist-form') {
       await api('/admin/blacklist', { method: 'POST', body: data });
+      state.blacklistOffset = 0;
       closeModal(); toast('Đã thêm tên miền', `${data.domain} sẽ được đồng bộ xuống Agent.`); await navigate('blacklist');
     } else if (form.id === 'audit-filter') {
-      state.auditFilter = data; await renderAudit(document.querySelector('#page-content'));
+      state.auditFilter = data;
+      state.auditOffset = 0;
+      await renderAudit(document.querySelector('#page-content'));
     } else if (form.id === 'agent-request-form') {
       const endpoint = agentEndpoints[state.agentEndpoint];
+      let requestPath = endpoint.path;
       let body;
-      if (endpoint.method !== 'GET') body = JSON.parse(data.body);
+      const rawRequestData = String(data.request_data || '').trim();
+      if (endpoint.method === 'GET') {
+        if (rawRequestData) {
+          const query = JSON.parse(rawRequestData);
+          if (!query || typeof query !== 'object' || Array.isArray(query)) {
+            throw new Error('Tham số query phải là một JSON object');
+          }
+          requestPath += queryString(query);
+        }
+      } else {
+        body = rawRequestData ? JSON.parse(rawRequestData) : {};
+      }
       const started = performance.now();
-      const result = await api(endpoint.path, { method: endpoint.method, headers: { 'X-Device-Secret': state.agentSecret }, body, noAuth: true });
+      const result = await api(requestPath, { method: endpoint.method, headers: { 'X-Device-Secret': state.agentSecret }, body, noAuth: true });
       const target = document.querySelector('#agent-response');
       target.innerHTML = `<p class="eyebrow" style="margin-top:20px">200 OK · ${Math.round(performance.now() - started)}ms</p><pre class="code-box">${escapeHtml(JSON.stringify(result, null, 2))}</pre>`;
       toast('Request thành công', endpoint.label);
@@ -1314,6 +1771,9 @@ async function handleClick(event) {
     if (action === 'toggle-sidebar') {
       state.sidebarOpen = !state.sidebarOpen;
       document.querySelector('.sidebar')?.classList.toggle('open', state.sidebarOpen);
+      const menuToggle = document.querySelector('.menu-toggle');
+      menuToggle?.setAttribute('aria-expanded', String(state.sidebarOpen));
+      menuToggle?.setAttribute('aria-label', state.sidebarOpen ? 'Đóng menu' : 'Mở menu');
       const existingOverlay = document.querySelector('.mobile-overlay');
       if (state.sidebarOpen && !existingOverlay) {
         const overlay = document.createElement('div');
@@ -1328,10 +1788,27 @@ async function handleClick(event) {
     if (action === 'toggle-user-menu') {
       state.userMenuOpen = !state.userMenuOpen;
       document.querySelector('.user-popover')?.classList.toggle('hidden', !state.userMenuOpen);
+      button.setAttribute('aria-expanded', String(state.userMenuOpen));
       return;
     }
     if (action === 'reload-page' || action === 'refresh-overview') return navigate(state.page);
     if (action === 'refresh-users') return renderUsers(document.querySelector('#page-content'));
+    if (action === 'server-page') {
+      const offset = Math.max(0, Number(button.dataset.offset) || 0);
+      if (button.dataset.scope === 'users') {
+        state.adminUserOffset = offset;
+        return renderUsers(document.querySelector('#page-content'));
+      }
+      if (button.dataset.scope === 'blacklist') {
+        state.blacklistOffset = offset;
+        return renderBlacklist(document.querySelector('#page-content'));
+      }
+      if (button.dataset.scope === 'audit') {
+        state.auditOffset = offset;
+        return renderAudit(document.querySelector('#page-content'));
+      }
+      return;
+    }
     if (action === 'logout') return logout();
     if (action === 'agent-guide') return showModal('Cài đặt và kiểm tra Agent', 'Hướng dẫn nhanh cho máy ảo VMware Windows.', agentGuide());
     if (action === 'copy-value') {
@@ -1375,7 +1852,12 @@ async function handleClick(event) {
     if (action === 'add-child') return showModal('Thêm hồ sơ trẻ', 'Thông tin cơ bản để nhóm dữ liệu theo từng trẻ.', childForm());
     if (action === 'edit-child') return showModal('Chỉnh sửa hồ sơ trẻ', 'Cập nhật tên và độ tuổi.', childForm(state.children.find((x) => String(x.child_id) === String(id))));
     if (action === 'delete-child') return confirmModal('Xóa hồ sơ trẻ?', 'Thiết bị và dữ liệu liên quan cũng có thể bị xóa.', 'confirm-delete-child', id);
-    if (action === 'confirm-delete-child') { await api(`/children/${id}`, { method: 'DELETE' }); closeModal(); toast('Đã xóa hồ sơ'); return navigate('children'); }
+    if (action === 'confirm-delete-child') {
+      await api(`/children/${id}`, { method: 'DELETE' });
+      if (String(state.selectedChildId) === String(id)) state.selectedChildId = null;
+      state.selectedDeviceId = null;
+      closeModal(); toast('Đã xóa hồ sơ'); return navigate('children');
+    }
     if (action === 'child-policy') { state.selectedChildId = id; return navigate('policies'); }
     if (action === 'add-device') {
       if (!state.children.length) return toast('Chưa có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi đăng ký thiết bị.', 'error');
@@ -1386,7 +1868,11 @@ async function handleClick(event) {
       return showModal('Đổi tên thiết bị', d.device_uid, `<form id="edit-device-form" data-id="${id}"><div class="field"><label>Tên thiết bị</label><input class="input" name="device_name" maxlength="100" required value="${escapeHtml(d.device_name)}"></div><div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu</button></div></form>`);
     }
     if (action === 'delete-device') return confirmModal('Xóa thiết bị?', 'Agent đang dùng secret hiện tại sẽ mất quyền truy cập.', 'confirm-delete-device', id);
-    if (action === 'confirm-delete-device') { await api(`/devices/${id}`, { method: 'DELETE' }); closeModal(); toast('Đã xóa thiết bị'); return navigate('devices'); }
+    if (action === 'confirm-delete-device') {
+      await api(`/devices/${id}`, { method: 'DELETE' });
+      if (String(state.selectedDeviceId) === String(id)) state.selectedDeviceId = null;
+      closeModal(); toast('Đã xóa thiết bị'); return navigate('devices');
+    }
     if (action === 'rotate-secret') return confirmModal('Xoay Device Secret?', 'Secret cũ bị vô hiệu ngay lập tức. Bạn phải cập nhật lại Agent.', 'confirm-rotate-secret', id);
     if (action === 'confirm-rotate-secret') { const result = await api(`/devices/${id}/rotate-secret`, { method: 'POST' }); closeModal(); return showSecret(result); }
     if (action === 'copy-secret') { await navigator.clipboard.writeText(document.querySelector('#secret-value').textContent); return toast('Đã sao chép secret'); }
@@ -1445,7 +1931,15 @@ async function handleClick(event) {
       const u = state.adminUsers.find((item) => String(item.user_id) === String(id));
       if (!u) throw new Error('Không tìm thấy tài khoản');
       const isSelf = String(u.user_id) === String(state.userId);
-      return showModal('Chỉnh sửa tài khoản', `${u.name} · ${u.email}`, `<form id="admin-user-form" data-id="${u.user_id}" class="form-grid"><div class="field full"><label>Vai trò</label>${isSelf ? `<input type="hidden" name="role" value="admin"><input class="input" value="Quản trị viên" disabled>` : `<select class="select" name="role"><option value="parent" ${u.role === 'parent' ? 'selected' : ''}>Phụ huynh</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Quản trị viên</option></select>`}</div><div class="field full">${switchRow('is_active', 'Tài khoản đang hoạt động', isSelf ? 'Không thể tự khóa tài khoản quản trị.' : 'Tắt để chặn đăng nhập và thu hồi toàn bộ phiên.', u.is_active).replace('name="is_active"', `name="is_active" ${isSelf ? 'disabled' : ''}`)}${switchRow('is_verified', 'Email đã xác minh', 'Cho phép quản trị viên xác nhận email thủ công.', u.is_verified)}</div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu thay đổi</button></div></form>`);
+      const roleControl = isSelf
+        ? '<input type="hidden" name="role" value="admin"><input class="input" value="Quản trị viên" disabled>'
+        : `<select class="select" name="role"><option value="parent" ${u.role === 'parent' ? 'selected' : ''}>Phụ huynh</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Quản trị viên</option></select>`;
+      const enrollmentWarning = !isSelf && u.role === 'parent'
+        ? `<div class="field full" data-face-enrollment-warning hidden><div class="guide-note" role="note"><strong>Cần đăng ký khuôn mặt trước khi cấp quyền quản trị.</strong><p>Tài khoản admin phải được mô hình nhận diện đúng nhãn “admin”. Nếu chưa enroll khuôn mặt, người dùng này sẽ không thể hoàn tất đăng nhập.</p><label><input type="checkbox" name="confirm_face_enrollment"> Tôi xác nhận đã chuẩn bị quy trình đăng ký khuôn mặt cho tài khoản này.</label></div></div>`
+        : '';
+      showModal('Chỉnh sửa tài khoản', `${u.name} · ${u.email}`, `<form id="admin-user-form" data-id="${u.user_id}" data-original-role="${u.role}" class="form-grid"><div class="field full"><label>Vai trò</label>${roleControl}</div>${enrollmentWarning}<div class="field full">${switchRow('is_active', 'Tài khoản đang hoạt động', isSelf ? 'Không thể tự khóa tài khoản quản trị.' : 'Tắt để chặn đăng nhập và thu hồi toàn bộ phiên.', u.is_active).replace('name="is_active"', `name="is_active" ${isSelf ? 'disabled' : ''}`)}${switchRow('is_verified', 'Email đã xác minh', 'Cho phép quản trị viên xác nhận email thủ công.', u.is_verified)}</div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu thay đổi</button></div></form>`);
+      syncAdminRoleEnrollment(document.querySelector('#admin-user-form'));
+      return;
     }
     if (action === 'revoke-user-sessions') return confirmModal('Thu hồi mọi phiên đăng nhập?', 'Tất cả access token và refresh token của tài khoản sẽ mất hiệu lực.', 'confirm-revoke-user-sessions', id);
     if (action === 'confirm-revoke-user-sessions') { await api(`/admin/users/${id}/revoke-sessions`, { method: 'POST' }); closeModal(); toast('Đã thu hồi toàn bộ phiên'); if (String(id) === String(state.userId)) return logout(false); return renderUsers(document.querySelector('#page-content')); }
@@ -1500,11 +1994,49 @@ document.addEventListener('change', (event) => {
     const resourceType = event.target.name.startsWith('enable_app') ? 'app' : 'web';
     const group = document.querySelector(`.policy-group[data-resource="${resourceType}"]`);
     if (group) group.classList.toggle('classification-off', !event.target.checked);
+  } else if (event.target.name === 'provider' && event.target.closest('#push-token-form')) {
+    syncPushPlatforms(event.target.closest('form'));
+  } else if (event.target.name === 'role' && event.target.closest('#admin-user-form')) {
+    syncAdminRoleEnrollment(event.target.closest('form'));
+  }
+});
+document.addEventListener('keydown', (event) => {
+  const modal = modalRoot.querySelector('.modal');
+  if (!modal) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeModal();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+
+  const focusable = [...modal.querySelectorAll('a[href], button:not([disabled]), input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+    .filter((element) => !element.closest('[hidden]'));
+  if (!focusable.length) {
+    event.preventDefault();
+    modal.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
   }
 });
 window.addEventListener('hashchange', () => {
   const page = location.hash.slice(1);
   if (state.accessToken && page && page !== state.page) navigate(page);
 });
+
+const accessibilityObserver = new MutationObserver(() => {
+  enhanceFormAccessibility(app);
+  enhanceFormAccessibility(modalRoot);
+});
+accessibilityObserver.observe(app, { childList: true, subtree: true });
+accessibilityObserver.observe(modalRoot, { childList: true, subtree: true });
 
 initialize();

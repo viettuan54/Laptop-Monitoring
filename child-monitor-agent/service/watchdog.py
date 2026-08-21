@@ -19,6 +19,31 @@ from runtime_paths import agent_root
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 
+# WM_WTSSESSION_CHANGE event values from the Windows SDK.  pywin32 does not
+# expose these constants consistently across versions.
+WTS_CONSOLE_CONNECT = 0x1
+WTS_CONSOLE_DISCONNECT = 0x2
+WTS_REMOTE_CONNECT = 0x3
+WTS_REMOTE_DISCONNECT = 0x4
+WTS_SESSION_LOGON = 0x5
+WTS_SESSION_LOGOFF = 0x6
+WTS_SESSION_LOCK = 0x7
+WTS_SESSION_UNLOCK = 0x8
+
+ACTIVE_SESSION_EVENTS = frozenset({
+    WTS_CONSOLE_CONNECT,
+    WTS_REMOTE_CONNECT,
+    WTS_SESSION_LOGON,
+    WTS_SESSION_UNLOCK,
+})
+INACTIVE_SESSION_EVENTS = frozenset({
+    WTS_CONSOLE_DISCONNECT,
+    WTS_REMOTE_DISCONNECT,
+    WTS_SESSION_LOGOFF,
+    WTS_SESSION_LOCK,
+})
+
+
 class Watchdog:
     """Keep the interactive Companion alive in the active Windows session."""
 
@@ -28,6 +53,7 @@ class Watchdog:
         self.companion_process_handle = None
         self.monitor_thread = None
         self.process_lock = threading.Lock()
+        self.session_available = threading.Event()
 
     @staticmethod
     def resolve_companion_command():
@@ -84,8 +110,13 @@ class Watchdog:
         """Prime the first Pipe DACL before its blocking listener is started."""
         session_id = win32ts.WTSGetActiveConsoleSessionId()
         if session_id == 0xFFFFFFFF or session_id == 0:
+            self.session_available.clear()
             logging.info("No active console user session available for initial Pipe DACL.")
             return False
+
+        # Let the watchdog retry token acquisition if Windows is still completing
+        # an otherwise valid interactive logon.
+        self.session_available.set()
 
         user_token, user_sid = self.get_active_session_user_sid(session_id)
         try:
@@ -107,6 +138,9 @@ class Watchdog:
 
     def spawn_companion_process(self):
         """Launch Companion under the active user's token."""
+        if not self.session_available.is_set():
+            logging.debug("Companion spawn skipped because the user session is inactive.")
+            return False
         user_token = None
         primary_token = None
         thread_handle = None
@@ -138,6 +172,9 @@ class Watchdog:
                 win32security.TOKEN_ALL_ACCESS,
                 win32security.TokenPrimary,
             )
+            if not self.session_available.is_set():
+                logging.info("Companion spawn cancelled because the session became inactive.")
+                return False
             process_handle, thread_handle, process_id, _ = (
                 win32process.CreateProcessAsUser(
                     primary_token,
@@ -155,6 +192,21 @@ class Watchdog:
             )
 
             with self.process_lock:
+                # LOCK may race between the pre-create gate and CreateProcessAsUser.
+                # Publish the handle only while the same lock used by termination is
+                # held; otherwise terminate the just-created process immediately.
+                if not self.session_available.is_set():
+                    try:
+                        win32api.TerminateProcess(process_handle, 0)
+                        win32event.WaitForSingleObject(process_handle, 5000)
+                    finally:
+                        process_handle.Close()
+                        process_handle = None
+                    logging.info(
+                        "Discarded Companion PID=%s created during session lock.",
+                        process_id,
+                    )
+                    return False
                 self._close_process_handle_locked()
                 self.companion_process_handle = process_handle
             logging.info(
@@ -207,6 +259,20 @@ class Watchdog:
             event,
             session_id,
         )
+        if event in INACTIVE_SESSION_EVENTS:
+            # A locked/disconnected desktop is not active screen time.  Clear the
+            # gate before terminating so the watchdog cannot immediately respawn.
+            self.session_available.clear()
+            if self.pipe_server:
+                self.pipe_server.recreate_pipe(new_user_sid=None)
+            self.terminate_companion_process()
+            return
+
+        if event not in ACTIVE_SESSION_EVENTS:
+            logging.debug("Ignoring unsupported session-change event: %s", event)
+            return
+
+        self.session_available.set()
         user_token, user_sid = self.get_active_session_user_sid(session_id)
         try:
             if self.pipe_server and user_sid:
@@ -237,6 +303,9 @@ class Watchdog:
     def _watchdog_loop(self):
         while self.running:
             try:
+                if not self.session_available.is_set():
+                    time.sleep(1)
+                    continue
                 with self.process_lock:
                     process_handle = self.companion_process_handle
                 if not process_handle:

@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy lần lượt toàn bộ migration đến `migration_v18.sql`. Với database hiện có, tối thiểu phải chạy:
+Chạy lần lượt toàn bộ migration đến `migration_v19.sql`. Với database hiện có, tối thiểu phải chạy:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql
@@ -26,9 +26,12 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v15.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v16.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v17.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v18.sql
+psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v19.sql
 ```
 
 `migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ; `migration_v17.sql` lưu nguồn/độ tin cậy của nhãn website và đánh dấu các dòng cần backfill; `migration_v18.sql` thêm index cho snapshot domain đã phân loại dùng khi Agent đồng bộ policy chặn.
+`migration_v19.sql` chuyển thời gian telemetry sang `TIMESTAMPTZ`, giữ log sáu tháng và chuẩn bị dữ liệu cho báo cáo theo ngày/tháng ở múi giờ Việt Nam.
+
 Hãy dùng role sở hữu schema (thường là `postgres`), vì role chỉ được `GRANT` quyền đọc/ghi không thể chạy `ALTER TABLE`.
 
 API chính sách dành cho phụ huynh:
@@ -37,6 +40,10 @@ API chính sách dành cho phụ huynh:
 - `PUT /api/settings/:child_id`: bật/tắt từng cờ bằng giá trị boolean.
 - `GET /api/settings/:child_id/policies`: lấy 4 policy ứng dụng và 5 policy website.
 - `PUT /api/settings/:child_id/policies/:resource_type/:category`: cập nhật bằng body `{ "action": "allow" | "block" }`.
+
+API thời gian sử dụng dành cho phụ huynh:
+
+- `GET /api/logs/usage-summary?month=YYYY-MM&device_id=&child_id=`: trả đủ từng ngày trong tháng, `month_total_seconds` và `today_seconds` theo `Asia/Ho_Chi_Minh`. Báo cáo chỉ dùng hoạt động ứng dụng để không đếm đôi thời gian duyệt web. Segment Agent cũ dài quá 120 giây hoặc thuộc tiến trình màn hình khóa `LockApp.exe`/`LogonUI.exe` được giữ trong dữ liệu gốc nhưng loại khỏi tổng và đếm tại `ignored_segment_count`.
 
 API phân loại dành cho Agent (xác thực bằng `X-Device-Secret`):
 

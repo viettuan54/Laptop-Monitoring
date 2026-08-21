@@ -88,8 +88,8 @@ CREATE TABLE IF NOT EXISTS app_usage (
     device_id   INT NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
     app_name    VARCHAR(150) NOT NULL,
     category    app_category DEFAULT 'unknown',
-    start_time  TIMESTAMP NOT NULL,
-    end_time    TIMESTAMP,
+    start_time  TIMESTAMPTZ NOT NULL,
+    end_time    TIMESTAMPTZ,
     duration_seconds INT
 );
 
@@ -99,7 +99,7 @@ CREATE TABLE IF NOT EXISTS website_logs (
     url         VARCHAR(500) NOT NULL,
     domain      VARCHAR(200),
     category    web_category DEFAULT 'unknown',
-    visit_time  TIMESTAMP NOT NULL,
+    visit_time  TIMESTAMPTZ NOT NULL,
     duration_seconds INT,
     page_title  VARCHAR(500)
 );
@@ -414,10 +414,10 @@ USING (
 CREATE OR REPLACE FUNCTION cleanup_old_logs()
 RETURNS void AS $$
 BEGIN
-    DELETE FROM app_usage WHERE start_time < NOW() - INTERVAL '30 days';
-    DELETE FROM website_logs WHERE visit_time < NOW() - INTERVAL '30 days';
-    DELETE FROM ai_analysis WHERE analyzed_at < NOW() - INTERVAL '30 days';
-    DELETE FROM alerts WHERE created_at < NOW() - INTERVAL '30 days' AND is_read = TRUE;
+    DELETE FROM app_usage WHERE start_time < NOW() - INTERVAL '6 months';
+    DELETE FROM website_logs WHERE visit_time < NOW() - INTERVAL '6 months';
+    DELETE FROM ai_analysis WHERE analyzed_at < NOW() - INTERVAL '6 months';
+    DELETE FROM alerts WHERE created_at < NOW() - INTERVAL '12 months' AND is_read = TRUE;
 END;
 $$ LANGUAGE plpgsql;
 

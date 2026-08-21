@@ -65,7 +65,26 @@ test('static server, SPA fallback and API proxy work together', async (t) => {
 
   const index = await fetch(`http://127.0.0.1:${webPort}/`);
   assert.equal(index.status, 200);
+  assert.equal(index.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(index.headers.get('x-frame-options'), 'DENY');
+  assert.equal(
+    index.headers.get('permissions-policy'),
+    'camera=(self), microphone=(), geolocation=()'
+  );
+  const contentSecurityPolicy = index.headers.get('content-security-policy') || '';
+  assert.match(contentSecurityPolicy, /script-src 'self'/);
+  assert.match(contentSecurityPolicy, /style-src 'self' 'unsafe-inline'/);
+  assert.match(contentSecurityPolicy, /img-src 'self' data:/);
+  assert.match(contentSecurityPolicy, /connect-src 'self'/);
+  assert.match(contentSecurityPolicy, /frame-ancestors 'none'/);
   assert.match(await index.text(), /id="app"/);
+
+  const jpegAsset = await fetch(
+    `http://127.0.0.1:${webPort}/assets/family-digital-wellbeing.jpg`
+  );
+  assert.equal(jpegAsset.status, 200);
+  assert.equal(jpegAsset.headers.get('content-type'), 'image/jpeg');
+  assert.ok((await jpegAsset.arrayBuffer()).byteLength > 0);
 
   const fallback = await fetch(`http://127.0.0.1:${webPort}/verify?token=demo`);
   assert.equal(fallback.status, 200);
@@ -105,12 +124,16 @@ test('dashboard source covers every backend route group', () => {
     '/settings/',
     '/logs/app',
     '/logs/web',
+    '/logs/usage-summary',
     '/alerts',
     '/notifications/tokens',
     '/notifications/test',
     '/ai-analysis',
     '/agent/heartbeat',
     '/agent/config',
+    '/agent/classification/web/fallback',
+    '/agent/classification/web/unknown-domains',
+    '/agent/classification/web/backfill',
     '/agent/vision-alert',
     '/admin/users',
     '/admin/users/${id}',
@@ -133,6 +156,56 @@ test('dashboard uses Vietnamese locale and Vietnamese primary navigation', () =>
   assert.match(source, /Tổng quan gia đình/);
   assert.match(source, /Quản lý tài khoản/);
   assert.match(source, /Intl\.DateTimeFormat\('vi-VN'/);
+});
+
+test('dashboard uses the blue visual theme', () => {
+  const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+
+  assert.match(html, /<meta name="theme-color" content="#0f2e53"\s*\/?>/i);
+  assert.match(styles, /--forest:\s*#174ea6;/i);
+  assert.match(styles, /--forest-2:\s*#2563eb;/i);
+  assert.match(styles, /--primary-dark:\s*#0f2e53;/i);
+});
+
+test('session refresh is single-flight and logout clears session-scoped state', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+
+  assert.match(source, /let refreshPromise = null;/);
+  assert.match(source, /if \(refreshPromise\) return refreshPromise;/);
+  assert.match(source, /finally \{[\s\S]*?refreshPromise = null;[\s\S]*?\}/);
+
+  const clearSessionStart = source.indexOf('function clearSession()');
+  const clearSessionEnd = source.indexOf('function stopFaceCamera()', clearSessionStart);
+  assert.ok(clearSessionStart >= 0 && clearSessionEnd > clearSessionStart, 'Missing clearSession');
+  const clearSessionSource = source.slice(clearSessionStart, clearSessionEnd);
+
+  for (const key of [
+    'accessToken',
+    'refreshToken',
+    'role',
+    'userId',
+    'children',
+    'devices',
+    'alerts',
+    'analyses',
+    'appLogs',
+    'webLogs',
+    'usageSummary',
+    'adminStats',
+    'adminUsers',
+    'pushTokens',
+    'selectedChildId',
+    'selectedDeviceId',
+    'categoryPolicies',
+    'chat',
+    'agentSecret',
+  ]) {
+    assert.match(clearSessionSource, new RegExp(`\\b${key}:`), `clearSession must reset ${key}`);
+  }
+  for (const storageKey of ['lm_access_token', 'lm_refresh_token', 'lm_role']) {
+    assert.ok(clearSessionSource.includes(`sessionStorage.removeItem('${storageKey}')`));
+  }
 });
 
 test('policy UI exposes and submits both AI classification toggles', () => {
@@ -163,6 +236,16 @@ test('policy UI manages allow and block rules for every app and website category
   assert.match(source, /Agent ghi nhớ tên miền đã được AI phân loại/);
 });
 
+test('activity UI displays and exports blocked or open access status', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+
+  assert.match(source, /const accessStatusLabels = Object\.freeze\(\{[\s\S]*blocked: 'Đã chặn',[\s\S]*open: 'Đang mở'/);
+  assert.match(source, /<th>Trạng thái<\/th>/);
+  assert.match(source, /name="access_status"/);
+  assert.match(source, /accessStatusBadge\(item\.access_status\)/);
+  assert.match(source, /accessStatusLabel\(item\.access_status\)/);
+});
+
 test('activity and device UI expose operational monitoring controls', () => {
   const dashboardSource = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const deviceController = fs.readFileSync(
@@ -176,4 +259,57 @@ test('activity and device UI expose operational monitoring controls', () => {
   assert.match(dashboardSource, /function isDeviceOnline/);
   assert.match(dashboardSource, /Backend đã kết nối/);
   assert.match(deviceController, /last_seen_at/);
+});
+
+test('overview metrics and charts use monthly usage summary with Vietnam date keys', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
+
+  assert.match(source, /usageSummary:\s*emptyUsageSummary\(\)/);
+  assert.match(source, /api\(`\/logs\/usage-summary\?month=\$\{month\}`\)/);
+  assert.match(source, /month_total_seconds/);
+  assert.match(source, /today_seconds/);
+  assert.match(source, /ignored_segment_count/);
+  assert.match(source, /max_valid_agent_segment_seconds/);
+  assert.match(source, /class="usage-quality-note"/);
+  assert.match(source, /Bản ghi gốc vẫn được giữ nguyên/);
+  assert.match(source, /usageDaysInMonth\(usageSummary\)/);
+  assert.match(source, /usageRecentDays\(usageSummary\)/);
+  assert.match(source, /class="usage-month-chart"/);
+  assert.match(source, /class="chart-wrap usage-week-chart"/);
+
+  const localDateKeyStart = source.indexOf('function localDateKey(');
+  const localDateKeyEnd = source.indexOf('function emptyUsageSummary(', localDateKeyStart);
+  assert.ok(localDateKeyStart >= 0 && localDateKeyEnd > localDateKeyStart);
+  const localDateHelpers = source.slice(localDateKeyStart, localDateKeyEnd);
+  assert.match(source, /const USAGE_TIME_ZONE = 'Asia\/Ho_Chi_Minh';/);
+  assert.match(localDateHelpers, /timeZone:\s*USAGE_TIME_ZONE/);
+  assert.match(localDateHelpers, /formatToParts\(date\)/);
+  assert.match(localDateHelpers, /Date\.UTC\(/);
+  assert.match(localDateHelpers, /getUTCDate\(\)/);
+  assert.doesNotMatch(localDateHelpers, /toISOString\(\)/);
+
+  const overviewStart = source.indexOf('async function renderOverview(');
+  const overviewEnd = source.indexOf('function metric(', overviewStart);
+  const overviewSource = source.slice(overviewStart, overviewEnd);
+  assert.doesNotMatch(overviewSource, /toISOString\(\)/);
+  assert.match(overviewSource, /usageSummary\.month_total_seconds/);
+  assert.match(overviewSource, /usageSummary\.today_seconds/);
+  assert.match(styles, /\.usage-month-chart\s*\{/);
+  assert.match(styles, /grid-template-columns:\s*repeat\(var\(--usage-day-count\)/);
+  assert.match(styles, /\.usage-month-scroll\s*\{[\s\S]*?overflow-x:\s*auto/);
+  assert.match(styles, /\.usage-quality-note\s*\{/);
+});
+
+test('modal actions bubble to the delegated handler and activity filters cannot overflow', () => {
+  const dashboardSource = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
+
+  assert.doesNotMatch(dashboardSource, /querySelector\('\.modal'\)\.addEventListener\('click',[^\n]*stopPropagation/);
+  assert.match(dashboardSource, /if \(event\.target === backdrop\) closeModal\(\);/);
+  assert.match(dashboardSource, /if \(action === 'confirm-delete-child'\)[\s\S]*?api\(`\/children\/\$\{id\}`,[\s\S]*?method: 'DELETE'/);
+
+  assert.match(styles, /\.activity-filters\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(styles, /\.field\s*\{[\s\S]*?min-width:\s*0/);
+  assert.match(styles, /\.activity-filters input\[type="datetime-local"\][\s\S]*?max-width:\s*100%/);
 });

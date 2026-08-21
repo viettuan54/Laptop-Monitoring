@@ -14,7 +14,29 @@ const contentTypes = {
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
   '.ico': 'image/x-icon',
+};
+
+const staticSecurityHeaders = {
+  'Content-Security-Policy': [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "connect-src 'self'",
+    "font-src 'self' data:",
+    "media-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+  ].join('; '),
+  'Permissions-Policy': 'camera=(self), microphone=(), geolocation=()',
+  'X-Frame-Options': 'DENY',
 };
 
 function proxyApi(req, res) {
@@ -72,10 +94,11 @@ function serveStatic(req, res) {
         return res.end('Not found');
       }
       res.writeHead(200, {
-        'Content-Type': contentTypes[path.extname(filePath)] || 'application/octet-stream',
+        'Content-Type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
         'Cache-Control': path.basename(filePath) === 'index.html' ? 'no-store' : 'public, max-age=300',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'same-origin',
+        ...staticSecurityHeaders,
       });
       res.end(data);
     });

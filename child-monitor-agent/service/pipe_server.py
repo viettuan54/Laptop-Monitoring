@@ -18,6 +18,10 @@ import win32con
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
+
+MAX_APP_SEGMENT_SECONDS = 120
+NON_USAGE_APPS = frozenset({"lockapp.exe", "logonui.exe"})
+
 class PipeServer:
     PIPE_NAME = r"\\.\pipe\ChildMonitorAgentPipe"
     VISION_ALERT_TYPES = {"posture_warning", "eye_distance_warning"}
@@ -42,6 +46,63 @@ class PipeServer:
         self.classification_queue = queue.Queue()
         self.classification_pending = set()
         self.classification_lock = threading.Lock()
+
+    @staticmethod
+    def validate_app_tracking_payload(message):
+        """Validate the untrusted Companion payload before it affects limits."""
+        app_name = message.get("app_name")
+        start_time = message.get("start_time")
+        end_time = message.get("end_time")
+        duration_seconds = message.get("duration_seconds")
+        client_record_id = message.get("client_record_id")
+
+        if not isinstance(app_name, str):
+            raise ValueError("Invalid app tracking name")
+        app_name = app_name.strip()
+        if (
+            not app_name
+            or len(app_name) > 150
+            or any(ord(char) < 32 or ord(char) == 127 for char in app_name)
+        ):
+            raise ValueError("Invalid app tracking name")
+        if app_name.casefold() in NON_USAGE_APPS:
+            raise ValueError("Locked-session processes are not active usage")
+
+        if (
+            isinstance(duration_seconds, bool)
+            or not isinstance(duration_seconds, int)
+            or duration_seconds <= 0
+            or duration_seconds > MAX_APP_SEGMENT_SECONDS
+        ):
+            raise ValueError("Invalid app tracking duration")
+
+        parsed_times = []
+        for label, value in (("start", start_time), ("end", end_time)):
+            if not isinstance(value, str) or not value or len(value) > 64:
+                raise ValueError(f"Invalid app tracking {label} time")
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError(f"App tracking {label} time must include a UTC offset")
+            parsed_times.append(parsed)
+
+        elapsed_seconds = (parsed_times[1] - parsed_times[0]).total_seconds()
+        if elapsed_seconds <= 0 or elapsed_seconds > MAX_APP_SEGMENT_SECONDS:
+            raise ValueError("Invalid app tracking timestamp interval")
+
+        try:
+            canonical_record_id = str(uuid.UUID(str(client_record_id)))
+        except (ValueError, TypeError, AttributeError):
+            raise ValueError("Invalid app tracking client record ID") from None
+        if canonical_record_id != client_record_id:
+            raise ValueError("App tracking client record ID must be canonical")
+
+        return {
+            "app_name": app_name,
+            "start_time": start_time,
+            "end_time": end_time,
+            "duration_seconds": duration_seconds,
+            "client_record_id": canonical_record_id,
+        }
 
     def _web_classification_enabled(self):
         settings = self.enforcement_core.load_cached_settings()
@@ -366,28 +427,16 @@ class PipeServer:
             tracking_ack = None
 
             if action == "TRACK_APP":
-                app_name = msg.get("app_name")
-                start_time = msg.get("start_time")
-                end_time = msg.get("end_time")
-                duration_seconds = msg.get("duration_seconds", 0)
-                client_record_id = msg.get("client_record_id")
-
-                if app_name and start_time and duration_seconds > 0:
-                    # Ghi vào SQLite offline queue
-                    persisted_id, inserted = self.offline_queue.enqueue_app_log(
-                        app_name=app_name,
-                        start_time=start_time,
-                        end_time=end_time,
-                        duration_seconds=duration_seconds,
-                        category="unknown",
-                        client_record_id=client_record_id
-                    )
-                    if not persisted_id:
-                        raise RuntimeError("Failed to persist app tracking segment")
-                    tracking_ack = persisted_id
-                    # Retry cùng client_record_id không được cộng thời gian lần hai.
-                    if inserted:
-                        self.offline_queue.add_daily_usage(duration_seconds)
+                app_payload = self.validate_app_tracking_payload(msg)
+                # Log + per-day counters commit atomically. A UUID retry cannot
+                # insert the row or add its duration a second time.
+                persisted_id, _ = self.offline_queue.record_app_usage(
+                    category="unknown",
+                    **app_payload,
+                )
+                if not persisted_id:
+                    raise RuntimeError("Failed to persist app tracking segment")
+                tracking_ack = persisted_id
 
             elif action == "TRACK_WEB":
                 url = msg.get("url")

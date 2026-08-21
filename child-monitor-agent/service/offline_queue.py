@@ -4,12 +4,18 @@ import uuid
 import time
 import logging
 import subprocess
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as datetime_time
 
 from runtime_paths import agent_root
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+MAX_APP_SEGMENT_SECONDS = 120
+USAGE_ACCOUNTING_VERSION = 2
+USAGE_REBUILD_DAYS = 2
+NON_USAGE_APPS = frozenset({"lockapp.exe", "logonui.exe"})
 
 
 class ClosingSQLiteConnection(sqlite3.Connection):
@@ -109,6 +115,38 @@ class OfflineQueue:
                 synced INTEGER DEFAULT 0
             )
             """)
+
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS agent_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """)
+
+            accounting_version_row = cursor.execute(
+                "SELECT value FROM agent_metadata WHERE key = 'usage_accounting_version'"
+            ).fetchone()
+            try:
+                accounting_version = int(accounting_version_row[0]) if accounting_version_row else 0
+            except (TypeError, ValueError):
+                accounting_version = 0
+
+            if accounting_version < USAGE_ACCOUNTING_VERSION:
+                repaired_rows, skipped_rows = self._rebuild_recent_daily_usage(
+                    conn,
+                    days=USAGE_REBUILD_DAYS,
+                )
+                cursor.execute(
+                    """INSERT INTO agent_metadata(key, value) VALUES(?, ?)
+                       ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                    ("usage_accounting_version", str(USAGE_ACCOUNTING_VERSION)),
+                )
+                logging.info(
+                    "Rebuilt recent daily usage from %s valid app segment(s); "
+                    "ignored %s invalid/locked-session segment(s).",
+                    repaired_rows,
+                    skipped_rows,
+                )
             conn.commit()
 
     def secure_db_file(self):
@@ -135,6 +173,189 @@ class OfflineQueue:
                 logging.info(f"Secured SQLite database file permission: {self.db_path}")
             except Exception as e:
                 logging.error(f"Failed to secure SQLite file permissions: {e}")
+
+    @staticmethod
+    def _parse_usage_timestamp(value):
+        if not isinstance(value, str) or not value or len(value) > 64:
+            raise ValueError("App usage timestamp is invalid")
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("App usage timestamp must include a UTC offset")
+        return parsed
+
+    @classmethod
+    def split_usage_by_local_date(cls, start_time, end_time, duration_seconds):
+        """Allocate one short active-use segment to its captured local dates.
+
+        The Companion timestamps include the user's real UTC offset.  Using those
+        timestamps, rather than the Service receipt time, prevents delayed records
+        from being charged to a later day.  A segment spanning midnight is divided
+        proportionally while preserving the exact reported duration.
+        """
+        if (
+            isinstance(duration_seconds, bool)
+            or not isinstance(duration_seconds, int)
+            or duration_seconds <= 0
+            or duration_seconds > MAX_APP_SEGMENT_SECONDS
+        ):
+            raise ValueError("App usage duration is outside the accepted segment range")
+
+        start = cls._parse_usage_timestamp(start_time)
+        end = cls._parse_usage_timestamp(end_time)
+        elapsed_seconds = (end - start).total_seconds()
+        if elapsed_seconds <= 0 or elapsed_seconds > MAX_APP_SEGMENT_SECONDS:
+            raise ValueError("App usage timestamp interval is invalid")
+
+        # Keep the calendar boundary of the user offset captured at segment start.
+        local_end = end.astimezone(start.tzinfo)
+        cursor = start
+        wall_parts = []
+        while cursor.date() < local_end.date():
+            next_midnight = datetime.combine(
+                cursor.date() + timedelta(days=1),
+                datetime_time.min,
+                tzinfo=start.tzinfo,
+            )
+            wall_parts.append((cursor.date().isoformat(), (next_midnight - cursor).total_seconds()))
+            cursor = next_midnight
+        wall_parts.append((cursor.date().isoformat(), (local_end - cursor).total_seconds()))
+
+        positive_parts = [(date_key, seconds) for date_key, seconds in wall_parts if seconds > 0]
+        total_wall_seconds = sum(seconds for _, seconds in positive_parts)
+        if not positive_parts or total_wall_seconds <= 0:
+            raise ValueError("App usage interval has no positive duration")
+
+        raw_allocations = [
+            duration_seconds * seconds / total_wall_seconds
+            for _, seconds in positive_parts
+        ]
+        allocated_seconds = [int(value) for value in raw_allocations]
+        remainder = duration_seconds - sum(allocated_seconds)
+        remainder_order = sorted(
+            range(len(raw_allocations)),
+            key=lambda index: raw_allocations[index] - allocated_seconds[index],
+            reverse=True,
+        )
+        for index in remainder_order[:remainder]:
+            allocated_seconds[index] += 1
+
+        allocations = {}
+        for (date_key, _), seconds in zip(positive_parts, allocated_seconds):
+            if seconds > 0:
+                allocations[date_key] = allocations.get(date_key, 0) + seconds
+        return allocations
+
+    @staticmethod
+    def _increment_daily_usage(connection, allocations):
+        for date_key, seconds in allocations.items():
+            connection.execute(
+                """INSERT INTO daily_usage (date, seconds_used)
+                   VALUES (?, ?)
+                   ON CONFLICT(date) DO UPDATE
+                   SET seconds_used = seconds_used + excluded.seconds_used""",
+                (date_key, seconds),
+            )
+
+    def record_app_usage(
+        self,
+        app_name,
+        start_time,
+        end_time,
+        duration_seconds,
+        category="unknown",
+        client_record_id=None,
+    ):
+        """Persist an app segment and its per-day totals atomically and idempotently."""
+        client_record_id = client_record_id or str(uuid.uuid4())
+        allocations = self.split_usage_by_local_date(
+            start_time,
+            end_time,
+            duration_seconds,
+        )
+        with self.get_connection() as conn:
+            cursor = conn.execute(
+                """INSERT OR IGNORE INTO app_logs
+                       (client_record_id, app_name, category, start_time, end_time,
+                        duration_seconds, synced)
+                   VALUES (?, ?, ?, ?, ?, ?, 0)""",
+                (
+                    client_record_id,
+                    app_name,
+                    category,
+                    start_time,
+                    end_time,
+                    duration_seconds,
+                ),
+            )
+            inserted = cursor.rowcount == 1
+            if inserted:
+                self._increment_daily_usage(conn, allocations)
+            conn.commit()
+        return client_record_id, inserted
+
+    def _rebuild_recent_daily_usage(self, connection, days=USAGE_REBUILD_DAYS):
+        """Repair recent totals once when upgrading from receipt-date accounting."""
+        safe_days = max(1, min(int(days), 31))
+        today = datetime.now().date()
+        cutoff = today - timedelta(days=safe_days - 1)
+        scan_from = cutoff - timedelta(days=1)
+        rows = connection.execute(
+            """SELECT client_record_id, app_name, start_time, end_time, duration_seconds
+               FROM app_logs
+               WHERE substr(start_time, 1, 10) >= ?""",
+            (scan_from.isoformat(),),
+        ).fetchall()
+
+        repaired_allocations = {}
+        repaired_rows = 0
+        skipped_rows = 0
+        quarantined_record_ids = []
+        for client_record_id, app_name, start_time, end_time, duration_seconds in rows:
+            if str(app_name or "").casefold() in NON_USAGE_APPS:
+                skipped_rows += 1
+                quarantined_record_ids.append(client_record_id)
+                continue
+            try:
+                allocations = self.split_usage_by_local_date(
+                    start_time,
+                    end_time,
+                    duration_seconds,
+                )
+            except (TypeError, ValueError, OverflowError):
+                skipped_rows += 1
+                quarantined_record_ids.append(client_record_id)
+                continue
+            repaired_rows += 1
+            for date_key, seconds in allocations.items():
+                if cutoff.isoformat() <= date_key <= today.isoformat():
+                    repaired_allocations[date_key] = (
+                        repaired_allocations.get(date_key, 0) + seconds
+                    )
+
+        connection.execute(
+            "DELETE FROM daily_usage WHERE date BETWEEN ? AND ?",
+            (cutoff.isoformat(), today.isoformat()),
+        )
+        if quarantined_record_ids:
+            # These rows represent lock/sleep rather than active use. Marking them
+            # handled keeps a pre-upgrade queue from uploading corrupt totals.
+            for offset in range(0, len(quarantined_record_ids), 500):
+                record_id_chunk = quarantined_record_ids[offset:offset + 500]
+                placeholders = ",".join("?" for _ in record_id_chunk)
+                connection.execute(
+                    f"UPDATE app_logs SET synced = 1 "
+                    f"WHERE client_record_id IN ({placeholders})",
+                    record_id_chunk,
+                )
+        self._increment_daily_usage(connection, repaired_allocations)
+        return repaired_rows, skipped_rows
+
+    def rebuild_recent_daily_usage(self, days=USAGE_REBUILD_DAYS):
+        """Explicit repair hook used by diagnostics and upgrade tests."""
+        with self.get_connection() as conn:
+            result = self._rebuild_recent_daily_usage(conn, days=days)
+            conn.commit()
+            return result
 
     def enqueue_app_log(self, app_name, start_time, end_time=None, duration_seconds=None,
                         category='unknown', client_record_id=None):
@@ -274,9 +495,15 @@ class OfflineQueue:
             logging.error(f"Failed to enqueue vision alert: {e}")
             return None, False
 
-    def add_daily_usage(self, seconds):
+    def add_daily_usage(self, seconds, usage_date=None):
         """Cộng dồn số giây sử dụng máy cho ngày hiện tại (YYYY-MM-DD local)."""
-        today = datetime.now().strftime("%Y-%m-%d")
+        if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0:
+            raise ValueError("Daily usage increment must be a positive integer")
+        date_key = usage_date or datetime.now().strftime("%Y-%m-%d")
+        try:
+            datetime.strptime(date_key, "%Y-%m-%d")
+        except (TypeError, ValueError):
+            raise ValueError("Daily usage date must use YYYY-MM-DD") from None
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
@@ -284,18 +511,18 @@ class OfflineQueue:
                 INSERT INTO daily_usage (date, seconds_used)
                 VALUES (?, ?)
                 ON CONFLICT(date) DO UPDATE SET seconds_used = seconds_used + excluded.seconds_used
-                """, (today, seconds))
+                """, (date_key, seconds))
                 conn.commit()
         except Exception as e:
             logging.error(f"Failed to update daily usage: {e}")
 
-    def get_daily_usage(self):
+    def get_daily_usage(self, usage_date=None):
         """Lấy tổng số giây đã dùng máy hôm nay."""
-        today = datetime.now().strftime("%Y-%m-%d")
+        date_key = usage_date or datetime.now().strftime("%Y-%m-%d")
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute("SELECT seconds_used FROM daily_usage WHERE date = ?", (today,))
+                cursor.execute("SELECT seconds_used FROM daily_usage WHERE date = ?", (date_key,))
                 row = cursor.fetchone()
                 return row[0] if row else 0
         except Exception as e:

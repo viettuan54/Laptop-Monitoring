@@ -3,17 +3,20 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#16352f" />
+    <meta name="theme-color" content="#0f2e53" />
+    <meta name="color-scheme" content="light" />
     <meta
       name="description"
       content="Bảng điều khiển dành cho phụ huynh của hệ thống Laptop Monitor"
     />
     <title>SafeNest — Bảng điều khiển gia đình</title>
+    <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div id="app" aria-live="polite"></div>
-    <div id="toast-root" class="toast-root" aria-live="assertive"></div>
+    <a class="skip-link" href="#page-content">Bỏ qua điều hướng</a>
+    <div id="app"></div>
+    <div id="toast-root" class="toast-root" aria-live="polite" aria-atomic="true"></div>
     <div id="modal-root"></div>
     <script src="/app.js" defer></script>
   </body>

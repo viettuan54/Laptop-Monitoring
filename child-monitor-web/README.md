@@ -32,10 +32,13 @@ Có thể dùng `npm start` nếu PowerShell cho phép chạy npm script. Chạy
   đặt lại mật khẩu, xóa tài khoản.
 - Parent: trẻ em, thiết bị, xoay secret, policy, app/web activity, cảnh báo, AI
   analysis, AI summary và chatbot.
+- Thời gian sử dụng: hiển thị riêng tổng hôm nay, tổng tháng, bảy ngày gần nhất và
+  từng ngày trong tháng từ endpoint tổng hợp; không suy ra tổng từ 200 log gần nhất
+  và không cộng website hai lần với ứng dụng trình duyệt.
 - Chính sách phân loại: bật/tắt phân loại AI và cấu hình Cho phép/Chặn cho từng
   nhóm ứng dụng, website của mỗi hồ sơ trẻ.
 - Vận hành Agent: trạng thái thiết bị online, lần heartbeat gần nhất, hướng dẫn
-  cài Agent 1.0.8 và trạng thái kết nối Backend ngay trên Dashboard.
+  cài Agent 1.0.9 và trạng thái kết nối Backend ngay trên Dashboard.
 - Hoạt động: tìm kiếm, lọc theo thiết bị/danh mục/thời gian, phân trang cục bộ,
   mở liên kết website an toàn và xuất CSV UTF-8.
 - Admin: thống kê, người dùng, blacklist và audit log.

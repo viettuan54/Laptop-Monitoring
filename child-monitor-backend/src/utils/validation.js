@@ -23,6 +23,7 @@ function validatePassword(password) {
 }
 
 const MAX_LOG_DURATION_SECONDS = 24 * 60 * 60;
+const MAX_APP_USAGE_SEGMENT_SECONDS = 120;
 
 /**
  * duration_seconds là tùy chọn, nhưng nếu có phải là số nguyên trong phạm vi
@@ -40,8 +41,27 @@ function validateDurationSeconds(value) {
     );
 }
 
+/**
+ * Foreground AppTracker flushes every 30 seconds. A bounded 120-second window
+ * tolerates scheduler/IPC delays without allowing a lock/suspend gap to become
+ * active screen time.
+ */
+function validateAppUsageDurationSeconds(value) {
+  return value === undefined
+    || value === null
+    || (
+      typeof value === 'number'
+      && Number.isFinite(value)
+      && Number.isInteger(value)
+      && value >= 0
+      && value <= MAX_APP_USAGE_SEGMENT_SECONDS
+    );
+}
+
 module.exports = {
   validatePassword,
   validateDurationSeconds,
   MAX_LOG_DURATION_SECONDS,
+  validateAppUsageDurationSeconds,
+  MAX_APP_USAGE_SEGMENT_SECONDS,
 };
