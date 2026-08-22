@@ -3,11 +3,12 @@ import time
 import json
 import logging
 import queue
+import re
 import threading
 import uuid
 import ctypes
 from ctypes import wintypes
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import win32pipe
@@ -55,6 +56,8 @@ class PipeServer:
         end_time = message.get("end_time")
         duration_seconds = message.get("duration_seconds")
         client_record_id = message.get("client_record_id")
+        product_name = message.get("product_name")
+        file_description = message.get("file_description")
 
         if not isinstance(app_name, str):
             raise ValueError("Invalid app tracking name")
@@ -63,6 +66,8 @@ class PipeServer:
             not app_name
             or len(app_name) > 150
             or any(ord(char) < 32 or ord(char) == 127 for char in app_name)
+            or "/" in app_name
+            or "\\" in app_name
         ):
             raise ValueError("Invalid app tracking name")
         if app_name.casefold() in NON_USAGE_APPS:
@@ -96,13 +101,90 @@ class PipeServer:
         if canonical_record_id != client_record_id:
             raise ValueError("App tracking client record ID must be canonical")
 
+        metadata = {}
+        for field, value in (
+            ("product_name", product_name),
+            ("file_description", file_description),
+        ):
+            if value is None:
+                metadata[field] = None
+                continue
+            if (
+                not isinstance(value, str)
+                or not value.strip()
+                or len(value.strip()) > 150
+                or any(ord(char) < 32 or ord(char) == 127 for char in value)
+                or "\\" in value
+                or re.search(r"(?:^|[^\s])/|/(?:$|[^\s])", value)
+            ):
+                raise ValueError(f"Invalid app tracking {field}")
+            metadata[field] = " ".join(value.strip().split())
+
         return {
             "app_name": app_name,
             "start_time": start_time,
             "end_time": end_time,
             "duration_seconds": duration_seconds,
             "client_record_id": canonical_record_id,
+            **metadata,
         }
+
+    def _app_classification_enabled(self):
+        settings = self.enforcement_core.load_cached_settings()
+        return settings.get("enable_app_classification") is True
+
+    def classify_app(
+        self,
+        app_name,
+        product_name=None,
+        file_description=None,
+        allow_remote_fallback=True,
+    ):
+        """Classify executable identity without blocking the Named Pipe on Gemini."""
+        if not self._app_classification_enabled():
+            return {"category": "unknown", "source": "disabled", "confidence": None}
+
+        if self.content_classifier is not None:
+            try:
+                local_result = self.content_classifier.classify_app(
+                    app_name,
+                    product_name=product_name,
+                    file_description=file_description,
+                )
+                if local_result["label"] is not None:
+                    decision_source = local_result.get("decision_source")
+                    source = (
+                        decision_source
+                        if decision_source in {"exact_lookup", "trained_model", "gemini"}
+                        else "trained_model"
+                    )
+                    return {
+                        "category": local_result["label"],
+                        "source": source,
+                        "confidence": (
+                            None if source == "gemini" else local_result["confidence"]
+                        ),
+                    }
+            except Exception as error:
+                logging.error("Local app classification failed: %s", error)
+
+        if allow_remote_fallback and self.api_client is not None:
+            category = self.api_client.classify_app(
+                app_name,
+                product_name=product_name,
+                file_description=file_description,
+            )
+            if category is not None:
+                if self.content_classifier is not None:
+                    try:
+                        self.content_classifier.remember_app_label(
+                            app_name, category, source="gemini"
+                        )
+                    except Exception as error:
+                        logging.warning("Could not cache Gemini app label: %s", error)
+                return {"category": category, "source": "gemini", "confidence": None}
+
+        return {"category": "unknown", "source": "pending", "confidence": None}
 
     def _web_classification_enabled(self):
         settings = self.enforcement_core.load_cached_settings()
@@ -159,6 +241,61 @@ class PipeServer:
 
         return {"category": "unknown", "source": "pending", "confidence": None}
 
+    def record_blocked_web_attempt(self, domain, scheme="https"):
+        """Persist a real connection redirected to the local block sink."""
+        if scheme not in {"http", "https"}:
+            return False
+        policy = self.enforcement_core.get_web_domain_policy(domain)
+        normalized = policy.get("domain")
+        if not normalized or policy.get("blocked") is not True:
+            return False
+
+        cached_category = policy.get("category")
+        if (
+            self._web_classification_enabled()
+            and cached_category in {"education", "entertainment", "social", "unsafe"}
+        ):
+            classification = {
+                "category": cached_category,
+                "source": "legacy_agent",
+                "confidence": None,
+            }
+        else:
+            classification = self.classify_web_domain(
+                normalized,
+                allow_remote_fallback=False,
+            )
+
+        client_record_id = str(uuid.uuid4())
+        persisted_id, _inserted = self.offline_queue.enqueue_web_log(
+            url=f"{scheme}://{normalized}/",
+            domain=normalized,
+            visit_time=datetime.now(timezone.utc).isoformat(),
+            duration_seconds=0,
+            page_title="Truy cập bị Agent chặn",
+            category=classification["category"],
+            classification_source=classification["source"],
+            classification_confidence=classification["confidence"],
+            client_record_id=client_record_id,
+        )
+        if not persisted_id:
+            return False
+
+        self.enforcement_core.remember_web_classification(
+            normalized,
+            classification["category"],
+            classification["source"],
+        )
+        if classification["source"] == "pending":
+            self._schedule_web_classification(normalized)
+        logging.info(
+            "Recorded blocked website attempt: domain=%s scheme=%s category=%s",
+            normalized,
+            scheme,
+            classification["category"],
+        )
+        return True
+
     def reclassify_unknown_web_logs(self, limit=25):
         """Backfill local and server-side legacy unknown rows while enabled."""
         if not self._web_classification_enabled() or self.api_client is None:
@@ -190,6 +327,50 @@ class PipeServer:
                 updated += 1
         return updated
 
+    def reclassify_unknown_app_logs(self, limit=25):
+        """Backfill local and server-side unknown executable rows while enabled."""
+        if not self._app_classification_enabled() or self.api_client is None:
+            return 0
+        by_name = {}
+        for item in self.offline_queue.get_unknown_apps(limit=limit):
+            if isinstance(item, dict) and item.get("app_name"):
+                by_name[item["app_name"].casefold()] = item
+        for item in self.api_client.get_unknown_apps(limit=limit):
+            if not isinstance(item, dict) or not item.get("app_name"):
+                continue
+            key = item["app_name"].casefold()
+            previous = by_name.get(key, {})
+            by_name[key] = {
+                "app_name": item["app_name"],
+                "product_name": item.get("product_name") or previous.get("product_name"),
+                "file_description": (
+                    item.get("file_description") or previous.get("file_description")
+                ),
+            }
+        updated = 0
+        for item in list(by_name.values())[:limit]:
+            result = self.classify_app(
+                item["app_name"],
+                product_name=item.get("product_name"),
+                file_description=item.get("file_description"),
+            )
+            if result["source"] not in {"exact_lookup", "trained_model", "gemini"}:
+                continue
+            self.offline_queue.update_unknown_app_category(
+                item["app_name"],
+                result["category"],
+                result["source"],
+                result["confidence"],
+            )
+            if self.api_client.backfill_app(
+                item["app_name"],
+                result["category"],
+                result["source"],
+                result["confidence"],
+            ):
+                updated += 1
+        return updated
+
     def _schedule_web_classification(self, domain):
         """Đánh thức worker nền cho một domain vừa có kết quả pending."""
         if not self.running or not self._web_classification_enabled():
@@ -202,53 +383,101 @@ class PipeServer:
         self.classification_queue.put(normalized)
         return True
 
+    def _schedule_app_classification(
+        self, app_name, product_name=None, file_description=None
+    ):
+        """Wake the background worker for one unresolved executable identity."""
+        if not self.running or not self._app_classification_enabled():
+            return False
+        key = ("app", app_name.casefold())
+        with self.classification_lock:
+            if key in self.classification_pending:
+                return False
+            self.classification_pending.add(key)
+        self.classification_queue.put({
+            "kind": "app",
+            "app_name": app_name,
+            "product_name": product_name,
+            "file_description": file_description,
+            "pending_key": key,
+        })
+        return True
+
     def _classification_worker(self):
         """Chạy Gemini fallback ngoài luồng Named Pipe để ACK không bị chậm."""
         while self.running:
             try:
-                domain = self.classification_queue.get(timeout=1)
+                item = self.classification_queue.get(timeout=1)
             except queue.Empty:
                 continue
-            if domain is None:
+            if item is None:
                 self.classification_queue.task_done()
                 break
+            pending_key = item
             try:
-                result = self.classify_web_domain(domain, allow_remote_fallback=True)
-                if result["source"] not in {"trained_model", "gemini"}:
-                    continue
-                self.offline_queue.update_unknown_web_category(
-                    domain,
-                    result["category"],
-                    result["source"],
-                    result["confidence"],
-                )
-                self.enforcement_core.remember_web_classification(
-                    domain,
-                    result["category"],
-                    result["source"],
-                )
-                if self.api_client is not None:
-                    self.api_client.backfill_web_domain(
+                if isinstance(item, dict) and item.get("kind") == "app":
+                    pending_key = item["pending_key"]
+                    result = self.classify_app(
+                        item["app_name"],
+                        product_name=item.get("product_name"),
+                        file_description=item.get("file_description"),
+                        allow_remote_fallback=True,
+                    )
+                    if result["source"] not in {"exact_lookup", "trained_model", "gemini"}:
+                        continue
+                    self.offline_queue.update_unknown_app_category(
+                        item["app_name"],
+                        result["category"],
+                        result["source"],
+                        result["confidence"],
+                    )
+                    if self.api_client is not None:
+                        self.api_client.backfill_app(
+                            item["app_name"],
+                            result["category"],
+                            result["source"],
+                            result["confidence"],
+                        )
+                    logging.info(
+                        "Completed app classification: app=%s category=%s source=%s",
+                        item["app_name"], result["category"], result["source"],
+                    )
+                else:
+                    domain = item
+                    result = self.classify_web_domain(domain, allow_remote_fallback=True)
+                    if result["source"] not in {"trained_model", "gemini"}:
+                        continue
+                    self.offline_queue.update_unknown_web_category(
                         domain,
                         result["category"],
                         result["source"],
                         result["confidence"],
                     )
-                logging.info(
-                    "Completed immediate background classification: domain=%s category=%s source=%s",
-                    domain,
-                    result["category"],
-                    result["source"],
-                )
+                    self.enforcement_core.remember_web_classification(
+                        domain,
+                        result["category"],
+                        result["source"],
+                    )
+                    if self.api_client is not None:
+                        self.api_client.backfill_web_domain(
+                            domain,
+                            result["category"],
+                            result["source"],
+                            result["confidence"],
+                        )
+                    logging.info(
+                        "Completed web classification: domain=%s category=%s source=%s",
+                        domain, result["category"], result["source"],
+                    )
             except Exception as error:
                 logging.error(
-                    "Immediate web classification failed for %s: %s",
-                    domain,
+                    "Immediate content classification failed for %s: %s",
+                    item,
                     error,
                 )
             finally:
                 with self.classification_lock:
-                    self.classification_pending.discard(domain)
+                    self.classification_pending.discard(pending_key)
                 self.classification_queue.task_done()
 
     def create_security_attributes(self, user_sid=None):
@@ -339,7 +568,7 @@ class PipeServer:
         classification_thread = threading.Thread(
             target=self._classification_worker,
             daemon=True,
-            name="WebClassificationWorker",
+            name="ContentClassificationWorker",
         )
         classification_thread.start()
         logging.info("Named Pipe Server thread started.")
@@ -428,15 +657,29 @@ class PipeServer:
 
             if action == "TRACK_APP":
                 app_payload = self.validate_app_tracking_payload(msg)
+                classification = self.classify_app(
+                    app_payload["app_name"],
+                    product_name=app_payload.get("product_name"),
+                    file_description=app_payload.get("file_description"),
+                    allow_remote_fallback=False,
+                )
                 # Log + per-day counters commit atomically. A UUID retry cannot
                 # insert the row or add its duration a second time.
                 persisted_id, _ = self.offline_queue.record_app_usage(
-                    category="unknown",
+                    category=classification["category"],
+                    classification_source=classification["source"],
+                    classification_confidence=classification["confidence"],
                     **app_payload,
                 )
                 if not persisted_id:
                     raise RuntimeError("Failed to persist app tracking segment")
                 tracking_ack = persisted_id
+                if classification["source"] == "pending":
+                    self._schedule_app_classification(
+                        app_payload["app_name"],
+                        product_name=app_payload.get("product_name"),
+                        file_description=app_payload.get("file_description"),
+                    )
 
             elif action == "TRACK_WEB":
                 url = msg.get("url")

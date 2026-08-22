@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy lần lượt toàn bộ migration đến `migration_v19.sql`. Với database hiện có, tối thiểu phải chạy:
+Chạy lần lượt toàn bộ migration đến `migration_v20.sql`. Với database hiện có, tối thiểu phải chạy:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql
@@ -27,10 +27,12 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v16.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v17.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v18.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v19.sql
+psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v20.sql
 ```
 
 `migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ; `migration_v17.sql` lưu nguồn/độ tin cậy của nhãn website và đánh dấu các dòng cần backfill; `migration_v18.sql` thêm index cho snapshot domain đã phân loại dùng khi Agent đồng bộ policy chặn.
 `migration_v19.sql` chuyển thời gian telemetry sang `TIMESTAMPTZ`, giữ log sáu tháng và chuẩn bị dữ liệu cho báo cáo theo ngày/tháng ở múi giờ Việt Nam.
+`migration_v20.sql` lưu ProductName/FileDescription không nhạy cảm, nguồn và độ tin cậy của nhãn ứng dụng; đồng thời tạo index cho app backfill.
 
 Hãy dùng role sở hữu schema (thường là `postgres`), vì role chỉ được `GRANT` quyền đọc/ghi không thể chạy `ALTER TABLE`.
 
@@ -47,6 +49,9 @@ API thời gian sử dụng dành cho phụ huynh:
 
 API phân loại dành cho Agent (xác thực bằng `X-Device-Secret`):
 
+- `POST /api/agent/classification/app/fallback`: nhận `app_name`, `product_name` và `file_description`; không nhận đường dẫn, window title hay nội dung tài liệu.
+- `GET /api/agent/classification/app/unknown-apps`: lấy executable `unknown` cũ của đúng thiết bị để backfill.
+- `POST /api/agent/classification/app/backfill`: lưu nhãn cuối cùng cùng nguồn `exact_lookup`, `trained_model` hoặc `gemini`.
 - `POST /api/agent/classification/web/fallback`: nhận body chỉ có `{ "domain": "example.com" }`; chỉ gọi Gemini khi công tắc website đang bật.
 - `GET /api/agent/classification/web/unknown-domains`: lấy domain `unknown` cũ của đúng thiết bị để backfill.
 - `POST /api/agent/classification/web/backfill`: lưu nhãn cuối cùng cùng `classification_source` và confidence.

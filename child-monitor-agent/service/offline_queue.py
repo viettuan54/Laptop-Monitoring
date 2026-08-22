@@ -54,12 +54,33 @@ class OfflineQueue:
                 client_record_id TEXT PRIMARY KEY,
                 app_name TEXT NOT NULL,
                 category TEXT DEFAULT 'unknown',
+                product_name TEXT,
+                file_description TEXT,
+                classification_source TEXT NOT NULL DEFAULT 'pending',
+                classification_confidence REAL,
                 start_time TEXT NOT NULL,
                 end_time TEXT,
                 duration_seconds INTEGER,
                 synced INTEGER DEFAULT 0
             )
             """)
+            app_columns = {
+                row[1] for row in cursor.execute("PRAGMA table_info(app_logs)").fetchall()
+            }
+            for column, definition in (
+                ("product_name", "TEXT"),
+                ("file_description", "TEXT"),
+                ("classification_source", "TEXT NOT NULL DEFAULT 'pending'"),
+                ("classification_confidence", "REAL"),
+            ):
+                if column not in app_columns:
+                    cursor.execute(f"ALTER TABLE app_logs ADD COLUMN {column} {definition}")
+            cursor.execute(
+                """UPDATE app_logs
+                   SET classification_source = 'legacy_agent'
+                   WHERE category <> 'unknown'
+                     AND classification_source = 'pending'"""
+            )
             
             # Bảng lưu web history offline
             cursor.execute("""
@@ -263,6 +284,10 @@ class OfflineQueue:
         end_time,
         duration_seconds,
         category="unknown",
+        product_name=None,
+        file_description=None,
+        classification_source=None,
+        classification_confidence=None,
         client_record_id=None,
     ):
         """Persist an app segment and its per-day totals atomically and idempotently."""
@@ -272,16 +297,26 @@ class OfflineQueue:
             end_time,
             duration_seconds,
         )
+        if classification_source is None:
+            classification_source = (
+                "pending" if category == "unknown" else "legacy_agent"
+            )
         with self.get_connection() as conn:
             cursor = conn.execute(
                 """INSERT OR IGNORE INTO app_logs
-                       (client_record_id, app_name, category, start_time, end_time,
+                       (client_record_id, app_name, category, product_name,
+                        file_description, classification_source,
+                        classification_confidence, start_time, end_time,
                         duration_seconds, synced)
-                   VALUES (?, ?, ?, ?, ?, ?, 0)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)""",
                 (
                     client_record_id,
                     app_name,
                     category,
+                    product_name,
+                    file_description,
+                    classification_source,
+                    classification_confidence,
                     start_time,
                     end_time,
                     duration_seconds,
@@ -357,24 +392,105 @@ class OfflineQueue:
             conn.commit()
             return result
 
-    def enqueue_app_log(self, app_name, start_time, end_time=None, duration_seconds=None,
-                        category='unknown', client_record_id=None):
+    def enqueue_app_log(
+        self,
+        app_name,
+        start_time,
+        end_time=None,
+        duration_seconds=None,
+        category='unknown',
+        product_name=None,
+        file_description=None,
+        classification_source=None,
+        classification_confidence=None,
+        client_record_id=None,
+    ):
         """Thêm log sử dụng app vào SQLite local và tự sinh client_record_id."""
         client_record_id = client_record_id or str(uuid.uuid4())
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                if classification_source is None:
+                    classification_source = (
+                        "pending" if category == "unknown" else "legacy_agent"
+                    )
                 cursor.execute("""
                 INSERT OR IGNORE INTO app_logs
-                    (client_record_id, app_name, category, start_time, end_time, duration_seconds, synced)
-                VALUES (?, ?, ?, ?, ?, ?, 0)
-                """, (client_record_id, app_name, category, start_time, end_time, duration_seconds))
+                    (client_record_id, app_name, category, product_name,
+                     file_description, classification_source,
+                     classification_confidence, start_time, end_time,
+                     duration_seconds, synced)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """, (
+                    client_record_id,
+                    app_name,
+                    category,
+                    product_name,
+                    file_description,
+                    classification_source,
+                    classification_confidence,
+                    start_time,
+                    end_time,
+                    duration_seconds,
+                ))
                 inserted = cursor.rowcount == 1
                 conn.commit()
             return client_record_id, inserted
         except Exception as e:
             logging.error(f"Failed to enqueue app log: {e}")
             return None, False
+
+    def get_unknown_apps(self, limit=25):
+        """Return distinct local executables still awaiting classification."""
+        safe_limit = max(1, min(int(limit), 100))
+        try:
+            with self.get_connection() as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """SELECT app_name, MAX(product_name) AS product_name,
+                              MAX(file_description) AS file_description
+                       FROM app_logs
+                       WHERE category = 'unknown'
+                         AND classification_source IN ('pending', 'disabled')
+                       GROUP BY lower(app_name)
+                       ORDER BY lower(app_name)
+                       LIMIT ?""",
+                    (safe_limit,),
+                ).fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            logging.error(f"Failed to read unknown apps: {e}")
+            return []
+
+    def update_unknown_app_category(
+        self, app_name, category, classification_source, classification_confidence=None
+    ):
+        """Backfill local app rows without overwriting an existing final label."""
+        if category not in {"learning", "entertainment", "browsers", "unknown"}:
+            return 0
+        if classification_source not in {"exact_lookup", "trained_model", "gemini"}:
+            return 0
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    """UPDATE app_logs
+                       SET category = ?, classification_source = ?,
+                           classification_confidence = ?
+                       WHERE category = 'unknown'
+                         AND classification_source IN ('pending', 'disabled')
+                         AND lower(app_name) = lower(?)""",
+                    (
+                        category,
+                        classification_source,
+                        classification_confidence,
+                        app_name,
+                    ),
+                )
+                conn.commit()
+                return cursor.rowcount
+        except Exception as e:
+            logging.error(f"Failed to backfill local app category: {e}")
+            return 0
 
     def enqueue_web_log(self, url, domain, visit_time, duration_seconds=None,
                         page_title=None, category='unknown', client_record_id=None,
@@ -568,6 +684,10 @@ class OfflineQueue:
                         "client_record_id": row["client_record_id"],
                         "app_name": row["app_name"],
                         "category": row["category"],
+                        "product_name": row["product_name"],
+                        "file_description": row["file_description"],
+                        "classification_source": row["classification_source"],
+                        "classification_confidence": row["classification_confidence"],
                         "start_time": row["start_time"],
                         "end_time": row["end_time"],
                         "duration_seconds": row["duration_seconds"]

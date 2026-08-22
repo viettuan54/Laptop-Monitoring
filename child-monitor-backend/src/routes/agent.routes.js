@@ -29,6 +29,21 @@ router.post(
   deviceAuth,
   agentController.backfillWebDomain
 );
+router.post(
+  '/classification/app/fallback',
+  deviceAuth,
+  agentController.classifyAppFallback
+);
+router.get(
+  '/classification/app/unknown-apps',
+  deviceAuth,
+  agentController.getUnknownApps
+);
+router.post(
+  '/classification/app/backfill',
+  deviceAuth,
+  agentController.backfillApp
+);
 
 // ── Vision Alert: Agent gửi kết quả Computer Vision (chỉ metadata, không ảnh)
 // alert_type: posture_warning | stranger_detected | eye_distance_warning

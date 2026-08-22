@@ -530,6 +530,57 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
   const openBrowser = appActivity.body.data.find((row) => row.app_name === 'msedge.exe');
   assert.equal(openBrowser.access_status, 'open');
 
+  const pendingAppName = `study-${Date.now()}.exe`;
+  const pendingAppRecordId = crypto.randomUUID();
+  const pendingAppInsert = await request('/api/logs/app/batch', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: JSON.stringify({ records: [{
+      client_record_id: pendingAppRecordId,
+      app_name: pendingAppName,
+      category: 'unknown',
+      product_name: 'Study Classroom',
+      file_description: 'Learning application',
+      classification_source: 'disabled',
+      classification_confidence: null,
+      start_time: new Date().toISOString(),
+      duration_seconds: 15,
+    }] }),
+  });
+  assert.equal(pendingAppInsert.status, 201);
+
+  const unknownApps = await request('/api/agent/classification/app/unknown-apps?limit=25', {
+    headers: agentHeaders,
+  });
+  assert.equal(unknownApps.status, 200);
+  assert.ok(unknownApps.body.apps.some((item) => item.app_name === pendingAppName));
+
+  const appBackfill = await request('/api/agent/classification/app/backfill', {
+    method: 'POST',
+    headers: agentHeaders,
+    body: JSON.stringify({
+      app_name: pendingAppName,
+      category: 'learning',
+      classification_source: 'trained_model',
+      classification_confidence: 0.91,
+    }),
+  });
+  assert.equal(appBackfill.status, 200);
+  assert.equal(appBackfill.body.updated, 1);
+  const classifiedAppRow = await adminPool.query(
+    `SELECT category::text AS category, classification_source,
+            classification_confidence, product_name
+     FROM app_usage
+     WHERE device_id = $1 AND client_record_id = $2`,
+    [deviceOne, pendingAppRecordId]
+  );
+  assert.deepEqual(classifiedAppRow.rows[0], {
+    category: 'learning',
+    classification_source: 'trained_model',
+    classification_confidence: 0.91,
+    product_name: 'Study Classroom',
+  });
+
   const domain = `legacy-${Date.now()}.example.test`;
   const clientRecordId = crypto.randomUUID();
   const inserted = await request('/api/logs/web/batch', {

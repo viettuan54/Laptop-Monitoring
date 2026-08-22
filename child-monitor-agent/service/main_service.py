@@ -25,6 +25,7 @@ from api_client import APIClient
 from offline_queue import OfflineQueue
 from enforcement_core import EnforcementCore
 from pipe_server import PipeServer
+from blocked_web_monitor import BlockedWebAttemptMonitor
 from content_classifier import ContentClassifier, verify_packaged_content_assets
 from watchdog import Watchdog
 from runtime_paths import agent_root
@@ -92,6 +93,7 @@ class ChildMonitorService(ServiceBaseClass):
         self.pipe_server = None
         self.watchdog = None
         self.content_classifier = None
+        self.blocked_web_monitor = None
 
     def SvcStop(self):
         if win32service:
@@ -100,6 +102,8 @@ class ChildMonitorService(ServiceBaseClass):
         self.stop_event.set()
         if self.pipe_server:
             self.pipe_server.stop()
+        if self.blocked_web_monitor:
+            self.blocked_web_monitor.stop()
         if self.watchdog:
             self.watchdog.stop()
 
@@ -145,7 +149,7 @@ class ChildMonitorService(ServiceBaseClass):
         self.enforcement_core.apply_cached_web_policy()
         try:
             self.content_classifier = ContentClassifier()
-            logging.info("Approved website content model loaded.")
+            logging.info("Approved app and website content models loaded.")
         except Exception as error:
             # Gemini remains available as a fallback, but the release self-test
             # prevents a production installer from shipping without the model.
@@ -156,6 +160,11 @@ class ChildMonitorService(ServiceBaseClass):
             api_client=self.api_client,
             content_classifier=self.content_classifier,
             vision_subject_id=self.api_client.vision_subject_id,
+        )
+        self.blocked_web_monitor = BlockedWebAttemptMonitor(
+            attempt_callback=self.pipe_server.record_blocked_web_attempt,
+            is_blocked_callback=self.enforcement_core.is_web_domain_blocked,
+            listen_address=self.enforcement_core.BLOCK_SINK_ADDRESS,
         )
         
         # Truyền reference của pipe_server vào Watchdog để tái tạo DACL khi đổi session
@@ -168,6 +177,7 @@ class ChildMonitorService(ServiceBaseClass):
 
         # 1. Khởi chạy Named Pipe Server
         self.pipe_server.start()
+        self.blocked_web_monitor.start()
 
         # 2. Khởi chạy Watchdog (spawn Companion & theo dõi session)
         self.watchdog.start()
@@ -205,7 +215,7 @@ class ChildMonitorService(ServiceBaseClass):
         # the Named Pipe tracking thread.
         threading.Thread(
             target=run_forever,
-            args=("WebClassificationBackfillLoop", self._web_backfill_loop_step, 600),
+            args=("ContentClassificationBackfillLoop", self._content_backfill_loop_step, 600),
             daemon=True,
         ).start()
 
@@ -274,11 +284,16 @@ class ChildMonitorService(ServiceBaseClass):
         """Offline Log Sync Loop (60s): Đồng bộ log trong SQLite queue lên backend."""
         self.offline_queue.sync_offline_data(self.api_client)
 
-    def _web_backfill_loop_step(self):
-        """Reclassify a bounded set of legacy unknown website rows."""
-        updated = self.pipe_server.reclassify_unknown_web_logs(limit=25)
-        if updated:
-            logging.info("Backfilled %s unknown website domain(s).", updated)
+    def _content_backfill_loop_step(self):
+        """Reclassify bounded sets of legacy unknown app and website rows."""
+        app_updated = self.pipe_server.reclassify_unknown_app_logs(limit=25)
+        web_updated = self.pipe_server.reclassify_unknown_web_logs(limit=25)
+        if app_updated or web_updated:
+            logging.info(
+                "Backfilled content classifications: apps=%s websites=%s.",
+                app_updated,
+                web_updated,
+            )
 
 def run_standalone():
     logging.info("Starting ChildMonitorService in Standalone / Dev mode...")

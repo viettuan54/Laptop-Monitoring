@@ -49,7 +49,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.9"
+  -Version "1.0.10"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -57,14 +57,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.9.exe
+build\output\ChildMonitorSetup-1.0.10.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.9" `
+  -Version "1.0.10" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -100,7 +100,7 @@ Installer sẽ:
 Máy cài đặt offline có thể truyền `-Wheelhouse <đường-dẫn>` chứa các wheel đã
 tải trước.
 
-## Phân loại nội dung website
+## Phân loại nội dung ứng dụng và website
 
 Installer đóng gói `web_content_model_v1.json`, `app_content_model_v1.json` và
 `app_exact_lookup_v1.json` cùng checksum SHA-256. Self-test của Service sẽ dừng
@@ -112,8 +112,20 @@ model website cục bộ. Kết quả có confidence từ `0.70` được lưu v
 lưu nguồn `gemini`. Khi công tắc tắt, Agent không gọi model/Gemini và lưu trạng
 thái `disabled`, vì vậy quyền truy cập web vẫn hoạt động bình thường.
 
-Mỗi 10 phút Agent lấy tối đa 25 domain `unknown` cũ ở queue cục bộ và backend để
-phân loại lại. Backfill chỉ cập nhật bản ghi còn `pending/disabled`, không ghi đè
+Khi `enable_app_classification=true`, Companion đọc tên process cùng
+`ProductName`/`FileDescription` từ version resource của executable; không gửi
+đường dẫn file, window title, tên tài liệu hay URL. Service phân loại theo thứ tự:
+
+1. `app_exact_lookup_v1.json` đã duyệt thủ công (`exact_lookup`, confidence `1.0`).
+2. Ensemble app-name + executable metadata đã qua deployment gate
+   (`trained_model`, confidence từ `0.70`).
+3. Gemini fallback nền khi thiếu metadata hoặc model chưa đủ confidence.
+
+Nhãn ứng dụng, nguồn và confidence được lưu trong SQLite trước khi ACK Named Pipe,
+sau đó đồng bộ idempotent lên Backend. Gemini không giữ luồng foreground tracking.
+
+Mỗi 10 phút Agent lấy tối đa 25 app và 25 domain `unknown` cũ ở queue cục bộ và
+backend để phân loại lại. Backfill chỉ cập nhật bản ghi còn `pending/disabled`, không ghi đè
 nhãn đã có. Riêng domain mới có confidence cục bộ thấp được đưa ngay vào worker
 nền để gọi Gemini mà không giữ luồng Named Pipe; vì vậy quyết định chặn không phải
 đợi vòng backfill định kỳ.

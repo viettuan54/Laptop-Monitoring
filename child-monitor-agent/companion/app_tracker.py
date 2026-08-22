@@ -1,9 +1,11 @@
 import time
 import logging
+import re
 import uuid
 from datetime import datetime
 import win32gui
 import win32process
+import win32api
 import psutil
 
 # Cấu hình logging
@@ -17,6 +19,7 @@ class AppTracker:
     def __init__(self, pipe_client):
         self.pipe_client = pipe_client
         self.current_app = None
+        self.current_app_metadata = {}
         self.app_start_time = None
         self.app_start_monotonic = None
         self.min_duration_seconds = 3 # Ngưỡng lọc nhiễu 3 giây
@@ -47,10 +50,12 @@ class AppTracker:
                 "start_time": self.app_start_time.astimezone().isoformat(),
                 "end_time": end_time.astimezone().isoformat(),
                 "duration_seconds": duration,
+                **self.current_app_metadata,
             })
 
     def _reset_current_segment(self):
         self.current_app = None
+        self.current_app_metadata = {}
         self.app_start_time = None
         self.app_start_monotonic = None
 
@@ -115,6 +120,62 @@ class AppTracker:
         except Exception:
             return None
 
+    @staticmethod
+    def get_foreground_app_metadata(expected_app_name=None):
+        """Read non-sensitive executable version metadata for model inference.
+
+        Window titles and executable paths are deliberately not returned or sent.
+        """
+        try:
+            hwnd = win32gui.GetForegroundWindow()
+            if not hwnd:
+                return {}
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            if pid <= 0:
+                return {}
+            process = psutil.Process(pid)
+            if (
+                expected_app_name
+                and process.name().casefold() != expected_app_name.casefold()
+            ):
+                return {}
+            executable_path = process.exe()
+            translations = win32api.GetFileVersionInfo(
+                executable_path, r"\VarFileInfo\Translation"
+            )
+            language_pairs = translations or [(0x0409, 0x04B0)]
+            metadata = {}
+            for field, payload_key in (
+                ("ProductName", "product_name"),
+                ("FileDescription", "file_description"),
+            ):
+                value = None
+                for language, codepage in language_pairs:
+                    try:
+                        value = win32api.GetFileVersionInfo(
+                            executable_path,
+                            rf"\StringFileInfo\{language:04X}{codepage:04X}\{field}",
+                        )
+                    except Exception:
+                        continue
+                    if isinstance(value, str) and value.strip():
+                        break
+                if isinstance(value, str):
+                    raw_value = value.strip()
+                    if any(
+                        ord(character) < 32 or ord(character) == 127
+                        for character in raw_value
+                    ) or "\\" in raw_value or re.search(
+                        r"(?:^|[^\s])/|/(?:$|[^\s])", raw_value
+                    ):
+                        continue
+                    value = " ".join(raw_value.split())[:150]
+                    if value:
+                        metadata[payload_key] = value
+            return metadata
+        except Exception:
+            return {}
+
     def poll(self):
         """Hàm kiểm tra cửa sổ active định kỳ."""
         app_name = self.get_foreground_app_name()
@@ -149,6 +210,7 @@ class AppTracker:
 
         if self.current_app is None:
             self.current_app = app_name
+            self.current_app_metadata = self.get_foreground_app_metadata(app_name)
             self.app_start_time = now
             self.app_start_monotonic = now_monotonic
             self.last_poll_time = now
@@ -161,6 +223,7 @@ class AppTracker:
         if app_name != self.current_app or elapsed >= self.flush_interval_seconds:
             self._queue_current_segment(now, now_monotonic)
             self.current_app = app_name
+            self.current_app_metadata = self.get_foreground_app_metadata(app_name)
             self.app_start_time = now
             self.app_start_monotonic = now_monotonic
 

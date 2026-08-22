@@ -45,6 +45,67 @@ class FakePipeClient:
 
 
 class AppTrackingAcknowledgementTest(unittest.TestCase):
+    def test_reads_only_bounded_executable_version_metadata(self):
+        process = Mock()
+        process.name.return_value = "study.exe"
+        process.exe.return_value = r"C:\Program Files\Study\study.exe"
+
+        def version_info(_path, key):
+            if key == r"\VarFileInfo\Translation":
+                return [(0x0409, 0x04B0)]
+            if key.endswith(r"\ProductName"):
+                return "Study Classroom"
+            if key.endswith(r"\FileDescription"):
+                return "Learning utility"
+            raise RuntimeError(key)
+
+        with patch.object(app_tracker_module.win32gui, "GetForegroundWindow", return_value=1), \
+             patch.object(
+                 app_tracker_module.win32process,
+                 "GetWindowThreadProcessId",
+                 return_value=(1, 42),
+             ), patch.object(app_tracker_module.psutil, "Process", return_value=process), \
+             patch.object(
+                 app_tracker_module.win32api,
+                 "GetFileVersionInfo",
+                 side_effect=version_info,
+             ):
+            metadata = AppTracker.get_foreground_app_metadata("study.exe")
+
+        self.assertEqual(metadata, {
+            "product_name": "Study Classroom",
+            "file_description": "Learning utility",
+        })
+
+    def test_executable_version_metadata_never_exposes_a_path(self):
+        process = Mock()
+        process.name.return_value = "study.exe"
+        process.exe.return_value = r"C:\\Program Files\\Study\\study.exe"
+
+        def version_info(_path, key):
+            if key == r"\VarFileInfo\Translation":
+                return [(0x0409, 0x04B0)]
+            if key.endswith(r"\ProductName"):
+                return r"C:\\Program Files\\Study"
+            if key.endswith(r"\FileDescription"):
+                return "Learning utility"
+            raise RuntimeError(key)
+
+        with patch.object(app_tracker_module.win32gui, "GetForegroundWindow", return_value=1), \
+             patch.object(
+                 app_tracker_module.win32process,
+                 "GetWindowThreadProcessId",
+                 return_value=(1, 42),
+             ), patch.object(app_tracker_module.psutil, "Process", return_value=process), \
+             patch.object(
+                 app_tracker_module.win32api,
+                 "GetFileVersionInfo",
+                 side_effect=version_info,
+             ):
+            metadata = AppTracker.get_foreground_app_metadata("study.exe")
+
+        self.assertEqual(metadata, {"file_description": "Learning utility"})
+
     def test_retryable_pipe_error_does_not_drop_pending_app_segment(self):
         record_id = "app-record-1"
         pipe_client = FakePipeClient([

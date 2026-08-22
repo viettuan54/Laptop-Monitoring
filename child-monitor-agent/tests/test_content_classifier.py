@@ -18,6 +18,40 @@ from pipe_server import PipeServer
 
 
 CLASSES = ["education", "entertainment", "social", "unsafe", "unknown"]
+APP_CLASSES = ["learning", "entertainment", "browsers", "unknown"]
+
+
+def write_json_asset(models_dir, name, payload):
+    path = os.path.join(models_dir, name)
+    encoded = json.dumps(payload, sort_keys=True).encode("utf-8")
+    with open(path, "wb") as stream:
+        stream.write(encoded)
+    with open(path + ".sha256", "w", encoding="ascii") as stream:
+        stream.write(hashlib.sha256(encoded).hexdigest() + "\n")
+    return path
+
+
+def app_branch(discriminative_features):
+    likelihoods = {}
+    for feature in discriminative_features:
+        likelihoods[feature] = {
+            label: (0.0 if label == "learning" else -10.0)
+            for label in APP_CLASSES
+        }
+    return {
+        "model_version": "1.2.0",
+        "model_type": "char_ngram_multinomial_nb",
+        "resource_type": "apps",
+        "classes": APP_CLASSES,
+        "key_field": "app_name",
+        "confidence_threshold": 0.7,
+        "temperature": 1.0,
+        "feature_config": {"minimum_n": 2, "maximum_n": 2},
+        "class_log_prior": {label: math.log(0.25) for label in APP_CLASSES},
+        "default_log_likelihood": {label: -10.0 for label in APP_CLASSES},
+        "feature_log_likelihood": likelihoods,
+        "deployment_approved": False,
+    }
 
 
 def write_test_model(models_dir):
@@ -43,12 +77,31 @@ def write_test_model(models_dir):
         },
         "deployment_approved": True,
     }
-    path = os.path.join(models_dir, "web_content_model_v1.json")
-    payload = json.dumps(model, sort_keys=True).encode("utf-8")
-    with open(path, "wb") as stream:
-        stream.write(payload)
-    with open(path + ".sha256", "w", encoding="ascii") as stream:
-        stream.write(hashlib.sha256(payload).hexdigest() + "\n")
+    path = write_json_asset(models_dir, "web_content_model_v1.json", model)
+    app_model = {
+        "model_version": "1.2.0",
+        "model_type": "app_metadata_char_ngram_ensemble",
+        "resource_type": "apps",
+        "classes": APP_CLASSES,
+        "key_field": "app_name",
+        "metadata_field": "display_name",
+        "runtime_metadata_fields": ["product_name", "file_description"],
+        "confidence_threshold": 0.7,
+        "app_name_weight": 0.6,
+        "ensemble_temperature": 1.0,
+        "name_model": app_branch(["token:learn", "stem-part:learn"]),
+        "metadata_model": app_branch(["token:learning"]),
+        "deployment_approved": True,
+    }
+    write_json_asset(models_dir, "app_content_model_v1.json", app_model)
+    write_json_asset(models_dir, "app_exact_lookup_v1.json", {
+        "lookup_version": "1.0.0",
+        "resource_type": "apps",
+        "key_field": "app_name",
+        "classes": APP_CLASSES,
+        "record_count": 1,
+        "labels": {"known.exe": "learning"},
+    })
     return path
 
 
@@ -72,6 +125,38 @@ class ContentClassifierTest(unittest.TestCase):
             with self.assertRaises(ContentModelError):
                 ContentClassifier(models_dir)
 
+    def test_reviewed_app_exact_lookup_is_authoritative_without_metadata(self):
+        with tempfile.TemporaryDirectory() as models_dir:
+            write_test_model(models_dir)
+            classifier = ContentClassifier(models_dir)
+            result = classifier.classify_app("KNOWN.EXE")
+
+        self.assertEqual(result["label"], "learning")
+        self.assertEqual(result["decision_source"], "exact_lookup")
+        self.assertEqual(result["confidence"], 1.0)
+
+    def test_app_ensemble_uses_executable_metadata_and_enforces_threshold(self):
+        with tempfile.TemporaryDirectory() as models_dir:
+            write_test_model(models_dir)
+            classifier = ContentClassifier(models_dir)
+            result = classifier.classify_app(
+                "learn.exe", product_name="Learning Classroom"
+            )
+
+        self.assertEqual(result["label"], "learning")
+        self.assertEqual(result["decision_source"], "trained_model")
+        self.assertGreaterEqual(result["confidence"], 0.7)
+
+    def test_app_ensemble_requires_runtime_metadata_for_non_exact_app(self):
+        with tempfile.TemporaryDirectory() as models_dir:
+            write_test_model(models_dir)
+            classifier = ContentClassifier(models_dir)
+            result = classifier.classify_app("learn.exe")
+
+        self.assertIsNone(result["label"])
+        self.assertTrue(result["requires_gemini"])
+        self.assertEqual(result["reason"], "runtime_metadata_missing")
+
     def test_switch_off_skips_both_local_model_and_gemini(self):
         enforcement = Mock()
         enforcement.load_cached_settings.return_value = {
@@ -86,6 +171,57 @@ class ContentClassifierTest(unittest.TestCase):
         self.assertEqual(result["source"], "disabled")
         classifier.classify_web.assert_not_called()
         api_client.classify_web_domain.assert_not_called()
+
+    def test_app_classification_uses_local_exact_lookup_before_gemini(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_app_classification": True
+        }
+        classifier = Mock()
+        classifier.classify_app.return_value = {
+            "label": "browsers",
+            "confidence": 1.0,
+            "decision_source": "exact_lookup",
+        }
+        api_client = Mock()
+        server = PipeServer(Mock(), enforcement, api_client, classifier)
+
+        result = server.classify_app("msedge.exe")
+
+        self.assertEqual(result, {
+            "category": "browsers",
+            "source": "exact_lookup",
+            "confidence": 1.0,
+        })
+        api_client.classify_app.assert_not_called()
+
+    def test_app_low_confidence_uses_metadata_only_gemini_fallback(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_app_classification": True
+        }
+        classifier = Mock()
+        classifier.classify_app.return_value = {"label": None, "confidence": 0.55}
+        api_client = Mock()
+        api_client.classify_app.return_value = "learning"
+        server = PipeServer(Mock(), enforcement, api_client, classifier)
+
+        result = server.classify_app(
+            "study.exe",
+            product_name="Study Tool",
+            file_description="Learning application",
+        )
+
+        self.assertEqual(result["category"], "learning")
+        self.assertEqual(result["source"], "gemini")
+        api_client.classify_app.assert_called_once_with(
+            "study.exe",
+            product_name="Study Tool",
+            file_description="Learning application",
+        )
+        classifier.remember_app_label.assert_called_once_with(
+            "study.exe", "learning", source="gemini"
+        )
 
     def test_low_confidence_uses_domain_only_gemini_fallback(self):
         enforcement = Mock()
@@ -215,6 +351,8 @@ class ContentClassifierTest(unittest.TestCase):
 
         invalid_payloads = [
             {**valid, "app_name": "LockApp.exe"},
+            {**valid, "app_name": r"C:\\Apps\\browser.exe"},
+            {**valid, "product_name": r"C:\\Apps\\Browser"},
             {**valid, "duration_seconds": 121},
             {**valid, "duration_seconds": True},
             {**valid, "start_time": "2026-08-19T08:00:00"},
@@ -298,6 +436,43 @@ class ContentClassifierTest(unittest.TestCase):
             "gamevui.vn",
             "unknown",
             "pending",
+        )
+
+    def test_pending_app_segment_is_persisted_then_scheduled_for_fallback(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {
+            "enable_app_classification": True,
+        }
+        enforcement.check_policy_status.return_value = (False, "OK", 3600)
+        classifier = Mock()
+        classifier.classify_app.return_value = {"label": None, "confidence": 0.4}
+        queue = Mock()
+        record_id = "b1f3f954-b0e4-4a32-8dc4-218a36c9a7ce"
+        queue.record_app_usage.return_value = (record_id, True)
+        server = PipeServer(queue, enforcement, Mock(), classifier)
+        server._schedule_app_classification = Mock(return_value=True)
+        message = json.dumps({
+            "action": "TRACK_APP",
+            "app_name": "study.exe",
+            "product_name": "Study Tool",
+            "file_description": "Learning application",
+            "start_time": "2026-08-19T08:00:00+07:00",
+            "end_time": "2026-08-19T08:00:30+07:00",
+            "duration_seconds": 30,
+            "client_record_id": record_id,
+        })
+
+        with patch("pipe_server.win32file.WriteFile"):
+            server._process_client_message(message, 123)
+
+        queue.record_app_usage.assert_called_once()
+        saved = queue.record_app_usage.call_args.kwargs
+        self.assertEqual(saved["classification_source"], "pending")
+        self.assertEqual(saved["product_name"], "Study Tool")
+        server._schedule_app_classification.assert_called_once_with(
+            "study.exe",
+            product_name="Study Tool",
+            file_description="Learning application",
         )
 
     def test_background_worker_finalizes_and_enforces_gemini_result(self):

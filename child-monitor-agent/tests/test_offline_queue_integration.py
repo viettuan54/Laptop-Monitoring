@@ -109,6 +109,40 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         self.assertFalse(second_inserted)
         self.assertEqual(self.queue.get_daily_usage("2026-08-19"), 30)
 
+    def test_unknown_app_rows_are_backfilled_with_metadata_and_provenance(self):
+        record_id = str(uuid.uuid4())
+        self.queue.record_app_usage(
+            "study.exe",
+            "2026-08-19T08:00:00+07:00",
+            "2026-08-19T08:00:30+07:00",
+            30,
+            product_name="Study Classroom",
+            file_description="Learning utility",
+            classification_source="pending",
+            client_record_id=record_id,
+        )
+
+        unknown = self.queue.get_unknown_apps()
+        self.assertEqual(unknown, [{
+            "app_name": "study.exe",
+            "product_name": "Study Classroom",
+            "file_description": "Learning utility",
+        }])
+        updated = self.queue.update_unknown_app_category(
+            "study.exe", "learning", "trained_model", 0.91
+        )
+        self.assertEqual(updated, 1)
+        self.assertEqual(self.queue.get_unknown_apps(), [])
+        with self.queue.get_connection() as connection:
+            row = connection.execute(
+                """SELECT category, classification_source, classification_confidence
+                   FROM app_logs WHERE client_record_id = ?""",
+                (record_id,),
+            ).fetchone()
+        self.assertEqual(row[0], "learning")
+        self.assertEqual(row[1], "trained_model")
+        self.assertAlmostEqual(row[2], 0.91)
+
     def test_rebuild_recent_usage_removes_overnight_and_lock_screen_corruption(self):
         local_tz = datetime.now().astimezone().tzinfo
         today = datetime.now().date()
@@ -253,6 +287,28 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
 
         self.assertEqual(self._synced_state(), {first_id: 1, second_id: 0})
         self.assertEqual(len(api.calls), 1)
+
+    def test_app_sync_includes_classifier_inputs_and_provenance(self):
+        record_id, inserted = self.queue.enqueue_app_log(
+            "study.exe",
+            "2026-01-01T00:00:00Z",
+            duration_seconds=10,
+            category="learning",
+            product_name="Study Classroom",
+            file_description="Learning utility",
+            classification_source="trained_model",
+            classification_confidence=0.93,
+            client_record_id="classified-app",
+        )
+        self.assertTrue(inserted)
+        api = FakeApiClient([record_id])
+
+        self.queue._sync_apps(api)
+
+        record = api.calls[0][1]["records"][0]
+        self.assertEqual(record["product_name"], "Study Classroom")
+        self.assertEqual(record["classification_source"], "trained_model")
+        self.assertAlmostEqual(record["classification_confidence"], 0.93)
 
     def test_missing_acknowledgement_keeps_the_local_queue_unchanged(self):
         record_id, inserted = self.queue.enqueue_app_log(

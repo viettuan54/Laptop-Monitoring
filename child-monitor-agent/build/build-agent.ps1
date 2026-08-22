@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.9",
+    [string]$Version = "1.0.10",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -106,7 +106,7 @@ Invoke-Checked $PythonExe "-c" (
     "assert mediapipe.__version__ == '0.10.33'"
 )
 
-foreach ($directory in @($WorkRoot, $DistRoot, $ReleaseRoot, $OutputRoot)) {
+foreach ($directory in @($WorkRoot, $DistRoot, $ReleaseRoot)) {
     Remove-BuildDirectory $directory
 }
 foreach ($directory in @(

@@ -1,8 +1,12 @@
 const { adminPool } = require('../config/db');
 const { sendPushNotification } = require('../services/notification.service');
 const {
+  APP_CATEGORIES,
   WEB_CATEGORIES,
+  classifyAppWithGemini,
   classifyWebDomainWithGemini,
+  normalizeAppContext,
+  normalizeAppName,
   normalizeDomain,
 } = require('../services/contentClassification.service');
 const { getAgentPolicySnapshot } = require('../services/agentPolicy.service');
@@ -82,6 +86,131 @@ async function isWebClassificationEnabled(childId) {
   );
   return result.rows[0]?.enable_web_classification === true;
 }
+
+async function isAppClassificationEnabled(childId) {
+  const result = await adminPool.query(
+    'SELECT enable_app_classification FROM settings WHERE child_id = $1',
+    [childId]
+  );
+  return result.rows[0]?.enable_app_classification === true;
+}
+
+// POST /api/agent/classification/app/fallback
+// Chỉ nhận tên executable và metadata version-resource không nhạy cảm.
+exports.classifyAppFallback = async (req, res) => {
+  let appContext;
+  try {
+    appContext = normalizeAppContext(req.body);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+  try {
+    if (!await isAppClassificationEnabled(req.device.child_id)) {
+      return res.status(409).json({ message: 'App classification is disabled' });
+    }
+    const result = await classifyAppWithGemini(appContext);
+    return res.json({
+      app_name: result.app_name,
+      category: result.category,
+      classification_source: result.source,
+    });
+  } catch (error) {
+    if (error.code === 'GEMINI_NOT_CONFIGURED') {
+      return res.status(503).json({ message: 'Gemini fallback is not configured' });
+    }
+    console.error('App classification fallback error:', error);
+    return res.status(502).json({ message: 'Gemini classification failed' });
+  }
+};
+
+// GET /api/agent/classification/app/unknown-apps
+exports.getUnknownApps = async (req, res) => {
+  const parsedLimit = Number.parseInt(req.query.limit, 10);
+  const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(parsedLimit, 100)) : 25;
+  try {
+    if (!await isAppClassificationEnabled(req.device.child_id)) {
+      return res.json({ enabled: false, apps: [] });
+    }
+    const result = await adminPool.query(
+      `SELECT DISTINCT ON (lower(app_name))
+              app_name, product_name, file_description
+       FROM app_usage
+       WHERE device_id = $1
+         AND category = 'unknown'
+         AND classification_source IN ('pending', 'disabled')
+       ORDER BY lower(app_name), start_time DESC, log_id DESC
+       LIMIT $2`,
+      [req.device.device_id, limit]
+    );
+    const apps = [];
+    for (const row of result.rows) {
+      try {
+        apps.push({
+          app_name: normalizeAppName(row.app_name),
+          product_name: row.product_name || null,
+          file_description: row.file_description || null,
+        });
+      } catch (error) {
+        // Invalid legacy identifiers never reach Gemini.
+      }
+    }
+    return res.json({ enabled: true, apps });
+  } catch (error) {
+    console.error('Get unknown apps error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// POST /api/agent/classification/app/backfill
+exports.backfillApp = async (req, res) => {
+  let appName;
+  try {
+    appName = normalizeAppName(req.body?.app_name);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+  const category = req.body?.category;
+  const source = req.body?.classification_source;
+  const confidence = req.body?.classification_confidence;
+  if (!APP_CATEGORIES.includes(category)) {
+    return res.status(400).json({ message: 'category is outside the app taxonomy' });
+  }
+  if (!['exact_lookup', 'trained_model', 'gemini'].includes(source)) {
+    return res.status(400).json({ message: 'classification_source is invalid' });
+  }
+  if (
+    confidence !== null && confidence !== undefined
+    && (typeof confidence !== 'number' || confidence < 0 || confidence > 1)
+  ) {
+    return res.status(400).json({ message: 'classification_confidence is invalid' });
+  }
+  if (source === 'exact_lookup' && confidence !== 1) {
+    return res.status(400).json({ message: 'exact_lookup confidence must be 1' });
+  }
+  if (source === 'trained_model' && (confidence === null || confidence < 0.7)) {
+    return res.status(400).json({ message: 'trained_model confidence must be at least 0.7' });
+  }
+  try {
+    if (!await isAppClassificationEnabled(req.device.child_id)) {
+      return res.status(409).json({ message: 'App classification is disabled' });
+    }
+    const result = await adminPool.query(
+      `UPDATE app_usage
+       SET category = $1,
+           classification_source = $2,
+           classification_confidence = $3
+       WHERE device_id = $4
+         AND category = 'unknown'
+         AND classification_source IN ('pending', 'disabled')
+         AND lower(app_name) = $5`,
+      [category, source, confidence ?? null, req.device.device_id, appName]
+    );
+    return res.json({ app_name: appName, category, updated: result.rowCount ?? 0 });
+  } catch (error) {
+    console.error('Backfill app error:', error);
+    return res.status(500).json({ message: 'Internal server error' });
+  }
+};
 
 // POST /api/agent/classification/web/fallback
 // Body chỉ chứa domain; URL, page title và lịch sử duyệt web không được gửi Gemini.

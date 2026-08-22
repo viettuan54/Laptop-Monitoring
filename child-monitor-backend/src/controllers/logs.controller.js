@@ -17,6 +17,7 @@ const { appendAccessStatuses } = require('../services/activityAccessStatus.servi
 // ────────────────────────────────────────────────────────────────
 const BATCH_MAX_RECORDS = 100;
 const WEB_CATEGORIES = ['education', 'entertainment', 'social', 'unsafe', 'unknown'];
+const APP_CATEGORIES = ['learning', 'entertainment', 'browsers', 'unknown'];
 const AGENT_CLASSIFICATION_SOURCES = [
   'pending',
   'disabled',
@@ -24,6 +25,7 @@ const AGENT_CLASSIFICATION_SOURCES = [
   'gemini',
   'legacy_agent',
 ];
+const APP_CLASSIFICATION_SOURCES = [...AGENT_CLASSIFICATION_SOURCES, 'exact_lookup'];
 
 function defaultWebClassificationSource(category, source) {
   if (source) return source;
@@ -60,12 +62,87 @@ function validateWebClassification(category, source, confidence) {
   return null;
 }
 
+function defaultAppClassificationSource(category, source) {
+  if (source) return source;
+  return (category || 'unknown') === 'unknown' ? 'pending' : 'legacy_agent';
+}
+
+function validateAppClassification(category, source, confidence) {
+  const normalizedCategory = category || 'unknown';
+  const normalizedSource = defaultAppClassificationSource(normalizedCategory, source);
+  const normalizedConfidence = confidence === undefined ? null : confidence;
+  if (!APP_CATEGORIES.includes(normalizedCategory)) return 'category is invalid';
+  if (!APP_CLASSIFICATION_SOURCES.includes(normalizedSource)) {
+    return 'classification_source is invalid';
+  }
+  if (
+    normalizedConfidence !== null
+    && (typeof normalizedConfidence !== 'number'
+      || normalizedConfidence < 0 || normalizedConfidence > 1)
+  ) {
+    return 'classification_confidence is invalid';
+  }
+  if (['pending', 'disabled'].includes(normalizedSource) && normalizedCategory !== 'unknown') {
+    return 'pending or disabled classification must use category unknown';
+  }
+  if (normalizedSource === 'legacy_agent' && normalizedCategory === 'unknown') {
+    return 'legacy_agent classification must use a known category';
+  }
+  if (normalizedSource === 'exact_lookup' && normalizedConfidence !== 1) {
+    return 'exact_lookup confidence must be 1';
+  }
+  if (
+    normalizedSource === 'trained_model'
+    && (normalizedConfidence === null || normalizedConfidence < 0.7)
+  ) {
+    return 'trained_model confidence must be at least 0.7';
+  }
+  return null;
+}
+
+function normalizeOptionalAppMetadata(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (typeof value !== 'string') return undefined;
+  if (
+    /[\x00-\x1f\x7f\\]/.test(value)
+    || /(?:^|[^\s])\/|\/(?:$|[^\s])/.test(value)
+  ) return undefined;
+  const normalized = value.trim().replace(/\s+/g, ' ');
+  if (!normalized || normalized.length > 150) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function normalizeExecutableName(value) {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.normalize('NFKC').trim();
+  if (
+    !normalized
+    || normalized.length > 150
+    || /[\x00-\x1f\x7f\\/]/.test(normalized)
+  ) {
+    return undefined;
+  }
+  return normalized;
+}
+
 // ────────────────────────────────────────────────────────────────
 // POST /api/logs/app  – Agent (laptop con) gửi dữ liệu app usage
 // Xác thực bằng X-Device-Secret, KHÔNG dùng JWT phụ huynh
 // ────────────────────────────────────────────────────────────────
 exports.logAppUsage = async (req, res) => {
-  const { app_name, category, start_time, end_time, duration_seconds } = req.body;
+  const {
+    app_name,
+    category,
+    product_name,
+    file_description,
+    classification_source,
+    classification_confidence,
+    start_time,
+    end_time,
+    duration_seconds,
+  } = req.body;
 
   // device_id lấy từ req.device (đã được deviceAuth middleware gán)
   const device_id = req.device.device_id;
@@ -74,15 +151,23 @@ exports.logAppUsage = async (req, res) => {
     return res.status(400).json({ message: 'Missing required fields: app_name, start_time' });
   }
 
-  // Đảm bảo không vượt quá độ dài VARCHAR(150) của cột app_name trong DB
-  if (app_name.length > 150) {
-    return res.status(400).json({ message: 'app_name cannot exceed 150 characters' });
+  const normalizedAppName = normalizeExecutableName(app_name);
+  if (normalizedAppName === undefined) {
+    return res.status(400).json({ message: 'Invalid app_name executable identity' });
   }
 
-  // Validate category nếu có
-  const validCategories = ['learning', 'entertainment', 'browsers', 'unknown'];
-  if (category && !validCategories.includes(category)) {
-    return res.status(400).json({ message: `Invalid category. Allowed: ${validCategories.join(', ')}` });
+  const normalizedProductName = normalizeOptionalAppMetadata(product_name);
+  const normalizedFileDescription = normalizeOptionalAppMetadata(file_description);
+  if (normalizedProductName === undefined || normalizedFileDescription === undefined) {
+    return res.status(400).json({ message: 'Invalid executable metadata' });
+  }
+  const classificationError = validateAppClassification(
+    category,
+    classification_source,
+    classification_confidence
+  );
+  if (classificationError) {
+    return res.status(400).json({ message: classificationError });
   }
   if (!validateAppUsageDurationSeconds(duration_seconds)) {
     return res.status(400).json({
@@ -94,9 +179,23 @@ exports.logAppUsage = async (req, res) => {
     // Dùng adminPool vì không có RLS context từ device (device secret ≠ user context)
     // Device đã được xác thực ở middleware → insert trực tiếp theo device_id
     await adminPool.query(
-      `INSERT INTO app_usage(device_id, app_name, category, start_time, end_time, duration_seconds)
-       VALUES($1,$2,$3,$4,$5,$6)`,
-      [device_id, app_name, category || 'unknown', start_time, end_time || null, duration_seconds ?? null]
+      `INSERT INTO app_usage(
+         device_id, app_name, category, product_name, file_description,
+         classification_source, classification_confidence,
+         start_time, end_time, duration_seconds
+       ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        device_id,
+        normalizedAppName,
+        category || 'unknown',
+        normalizedProductName,
+        normalizedFileDescription,
+        defaultAppClassificationSource(category, classification_source),
+        classification_confidence ?? null,
+        start_time,
+        end_time || null,
+        duration_seconds ?? null,
+      ]
     );
     res.status(201).json({ message: 'App usage logged' });
   } catch (error) {
@@ -193,7 +292,9 @@ exports.getAppLogs = async (req, res) => {
 
   try {
     let queryText = `
-      SELECT log_id, device_id, app_name, category, start_time, end_time, duration_seconds
+      SELECT log_id, client_record_id, device_id, app_name, category,
+             product_name, file_description, classification_source,
+             classification_confidence, start_time, end_time, duration_seconds
       FROM app_usage
     `;
     const queryParams = [];
@@ -343,7 +444,6 @@ exports.logAppBatch = async (req, res) => {
     });
   }
 
-  const validCategories = ['learning', 'entertainment', 'browsers', 'unknown'];
   const validRecords = [];
   const skippedReasons = [];
 
@@ -360,16 +460,28 @@ exports.logAppBatch = async (req, res) => {
       skippedReasons.push(`${idx} missing app_name`);
       continue;
     }
-    if (r.app_name.length > 150) {
-      skippedReasons.push(`${idx} app_name exceeds 150 chars`);
+    const appName = normalizeExecutableName(r.app_name);
+    if (appName === undefined) {
+      skippedReasons.push(`${idx} invalid app_name executable identity`);
       continue;
     }
     if (!r.start_time) {
       skippedReasons.push(`${idx} missing start_time`);
       continue;
     }
-    if (r.category && !validCategories.includes(r.category)) {
-      skippedReasons.push(`${idx} invalid category '${r.category}'`);
+    const classificationError = validateAppClassification(
+      r.category,
+      r.classification_source,
+      r.classification_confidence
+    );
+    if (classificationError) {
+      skippedReasons.push(`${idx} ${classificationError}`);
+      continue;
+    }
+    const productName = normalizeOptionalAppMetadata(r.product_name);
+    const fileDescription = normalizeOptionalAppMetadata(r.file_description);
+    if (productName === undefined || fileDescription === undefined) {
+      skippedReasons.push(`${idx} invalid executable metadata`);
       continue;
     }
     if (!validateAppUsageDurationSeconds(r.duration_seconds)) {
@@ -381,8 +493,14 @@ exports.logAppBatch = async (req, res) => {
 
     validRecords.push({
       client_record_id: r.client_record_id.trim().substring(0, 64),
-      app_name:         r.app_name.trim().substring(0, 150),
+      app_name:         appName,
       category:         r.category || 'unknown',
+      product_name:     productName,
+      file_description: fileDescription,
+      classification_source: defaultAppClassificationSource(
+        r.category, r.classification_source
+      ),
+      classification_confidence: r.classification_confidence ?? null,
       start_time:       r.start_time,
       end_time:         r.end_time   || null,
       duration_seconds: r.duration_seconds ?? null,
@@ -406,24 +524,48 @@ exports.logAppBatch = async (req, res) => {
     const clientIds = validRecords.map((r) => r.client_record_id);
     const appNames  = validRecords.map((r) => r.app_name);
     const categories = validRecords.map((r) => r.category);
+    const productNames = validRecords.map((r) => r.product_name);
+    const fileDescriptions = validRecords.map((r) => r.file_description);
+    const classificationSources = validRecords.map((r) => r.classification_source);
+    const classificationConfidences = validRecords.map((r) => r.classification_confidence);
     const startTimes = validRecords.map((r) => r.start_time);
     const endTimes   = validRecords.map((r) => r.end_time);
     const durations  = validRecords.map((r) => r.duration_seconds);
 
     const result = await adminPool.query(
-      `INSERT INTO app_usage(client_record_id, device_id, app_name, category, start_time, end_time, duration_seconds)
+      `INSERT INTO app_usage(
+         client_record_id, device_id, app_name, category, product_name,
+         file_description, classification_source, classification_confidence,
+         start_time, end_time, duration_seconds
+       )
        SELECT
          unnest($1::text[]),
          $2::int,
          unnest($3::text[]),
          unnest($4::app_category[]),
-         unnest($5::timestamptz[]),
-         unnest($6::timestamptz[]),
-         unnest($7::int[])
+         unnest($5::text[]),
+         unnest($6::text[]),
+         unnest($7::text[]),
+         unnest($8::float8[]),
+         unnest($9::timestamptz[]),
+         unnest($10::timestamptz[]),
+         unnest($11::int[])
        ON CONFLICT (client_record_id)
        WHERE client_record_id IS NOT NULL
        DO NOTHING`,
-      [clientIds, device_id, appNames, categories, startTimes, endTimes, durations]
+      [
+        clientIds,
+        device_id,
+        appNames,
+        categories,
+        productNames,
+        fileDescriptions,
+        classificationSources,
+        classificationConfidences,
+        startTimes,
+        endTimes,
+        durations,
+      ]
     );
 
     // result.rowCount = số dòng thực sự được INSERT (sau khi ON CONFLICT DO NOTHING lọc trùng)

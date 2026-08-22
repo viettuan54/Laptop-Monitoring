@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 class EnforcementCore:
     HOSTS_MARKER_START = "# === LAPTOP-MONITOR START ==="
     HOSTS_MARKER_END = "# === LAPTOP-MONITOR END ==="
+    BLOCK_SINK_ADDRESS = "127.0.0.2"
     DOMAIN_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
     WEB_POLICY_CATEGORIES = {
         "education",
@@ -228,6 +229,28 @@ class EnforcementCore:
         self.update_hosts_file(domains)
         return domains
 
+    def get_web_domain_policy(self, domain):
+        """Return the canonical domain, cached category, and current block state."""
+        normalized = self.normalize_domain(domain)
+        if not normalized:
+            return {"domain": None, "category": None, "blocked": False}
+        with self.cache_lock:
+            settings = self.load_cached_settings()
+            classifications = self.load_web_classification_cache()
+            blocked_domains = set(self._effective_blocked_domains(
+                settings,
+                classifications,
+            ))
+            return {
+                "domain": normalized,
+                "category": classifications.get(normalized),
+                "blocked": normalized in blocked_domains,
+            }
+
+    def is_web_domain_blocked(self, domain):
+        """Check a loopback connection host against the effective Agent policy."""
+        return self.get_web_domain_policy(domain)["blocked"]
+
     def update_hosts_file(self, blacklisted_domains):
         """Cập nhật file C:\\Windows\\System32\\drivers\\etc\\hosts để chặn domain cấm chủ động."""
         with self.lock:
@@ -267,9 +290,11 @@ class EnforcementCore:
                 if safe_domains:
                     new_lines.append(f"\n{self.HOSTS_MARKER_START}\n")
                     for clean_domain in safe_domains:
-                        new_lines.append(f"127.0.0.1 {clean_domain}\n")
+                        new_lines.append(f"{self.BLOCK_SINK_ADDRESS} {clean_domain}\n")
                         if not clean_domain.startswith("www."):
-                            new_lines.append(f"127.0.0.1 www.{clean_domain}\n")
+                            new_lines.append(
+                                f"{self.BLOCK_SINK_ADDRESS} www.{clean_domain}\n"
+                            )
                     new_lines.append(f"{self.HOSTS_MARKER_END}\n")
 
                 # Ghi lại file Hosts

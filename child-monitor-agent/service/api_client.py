@@ -13,6 +13,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 DEFAULT_SERVER_URL = "https://api.tuansosad.id.vn"
 WEB_CATEGORIES = {"education", "entertainment", "social", "unsafe", "unknown"}
+APP_CATEGORIES = {"learning", "entertainment", "browsers", "unknown"}
 
 
 class APIClient:
@@ -214,6 +215,72 @@ class APIClient:
         )
         if not res or res.status_code != 200:
             return None
+
+    def classify_app(
+        self, app_name, product_name=None, file_description=None, timeout=20
+    ):
+        """Call Gemini with executable identity metadata only, never window content."""
+        payload = {"app_name": app_name}
+        if product_name:
+            payload["product_name"] = product_name
+        if file_description:
+            payload["file_description"] = file_description
+        res = self.request(
+            "POST",
+            "/api/agent/classification/app/fallback",
+            payload=payload,
+            timeout=timeout,
+            max_retries=1,
+        )
+        if not res or res.status_code != 200:
+            return None
+        try:
+            category = res.json().get("category")
+            return category if category in APP_CATEGORIES else None
+        except (ValueError, AttributeError):
+            logging.error("Invalid app classification fallback response.")
+            return None
+
+    def get_unknown_apps(self, limit=25, timeout=10):
+        """Fetch distinct unknown executable identities for this device."""
+        safe_limit = max(1, min(int(limit), 100))
+        res = self.get(
+            f"/api/agent/classification/app/unknown-apps?limit={safe_limit}",
+            timeout=timeout,
+        )
+        if not res or res.status_code != 200:
+            return []
+        try:
+            apps = res.json().get("apps", [])
+            return [item for item in apps if isinstance(item, dict)][:safe_limit]
+        except (ValueError, AttributeError):
+            logging.error("Invalid unknown-app response.")
+            return []
+
+    def backfill_app(
+        self,
+        app_name,
+        category,
+        classification_source,
+        classification_confidence=None,
+        timeout=10,
+    ):
+        """Apply one final category to old unknown app rows for this device."""
+        if category not in APP_CATEGORIES:
+            return False
+        if classification_source not in {"exact_lookup", "trained_model", "gemini"}:
+            return False
+        res = self.post(
+            "/api/agent/classification/app/backfill",
+            data={
+                "app_name": app_name,
+                "category": category,
+                "classification_source": classification_source,
+                "classification_confidence": classification_confidence,
+            },
+            timeout=timeout,
+        )
+        return bool(res and res.status_code == 200)
         try:
             payload = res.json()
             category = payload.get("category")
