@@ -266,7 +266,8 @@ test('overview metrics and charts use monthly usage summary with Vietnam date ke
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
 
   assert.match(source, /usageSummary:\s*emptyUsageSummary\(\)/);
-  assert.match(source, /api\(`\/logs\/usage-summary\?month=\$\{month\}`\)/);
+  assert.match(source, /`\/logs\/usage-summary\?month=\$\{month\}\$\{childId \? `&child_id=\$\{encodeURIComponent\(childId\)\}` : ''\}`/);
+  assert.match(source, /id="overview-child"/);
   assert.match(source, /month_total_seconds/);
   assert.match(source, /today_seconds/);
   assert.match(source, /ignored_segment_count/);
@@ -312,4 +313,62 @@ test('modal actions bubble to the delegated handler and activity filters cannot 
   assert.match(styles, /\.activity-filters\s*\{[\s\S]*?grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
   assert.match(styles, /\.field\s*\{[\s\S]*?min-width:\s*0/);
   assert.match(styles, /\.activity-filters input\[type="datetime-local"\][\s\S]*?max-width:\s*100%/);
+});
+
+test('redesigned dashboard shell keeps navigation usable on desktop and mobile', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
+  const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+
+  for (const className of [
+    'workspace-card',
+    'topbar-shortcut',
+    'nav-count',
+    'sidebar-profile',
+    'mobile-quick-nav',
+    'mobile-nav-link',
+    'hero-media-insight',
+    'collection-intro',
+    'page-summary-strip',
+  ]) {
+    assert.ok(source.includes(className), `Dashboard markup is missing ${className}`);
+    assert.match(styles, new RegExp(`\\.${className}\\s*(?:[,\\{])`), `Dashboard styles are missing .${className}`);
+  }
+
+  assert.match(styles, /\.mobile-quick-nav\s*\{[\s\S]*?display:\s*none/);
+  assert.match(styles, /@media \(max-width:\s*610px\)[\s\S]*?\.mobile-quick-nav\s*\{[\s\S]*?display:\s*grid/);
+  assert.match(styles, /env\(safe-area-inset-bottom\)/);
+  assert.match(styles, /\.sidebar\s*\{[\s\S]*?overflow-y:\s*auto/);
+  assert.match(html, /viewport-fit=cover/);
+  assert.match(source, /data-page="api-lab"[^>]*>\$\{icons\.lab\}/);
+});
+
+test('redesigned data pages expose summaries, resettable filters and accessible actions', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+
+  assert.match(source, /class="page-summary-strip"/);
+  assert.match(source, /class="collection-intro"/);
+  assert.match(source, /data-action="clear-alert-filter"/);
+  assert.match(source, /data-action="clear-admin-user-filter"/);
+  assert.match(source, /data-action="clear-blacklist-filter"/);
+  assert.match(source, /data-action="clear-audit-filter"/);
+  assert.match(source, /data-action="view-audit"/);
+  assert.match(source, /aria-label="Chỉnh sửa hồ sơ/);
+  assert.match(source, /aria-label="Xóa hồ sơ/);
+  assert.doesNotMatch(source, /style="grid-template-columns:/);
+});
+
+test('dashboard preserves role on startup errors and prevents duplicate sensitive actions', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const initializeStart = source.indexOf('async function initialize()');
+  const initializeEnd = source.indexOf('async function detectRole()', initializeStart);
+  const initializeSource = source.slice(initializeStart, initializeEnd);
+
+  assert.match(initializeSource, /renderStartupError\(error\)/);
+  assert.doesNotMatch(initializeSource, /state\.role\s*=\s*'parent'/);
+  assert.match(source, /const mutationActions = new Set\(/);
+  assert.match(source, /button\.dataset\.busy === 'true'/);
+  assert.match(source, /button\.setAttribute\('aria-busy', 'true'\)/);
+  assert.match(source, /state\.unreadAlertCount/);
+  assert.match(source, /api\('\/alerts\?is_read=false&limit=200'\)/);
 });
