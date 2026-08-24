@@ -150,7 +150,7 @@ class WebTrackingTest(unittest.TestCase):
         )
         with open(tracker.status_path, "r", encoding="utf-8") as stream:
             status = json.load(stream)
-        self.assertEqual(status["agent_version"], "1.0.10")
+        self.assertEqual(status["agent_version"], "1.0.11")
         self.assertEqual(status["records_discovered"], 1)
         self.assertEqual(status["records_forwarded"], 1)
 
@@ -250,6 +250,32 @@ class WebTrackingTest(unittest.TestCase):
         self.assertEqual(queue.web_calls[0]["client_record_id"], record_id)
         response = json.loads(write_file.call_args.args[1].decode("utf-8"))
         self.assertEqual(response["tracking_ack"], record_id)
+
+    def test_service_persists_a_blocked_https_attempt_from_loopback_sink(self):
+        queue = FakeQueue()
+        enforcement = Mock()
+        enforcement.get_web_domain_policy.return_value = {
+            "domain": "gamevui.vn",
+            "category": "entertainment",
+            "blocked": True,
+        }
+        enforcement.load_cached_settings.return_value = {
+            "enable_web_classification": True,
+        }
+        enforcement.remember_web_classification.return_value = True
+        server = PipeServer(queue, enforcement)
+
+        recorded = server.record_blocked_web_attempt("www.gamevui.vn", "https")
+
+        self.assertTrue(recorded)
+        self.assertEqual(len(queue.web_calls), 1)
+        record = queue.web_calls[0]
+        self.assertEqual(record["url"], "https://gamevui.vn/")
+        self.assertEqual(record["domain"], "gamevui.vn")
+        self.assertEqual(record["page_title"], "Truy cập bị Agent chặn")
+        self.assertEqual(record["category"], "entertainment")
+        self.assertEqual(record["classification_source"], "legacy_agent")
+        self.assertEqual(record["duration_seconds"], 0)
 
 
 if __name__ == "__main__":

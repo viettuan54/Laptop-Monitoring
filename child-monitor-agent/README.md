@@ -49,7 +49,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.10"
+  -Version "1.0.11"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -57,14 +57,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.10.exe
+build\output\ChildMonitorSetup-1.0.11.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.10" `
+  -Version "1.0.11" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -123,6 +123,12 @@ Khi `enable_app_classification=true`, Companion đọc tên process cùng
 
 Nhãn ứng dụng, nguồn và confidence được lưu trong SQLite trước khi ACK Named Pipe,
 sau đó đồng bộ idempotent lên Backend. Gemini không giữ luồng foreground tracking.
+
+Website bị chặn qua `hosts` được chuyển tới loopback riêng `127.0.0.2`. Service
+lắng nghe cục bộ trên cổng 80/443 để ghi nhận lượt truy cập thật qua HTTP Host
+hoặc TLS SNI, sau đó vẫn từ chối kết nối. Agent không giải mã HTTPS, không cài
+chứng chỉ và không đọc nội dung trang. Các kết nối phụ cùng domain trong 15 giây
+được gộp thành một bản ghi `Truy cập bị Agent chặn` trên lịch sử hoạt động.
 
 Mỗi 10 phút Agent lấy tối đa 25 app và 25 domain `unknown` cũ ở queue cục bộ và
 backend để phân loại lại. Backfill chỉ cập nhật bản ghi còn `pending/disabled`, không ghi đè

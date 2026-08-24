@@ -145,7 +145,9 @@ class BlockedWebAttemptMonitor:
 
     def _record_attempt(self, domain, scheme):
         now = time.monotonic()
-        key = domain.casefold()
+        key = domain.casefold().rstrip(".")
+        if key.startswith("www."):
+            key = key[4:]
         with self._recent_lock:
             previous = self._recent_attempts.get(key)
             if previous is not None and now - previous < self.dedupe_seconds:

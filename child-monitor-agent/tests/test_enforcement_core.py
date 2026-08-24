@@ -176,6 +176,40 @@ class EnforcementCoreTest(unittest.TestCase):
         )
         self.core.update_hosts_file.assert_not_called()
 
+    def test_block_policy_exposes_cached_category_for_attempt_logging(self):
+        self.core.update_hosts_file = Mock()
+        self.core.save_settings_cache({
+            "enable_web_classification": True,
+            "blocked_web_categories": ["entertainment"],
+        }, [])
+        self.core.remember_web_classification(
+            "gamevui.vn",
+            "entertainment",
+            "trained_model",
+        )
+
+        policy = self.core.get_web_domain_policy("www.gamevui.vn")
+
+        self.assertEqual(policy, {
+            "domain": "gamevui.vn",
+            "category": "entertainment",
+            "blocked": True,
+        })
+
+    def test_hosts_policy_redirects_to_the_dedicated_block_sink(self):
+        self.core.update_hosts_file = EnforcementCore.update_hosts_file.__get__(
+            self.core,
+            EnforcementCore,
+        )
+
+        with patch.object(enforcement_core.os, "system", return_value=0):
+            self.core.update_hosts_file(["gamevui.vn"])
+
+        with open(self.core.hosts_path, "r", encoding="utf-8") as hosts_file:
+            hosts = hosts_file.read()
+        self.assertIn("127.0.0.2 gamevui.vn", hosts)
+        self.assertIn("127.0.0.2 www.gamevui.vn", hosts)
+
 
 if __name__ == "__main__":
     unittest.main()
