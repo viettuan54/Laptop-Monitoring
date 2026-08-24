@@ -5,6 +5,7 @@ const ACCESS_STATUS = Object.freeze({
   BLOCKED: 'blocked',
   OPEN: 'open',
 });
+const LEGACY_BLOCKED_PAGE_TITLE = 'Truy cập bị Agent chặn';
 
 
 function normalizeActivityDomain(value) {
@@ -25,6 +26,18 @@ function domainFromActivity(row) {
   } catch (_error) {
     return null;
   }
+}
+
+
+function sanitizeActivityPresentation(row, resourceType) {
+  if (
+    resourceType === 'web'
+    && typeof row?.page_title === 'string'
+    && row.page_title.trim() === LEGACY_BLOCKED_PAGE_TITLE
+  ) {
+    return { ...row, page_title: null };
+  }
+  return { ...row };
 }
 
 
@@ -91,7 +104,10 @@ async function appendAccessStatuses(db, activityRows, resourceType) {
       .filter((deviceId) => Number.isInteger(deviceId) && deviceId > 0)
   )];
   if (!deviceIds.length) {
-    return activityRows.map((row) => ({ ...row, access_status: ACCESS_STATUS.OPEN }));
+    return activityRows.map((row) => ({
+      ...sanitizeActivityPresentation(row, resourceType),
+      access_status: ACCESS_STATUS.OPEN,
+    }));
   }
 
   const policyResult = await db.query(
@@ -121,7 +137,7 @@ async function appendAccessStatuses(db, activityRows, resourceType) {
   }
 
   return activityRows.map((row) => ({
-    ...row,
+    ...sanitizeActivityPresentation(row, resourceType),
     access_status: resolveAccessStatus(
       row,
       resourceType,
@@ -139,4 +155,5 @@ module.exports = {
   domainFromActivity,
   normalizeActivityDomain,
   resolveAccessStatus,
+  sanitizeActivityPresentation,
 };

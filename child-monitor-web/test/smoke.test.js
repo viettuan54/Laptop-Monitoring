@@ -240,10 +240,13 @@ test('activity UI displays and exports blocked or open access status', () => {
   const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /const accessStatusLabels = Object\.freeze\(\{[\s\S]*blocked: 'Đã chặn',[\s\S]*open: 'Đang mở'/);
-  assert.match(source, /<th>Trạng thái<\/th>/);
+  assert.match(source, /<th>Trạng thái hiện tại<\/th>/);
   assert.match(source, /name="access_status"/);
   assert.match(source, /accessStatusBadge\(item\.access_status\)/);
   assert.match(source, /accessStatusLabel\(item\.access_status\)/);
+  assert.match(source, /function websiteActivityTitle/);
+  assert.match(source, /pageTitle === technicalBlockedTitle/);
+  assert.match(source, /websiteActivityTitle\(item\)/);
 });
 
 test('activity and device UI expose operational monitoring controls', () => {

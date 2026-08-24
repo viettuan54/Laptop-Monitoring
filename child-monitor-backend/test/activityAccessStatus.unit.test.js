@@ -7,6 +7,7 @@ const {
   buildDevicePolicyMap,
   normalizeActivityDomain,
   resolveAccessStatus,
+  sanitizeActivityPresentation,
 } = require('../src/services/activityAccessStatus.service');
 
 
@@ -77,6 +78,17 @@ test('global blacklist blocks a website even when AI classification is disabled'
     new Set(['blocked.example'])
   );
   assert.equal(status, ACCESS_STATUS.BLOCKED);
+});
+
+
+test('removes the legacy Agent block marker from website presentation', () => {
+  const row = sanitizeActivityPresentation({
+    domain: 'gamevui.vn',
+    page_title: 'Truy cập bị Agent chặn',
+  }, 'web');
+
+  assert.equal(row.page_title, null);
+  assert.equal(row.domain, 'gamevui.vn');
 });
 
 

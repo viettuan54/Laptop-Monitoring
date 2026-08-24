@@ -1,0 +1,487 @@
+{
+  "catalog_version": "1.0.0",
+  "reviewed_at": "2026-08-24",
+  "review_scope": "Vietnamese websites with a clear primary purpose under the project taxonomy",
+  "records": [
+    {
+      "resource_type": "websites",
+      "domain": "vnu.edu.vn",
+      "title": "Đại học Quốc gia Hà Nội",
+      "label": "education",
+      "evidence_url": "https://www.vnu.edu.vn/",
+      "label_basis": "Official website of a Vietnamese national university"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "hust.edu.vn",
+      "title": "Đại học Bách khoa Hà Nội",
+      "label": "education",
+      "evidence_url": "https://hust.edu.vn/",
+      "label_basis": "Official university website with admissions and training content"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "neu.edu.vn",
+      "title": "Đại học Kinh tế Quốc dân",
+      "label": "education",
+      "evidence_url": "https://neu.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "ftu.edu.vn",
+      "title": "Trường Đại học Ngoại thương",
+      "label": "education",
+      "evidence_url": "https://ftu.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "ueh.edu.vn",
+      "title": "Đại học Kinh tế Thành phố Hồ Chí Minh",
+      "label": "education",
+      "evidence_url": "https://www.ueh.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "uit.edu.vn",
+      "title": "Trường Đại học Công nghệ Thông tin",
+      "label": "education",
+      "evidence_url": "https://www.uit.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "hcmus.edu.vn",
+      "title": "Trường Đại học Khoa học Tự nhiên ĐHQG-HCM",
+      "label": "education",
+      "evidence_url": "https://hcmus.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "hcmut.edu.vn",
+      "title": "Trường Đại học Bách khoa ĐHQG-HCM",
+      "label": "education",
+      "evidence_url": "https://hcmut.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "hcmute.edu.vn",
+      "title": "Trường Đại học Sư phạm Kỹ thuật Thành phố Hồ Chí Minh",
+      "label": "education",
+      "evidence_url": "https://hcmute.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "rmit.edu.vn",
+      "title": "Đại học RMIT Việt Nam",
+      "label": "education",
+      "evidence_url": "https://www.rmit.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "ctu.edu.vn",
+      "title": "Trường Đại học Cần Thơ",
+      "label": "education",
+      "evidence_url": "https://www.ctu.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "hueuni.edu.vn",
+      "title": "Đại học Huế",
+      "label": "education",
+      "evidence_url": "https://hueuni.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vinhuni.edu.vn",
+      "title": "Trường Đại học Vinh",
+      "label": "education",
+      "evidence_url": "https://vinhuni.edu.vn/",
+      "label_basis": "Official university website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "hocmai.vn",
+      "title": "Hệ thống Giáo dục HOCMAI",
+      "label": "education",
+      "evidence_url": "https://hocmai.vn/",
+      "label_basis": "Vietnamese online learning platform"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "olm.vn",
+      "title": "Nền tảng giáo dục số OLM",
+      "label": "education",
+      "evidence_url": "https://olm.vn/",
+      "label_basis": "Vietnamese online learning platform"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "gamevui.vn",
+      "title": "GameVui",
+      "label": "entertainment",
+      "evidence_url": "https://gamevui.vn/support/about",
+      "label_basis": "Official about page identifies the service as an online games website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "game24h.vn",
+      "title": "Game 24H",
+      "label": "entertainment",
+      "evidence_url": "https://game24h.vn/",
+      "label_basis": "Vietnamese browser-game website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "zingmp3.vn",
+      "title": "Zing MP3",
+      "label": "entertainment",
+      "evidence_url": "https://zingmp3.vn/",
+      "label_basis": "Vietnamese music streaming service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "fptplay.vn",
+      "title": "FPT Play",
+      "label": "entertainment",
+      "evidence_url": "https://fptplay.vn/",
+      "label_basis": "Vietnamese film, television, show and sports streaming service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vieon.vn",
+      "title": "VieON",
+      "label": "entertainment",
+      "evidence_url": "https://vieon.vn/",
+      "label_basis": "Vietnamese film, show and television streaming service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "galaxyplay.vn",
+      "title": "Galaxy Play",
+      "label": "entertainment",
+      "evidence_url": "https://galaxyplay.vn/",
+      "label_basis": "Vietnamese film streaming service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "tv360.vn",
+      "title": "TV360",
+      "label": "entertainment",
+      "evidence_url": "https://tv360.vn/",
+      "label_basis": "Vietnamese television, film and sports streaming service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vtvgo.vn",
+      "title": "VTVgo",
+      "label": "entertainment",
+      "evidence_url": "https://vtvgo.vn/",
+      "label_basis": "Vietnamese online television streaming service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "cliptv.vn",
+      "title": "Clip TV",
+      "label": "entertainment",
+      "evidence_url": "https://cliptv.vn/",
+      "label_basis": "Vietnamese television and film streaming service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "nhac.vn",
+      "title": "Nhac.vn",
+      "label": "entertainment",
+      "evidence_url": "https://nhac.vn/",
+      "label_basis": "Vietnamese music streaming website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "cgv.vn",
+      "title": "CGV Việt Nam",
+      "label": "entertainment",
+      "evidence_url": "https://www.cgv.vn/",
+      "label_basis": "Cinema showtimes and movie entertainment website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "betacinemas.vn",
+      "title": "Beta Cinemas",
+      "label": "entertainment",
+      "evidence_url": "https://www.betacinemas.vn/",
+      "label_basis": "Vietnamese cinema and movie entertainment website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "pops.vn",
+      "title": "POPS",
+      "label": "entertainment",
+      "evidence_url": "https://pops.vn/",
+      "label_basis": "Vietnamese digital comics and entertainment platform"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vtvcab.vn",
+      "title": "VTVcab",
+      "label": "entertainment",
+      "evidence_url": "https://www.vtvcab.vn/",
+      "label_basis": "Vietnamese television and entertainment service"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "bhdstar.vn",
+      "title": "BHD Star Cineplex",
+      "label": "entertainment",
+      "evidence_url": "https://www.bhdstar.vn/",
+      "label_basis": "Vietnamese cinema and movie entertainment website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "voz.vn",
+      "title": "VOZ",
+      "label": "social",
+      "evidence_url": "https://voz.vn/",
+      "label_basis": "Vietnamese discussion forum with user posts and interactions"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "otofun.net.vn",
+      "title": "Mạng xã hội OTOFUN",
+      "label": "social",
+      "evidence_url": "https://www.otofun.net.vn/",
+      "label_basis": "Licensed Vietnamese automotive social network and forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "otosaigon.com",
+      "title": "OtoSaigon",
+      "label": "social",
+      "evidence_url": "https://www.otosaigon.com/",
+      "label_basis": "Vietnamese automotive community forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vnphoto.net",
+      "title": "VNPhoto",
+      "label": "social",
+      "evidence_url": "https://www.vnphoto.net/",
+      "label_basis": "Vietnamese photography community website"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "lamchame.com",
+      "title": "Làm Cha Mẹ",
+      "label": "social",
+      "evidence_url": "https://www.lamchame.com/",
+      "label_basis": "Vietnamese parenting community forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "spiderum.com",
+      "title": "Spiderum",
+      "label": "social",
+      "evidence_url": "https://spiderum.com/",
+      "label_basis": "Vietnamese social publishing and discussion platform"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "viblo.asia",
+      "title": "Viblo",
+      "label": "social",
+      "evidence_url": "https://viblo.asia/",
+      "label_basis": "Vietnamese technology knowledge-sharing community"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "zalo.me",
+      "title": "Zalo",
+      "label": "social",
+      "evidence_url": "https://zalo.me/",
+      "label_basis": "Vietnamese messaging and social communication platform"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "kenhsinhvien.vn",
+      "title": "Kênh Sinh Viên",
+      "label": "social",
+      "evidence_url": "https://kenhsinhvien.vn/",
+      "label_basis": "Vietnamese student community forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "ddth.com",
+      "title": "Diễn đàn Tin học",
+      "label": "social",
+      "evidence_url": "https://www.ddth.com/",
+      "label_basis": "Vietnamese information-technology discussion forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vn-z.vn",
+      "title": "VN-Zoom",
+      "label": "social",
+      "evidence_url": "https://vn-z.vn/",
+      "label_basis": "Vietnamese technology community forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "webtretho.vn",
+      "title": "Webtretho",
+      "label": "social",
+      "evidence_url": "https://www.webtretho.vn/",
+      "label_basis": "Vietnamese women and parenting community"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "techrum.vn",
+      "title": "TECHRUM",
+      "label": "social",
+      "evidence_url": "https://www.techrum.vn/",
+      "label_basis": "Vietnamese technology forum and user community"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "agriviet.com",
+      "title": "Diễn đàn Nông nghiệp Việt Nam",
+      "label": "social",
+      "evidence_url": "https://agriviet.com/f/",
+      "label_basis": "Vietnamese agricultural discussion forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "thegioiseo.com",
+      "title": "Thế Giới SEO",
+      "label": "social",
+      "evidence_url": "https://thegioiseo.com/",
+      "label_basis": "Vietnamese SEO discussion forum"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vnexpress.net",
+      "title": "VnExpress",
+      "label": "unknown",
+      "evidence_url": "https://vnexpress.net/",
+      "label_basis": "General news website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "tuoitre.vn",
+      "title": "Tuổi Trẻ Online",
+      "label": "unknown",
+      "evidence_url": "https://tuoitre.vn/",
+      "label_basis": "General news website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "thanhnien.vn",
+      "title": "Báo Thanh Niên",
+      "label": "unknown",
+      "evidence_url": "https://thanhnien.vn/",
+      "label_basis": "General news website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vietnamnet.vn",
+      "title": "VietNamNet",
+      "label": "unknown",
+      "evidence_url": "https://vietnamnet.vn/",
+      "label_basis": "General news website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "dantri.com.vn",
+      "title": "Báo Dân trí",
+      "label": "unknown",
+      "evidence_url": "https://dantri.com.vn/",
+      "label_basis": "General news website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "laodong.vn",
+      "title": "Báo Lao Động",
+      "label": "unknown",
+      "evidence_url": "https://laodong.vn/",
+      "label_basis": "General news website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "nhandan.vn",
+      "title": "Báo Nhân Dân điện tử",
+      "label": "unknown",
+      "evidence_url": "https://nhandan.vn/",
+      "label_basis": "General news website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "vtv.vn",
+      "title": "Thời báo VTV",
+      "label": "unknown",
+      "evidence_url": "https://vtv.vn/",
+      "label_basis": "General news portal outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "tiki.vn",
+      "title": "Tiki",
+      "label": "unknown",
+      "evidence_url": "https://tiki.vn/",
+      "label_basis": "E-commerce marketplace outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "shopee.vn",
+      "title": "Shopee Việt Nam",
+      "label": "unknown",
+      "evidence_url": "https://shopee.vn/",
+      "label_basis": "E-commerce marketplace outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "lazada.vn",
+      "title": "Lazada Việt Nam",
+      "label": "unknown",
+      "evidence_url": "https://www.lazada.vn/",
+      "label_basis": "E-commerce marketplace outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "chotot.com",
+      "title": "Chợ Tốt",
+      "label": "unknown",
+      "evidence_url": "https://www.chotot.com/",
+      "label_basis": "Online classifieds marketplace outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "thegioididong.com",
+      "title": "Thế Giới Di Động",
+      "label": "unknown",
+      "evidence_url": "https://www.thegioididong.com/",
+      "label_basis": "Retail and e-commerce website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "dienmayxanh.com",
+      "title": "Điện máy XANH",
+      "label": "unknown",
+      "evidence_url": "https://www.dienmayxanh.com/",
+      "label_basis": "Retail and e-commerce website outside the project content taxonomy"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "batdongsan.com.vn",
+      "title": "Batdongsan.com.vn",
+      "label": "unknown",
+      "evidence_url": "https://batdongsan.com.vn/",
+      "label_basis": "Real-estate marketplace outside the project content taxonomy"
+    }
+  ]
+}

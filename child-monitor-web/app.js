@@ -389,6 +389,21 @@ function accessStatusBadge(value) {
   return `<span class="badge access-status-badge ${tone}">${escapeHtml(accessStatusLabel(normalized))}</span>`;
 }
 
+function websiteActivityTitle(item) {
+  const technicalBlockedTitle = 'Truy cập bị Agent chặn';
+  const pageTitle = String(item?.page_title || '').trim();
+  if (!pageTitle || pageTitle === technicalBlockedTitle) {
+    return item?.domain || item?.url || 'Không có tiêu đề';
+  }
+  return pageTitle;
+}
+
+function websiteActivitySubtitle(item) {
+  const domain = String(item?.domain || item?.url || '').trim();
+  const title = websiteActivityTitle(item);
+  return domain && domain.toLowerCase() !== String(title).toLowerCase() ? domain : '';
+}
+
 function safeExternalUrl(value) {
   try {
     const parsed = new URL(value);
@@ -1235,7 +1250,7 @@ async function renderOverview(content) {
         </article>
         <article class="card">
           <div class="card-head"><div><h2>Hoạt động gần đây</h2><p>Các ứng dụng và website mới nhất.</p></div><button class="link-button" data-page="activity">Xem tất cả</button></div>
-          <div class="card-body list">${[...state.appLogs.map((x) => ({ ...x, type: 'app', at: x.start_time, title: x.app_name })), ...state.webLogs.map((x) => ({ ...x, type: 'web', at: x.visit_time, title: x.page_title || x.domain }))].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6).map(activityListItem).join('') || emptyState('↗', 'Chưa có hoạt động', 'Agent sẽ gửi dữ liệu sau khi được cài đặt.')}</div>
+          <div class="card-body list">${[...state.appLogs.map((x) => ({ ...x, type: 'app', at: x.start_time, title: x.app_name })), ...state.webLogs.map((x) => ({ ...x, type: 'web', at: x.visit_time, title: websiteActivityTitle(x) }))].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6).map(activityListItem).join('') || emptyState('↗', 'Chưa có hoạt động', 'Agent sẽ gửi dữ liệu sau khi được cài đặt.')}</div>
         </article>
       </div>
       <aside class="stack">
@@ -1383,7 +1398,7 @@ async function renderActivity(content) {
   const filteredRows = allRows.filter((item) => {
     const text = state.activityTab === 'apps'
       ? `${item.app_name || ''} ${deviceName(item.device_id)}`
-      : `${item.page_title || ''} ${item.domain || ''} ${item.url || ''} ${deviceName(item.device_id)}`;
+      : `${websiteActivityTitle(item)} ${item.domain || ''} ${item.url || ''} ${deviceName(item.device_id)}`;
     return (!search || text.toLowerCase().includes(search))
       && (!filter.category || String(item.category || 'unknown') === String(filter.category))
       && (!filter.access_status || String(item.access_status || 'open') === String(filter.access_status));
@@ -1403,24 +1418,25 @@ async function renderActivity(content) {
     <section class="page-summary-strip" aria-label="Tóm tắt dữ liệu đang hiển thị">
       <div><span class="summary-icon">${icons.activity}</span><span><small>Kết quả phù hợp</small><strong>${filteredRows.length} bản ghi</strong></span></div>
       <div><span class="summary-icon">◷</span><span><small>Tổng thời lượng</small><strong>${duration(filteredDuration)}</strong></span></div>
-      <div><span class="summary-icon">${icons.policy}</span><span><small>Đã bị chặn</small><strong>${blockedCount} lượt</strong></span></div>
+      <div><span class="summary-icon">${icons.policy}</span><span><small>Hiện đang bị chặn</small><strong>${blockedCount} lượt</strong></span></div>
       <div><span class="summary-icon">${icons.device}</span><span><small>Thiết bị có dữ liệu</small><strong>${activeDeviceCount} thiết bị</strong></span></div>
     </section>
     <form id="activity-filter" class="filters activity-filters">
       <div class="field"><label>Tìm kiếm</label><input class="input" name="search" value="${escapeHtml(filter.search || '')}" placeholder="${state.activityTab === 'apps' ? 'Tên ứng dụng' : 'YouTube, tên miền hoặc URL'}"></div>
       <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
       <div class="field"><label>Danh mục</label><select class="select" name="category"><option value="">Tất cả danh mục</option>${categories.map(([value, label]) => `<option value="${value}" ${filter.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
-      <div class="field"><label>Trạng thái</label><select class="select" name="access_status"><option value="">Tất cả trạng thái</option><option value="blocked" ${filter.access_status === 'blocked' ? 'selected' : ''}>Đã chặn</option><option value="open" ${filter.access_status === 'open' ? 'selected' : ''}>Đang mở</option></select></div>
+      <div class="field"><label>Trạng thái hiện tại</label><select class="select" name="access_status"><option value="">Tất cả trạng thái</option><option value="blocked" ${filter.access_status === 'blocked' ? 'selected' : ''}>Đã chặn</option><option value="open" ${filter.access_status === 'open' ? 'selected' : ''}>Đang mở</option></select></div>
       <div class="field"><label>Từ thời điểm</label><input class="input" type="datetime-local" name="start" value="${escapeHtml(filter.start || '')}"></div>
       <div class="field"><label>Đến thời điểm</label><input class="input" type="datetime-local" name="end" value="${escapeHtml(filter.end || '')}"></div>
       <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-activity-filter">Xóa lọc</button><button class="btn" type="submit">Áp dụng</button></div>
     </form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Trạng thái</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Trạng thái</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
+    <section class="table-card"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Trạng thái hiện tại</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Trạng thái hiện tại</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
       if (state.activityTab === 'apps') {
         return `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.start_time)}</td><td>${formatDate(item.end_time)}</td><td>${duration(item.duration_seconds)}</td></tr>`;
       }
       const externalUrl = safeExternalUrl(item.url);
-      return `<tr><td class="cell-title website-cell"><strong>${escapeHtml(item.page_title || item.domain || item.url)}</strong><small>${escapeHtml(item.domain || item.url)}</small>${externalUrl ? `<a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">Mở website ↗</a>` : ''}</td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.visit_time)}</td><td>${escapeHtml(deviceName(item.device_id))}</td><td>${duration(item.duration_seconds)}</td></tr>`;
+      const subtitle = websiteActivitySubtitle(item);
+      return `<tr><td class="cell-title website-cell"><strong>${escapeHtml(websiteActivityTitle(item))}</strong>${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ''}${externalUrl ? `<a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">Mở website ↗</a>` : ''}</td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.visit_time)}</td><td>${escapeHtml(deviceName(item.device_id))}</td><td>${duration(item.duration_seconds)}</td></tr>`;
     }).join('')}</tbody></table></div>${rows.length ? `<div class="table-footer"><span>Hiển thị ${state.activityOffset + 1}–${state.activityOffset + rows.length} / ${filteredRows.length} bản ghi gần nhất</span><div class="pagination"><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${Math.max(0, state.activityOffset - state.activityLimit)}" ${state.activityOffset === 0 ? 'disabled' : ''}>Trước</button><span>Trang ${pageNumber}/${pageCount}</span><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${state.activityOffset + state.activityLimit}" ${state.activityOffset + state.activityLimit >= filteredRows.length ? 'disabled' : ''}>Sau</button></div><span>Tổng ${duration(filteredDuration)}</span></div>` : emptyState('↗', 'Chưa có dữ liệu', 'Hãy đổi bộ lọc hoặc kiểm tra Agent đang hoạt động.')}</section>`;
 }
 
@@ -1433,11 +1449,11 @@ function csvCell(value) {
 function exportActivityCsv() {
   const isApps = state.activityTab === 'apps';
   const headers = isApps
-    ? ['Ứng dụng', 'Danh mục', 'Trạng thái', 'Thiết bị', 'Bắt đầu', 'Kết thúc', 'Thời lượng (giây)']
-    : ['Tiêu đề', 'Tên miền', 'URL', 'Danh mục', 'Trạng thái', 'Thiết bị', 'Truy cập', 'Thời lượng (giây)'];
+    ? ['Ứng dụng', 'Danh mục', 'Trạng thái hiện tại', 'Thiết bị', 'Bắt đầu', 'Kết thúc', 'Thời lượng (giây)']
+    : ['Tiêu đề', 'Tên miền', 'URL', 'Danh mục', 'Trạng thái hiện tại', 'Thiết bị', 'Truy cập', 'Thời lượng (giây)'];
   const records = state.activityViewRows.map((item) => isApps
     ? [item.app_name, categoryLabel(item.category), accessStatusLabel(item.access_status), deviceName(item.device_id), item.start_time, item.end_time, item.duration_seconds]
-    : [item.page_title, item.domain, item.url, categoryLabel(item.category), accessStatusLabel(item.access_status), deviceName(item.device_id), item.visit_time, item.duration_seconds]);
+    : [websiteActivityTitle(item), item.domain, item.url, categoryLabel(item.category), accessStatusLabel(item.access_status), deviceName(item.device_id), item.visit_time, item.duration_seconds]);
   const csv = `\uFEFF${[headers, ...records].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
@@ -1718,7 +1734,7 @@ function deviceForm() {
 function agentGuide() {
   const serviceCommand = 'Get-Service ChildMonitorService';
   const companionCommand = "Get-CimInstance Win32_Process -Filter \"Name='ChildMonitorCompanion.exe'\"";
-  return `<div class="agent-guide"><ol><li><strong>Đăng ký thiết bị</strong><p>Tạo thiết bị trên Dashboard và lưu Device Secret được hiển thị một lần.</p></li><li><strong>Cài Agent 1.0.11 trên VMware</strong><p>Chạy file cài đặt bằng quyền Administrator. Backend URL dùng địa chỉ cố định bên dưới.</p><div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép</button></div></li><li><strong>Kiểm tra sau cài đặt</strong><p>Mở PowerShell Administrator và chạy hai lệnh:</p><div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}">Sao chép</button></div><div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(companionCommand)}">Sao chép</button></div></li><li><strong>Xác nhận dữ liệu</strong><p>Mở một ứng dụng và một trang web mới trong Edge, Chrome hoặc Cốc Cốc, chờ 1–2 phút rồi xem trang Hoạt động.</p></li></ol><div class="guide-note">Cloudflare Named Tunnel và Backend vẫn phải đang chạy để Agent kết nối được tới ${DEFAULT_BACKEND_URL}.</div></div>`;
+  return `<div class="agent-guide"><ol><li><strong>Đăng ký thiết bị</strong><p>Tạo thiết bị trên Dashboard và lưu Device Secret được hiển thị một lần.</p></li><li><strong>Cài Agent 1.0.13 trên VMware</strong><p>Chạy file cài đặt bằng quyền Administrator. Backend URL dùng địa chỉ cố định bên dưới.</p><div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép</button></div></li><li><strong>Kiểm tra sau cài đặt</strong><p>Mở PowerShell Administrator và chạy hai lệnh:</p><div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}">Sao chép</button></div><div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(companionCommand)}">Sao chép</button></div></li><li><strong>Xác nhận dữ liệu</strong><p>Mở một ứng dụng và một trang web mới trong Edge, Chrome hoặc Cốc Cốc, chờ 1–2 phút rồi xem trang Hoạt động.</p></li></ol><div class="guide-note">Cloudflare Named Tunnel và Backend vẫn phải đang chạy để Agent kết nối được tới ${DEFAULT_BACKEND_URL}.</div></div>`;
 }
 
 function confirmModal(title, text, action, id, extra = '') {

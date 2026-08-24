@@ -139,6 +139,8 @@ Nguồn và giấy phép được khai báo tại
   tuyến và cổng thông tin tổng hợp;
 - PhishDestroy active-domain feed (CC0) cho `unsafe`;
 - `reviewed_app_catalog.json` cho tên process Windows đã đối chiếu thủ công.
+- `reviewed_vietnamese_website_catalog.json` cho các website Việt Nam đã đối chiếu
+  thủ công theo mục đích chính và có URL bằng chứng cho từng bản ghi.
 
 Catalog ứng dụng phiên bản `2.0.0` có 200 process, tương ứng 50 mẫu cho mỗi nhãn
 `learning`, `entertainment`, `browsers` và `unknown`. Khi thêm bản ghi phải khai

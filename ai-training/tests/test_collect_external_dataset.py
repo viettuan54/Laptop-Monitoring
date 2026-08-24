@@ -270,6 +270,37 @@ class ExternalDatasetCollectionTest(unittest.TestCase):
         for label in expected_labels:
             self.assertGreaterEqual(counts[label], 50, label)
 
+    def test_project_vietnamese_website_catalog_is_balanced_and_auditable(self):
+        catalog_path = (
+            TRAINING_ROOT
+            / "content_classification"
+            / "reviewed_vietnamese_website_catalog.json"
+        )
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        records = catalog["records"]
+        counts = Counter(record["label"] for record in records)
+
+        self.assertEqual(len(records), 60)
+        self.assertEqual(
+            counts,
+            Counter(
+                {
+                    "education": 15,
+                    "entertainment": 15,
+                    "social": 15,
+                    "unknown": 15,
+                }
+            ),
+        )
+        self.assertEqual(len({record["domain"] for record in records}), len(records))
+        for record in records:
+            self.assertEqual(record["resource_type"], "websites")
+            self.assertTrue(record["evidence_url"].startswith("https://"))
+            self.assertTrue(record["label_basis"].strip())
+
+        gamevui = next(record for record in records if record["domain"] == "gamevui.vn")
+        self.assertEqual(gamevui["label"], "entertainment")
+
 
 if __name__ == "__main__":
     unittest.main()

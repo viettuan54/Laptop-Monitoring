@@ -215,6 +215,13 @@ class APIClient:
         )
         if not res or res.status_code != 200:
             return None
+        try:
+            payload = res.json()
+            category = payload.get("category")
+            return category if category in WEB_CATEGORIES else None
+        except (ValueError, AttributeError):
+            logging.error("Invalid web classification fallback response.")
+            return None
 
     def classify_app(
         self, app_name, product_name=None, file_description=None, timeout=20
@@ -281,13 +288,6 @@ class APIClient:
             timeout=timeout,
         )
         return bool(res and res.status_code == 200)
-        try:
-            payload = res.json()
-            category = payload.get("category")
-            return category if category in WEB_CATEGORIES else None
-        except (ValueError, AttributeError):
-            logging.error("Invalid web classification fallback response.")
-            return None
 
     def get_unknown_web_domains(self, limit=25, timeout=10):
         """Fetch distinct unknown domains belonging to this authenticated device."""

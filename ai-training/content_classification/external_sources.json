@@ -16,6 +16,15 @@
       "label_method": "curated_rule"
     },
     {
+      "id": "reviewed-vietnamese-website-catalog",
+      "kind": "reviewed_json",
+      "path": "reviewed_vietnamese_website_catalog.json",
+      "license": "project-curated-facts",
+      "license_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+      "allow_for_training": true,
+      "label_method": "human_reviewed_site_purpose"
+    },
+    {
       "id": "wikidata-education",
       "kind": "wikidata_sparql",
       "endpoint": "https://query.wikidata.org/sparql",
