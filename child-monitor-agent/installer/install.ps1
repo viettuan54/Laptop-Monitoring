@@ -22,7 +22,9 @@ param(
 
     [string]$WebContentModelPath,
 
-    [string]$AppExactLookupPath
+    [string]$AppExactLookupPath,
+
+    [string]$WebExactLookupPath
 )
 
 $ErrorActionPreference = "Stop"
@@ -169,9 +171,13 @@ if (-not $WebContentModelPath) {
 if (-not $AppExactLookupPath) {
     $AppExactLookupPath = Join-Path $workspaceRoot "ai-training\artifacts\content_classification\app_exact_lookup_v1.json"
 }
+if (-not $WebExactLookupPath) {
+    $WebExactLookupPath = Join-Path $workspaceRoot "ai-training\artifacts\content_classification\web_exact_lookup_v1.json"
+}
 Copy-JsonAssetWithHash $AppContentModelPath "app_content_model_v1.json" -RequireDeploymentApproval
 Copy-JsonAssetWithHash $WebContentModelPath "web_content_model_v1.json" -RequireDeploymentApproval
 Copy-JsonAssetWithHash $AppExactLookupPath "app_exact_lookup_v1.json"
+Copy-JsonAssetWithHash $WebExactLookupPath "web_exact_lookup_v1.json"
 
 $venvPython = "$resolvedInstallDir\venv\Scripts\python.exe"
 if (-not (Test-Path -LiteralPath $venvPython)) {

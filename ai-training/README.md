@@ -30,6 +30,10 @@ Catalog ứng dụng phiên bản `2.0.0` hiện có 200 process, cân bằng 50
 nhãn `learning`, `entertainment`, `browsers` và `unknown`. Mỗi mẫu phải có nguồn
 HTTPS và căn cứ gán nhãn trước khi collector chấp nhận.
 
+Catalog bổ sung cho Việt Nam có 15 executable đã đối chiếu; catalog website
+Việt Nam có 120 domain, cân bằng 30 mẫu cho mỗi nhãn `education`,
+`entertainment`, `social` và `unknown`.
+
 Train và đánh giá hai model phân loại bằng
 `training/train_content_models.py`. Artifact là JSON thuần có thể kiểm tra trước
 khi Agent nạp; model không đạt gate luôn có `deployment_approved = false`.
@@ -37,7 +41,8 @@ App model phiên bản `1.2.0` kết hợp tên process với metadata không nh
 `ProductName/FileDescription`; thiếu metadata thì router bắt buộc dùng Gemini.
 Khi inference, Agent chỉ gửi tên process và hai trường metadata kỹ thuật này;
 request không trở thành dữ liệu train.
-Ứng dụng đã duyệt còn có `app_exact_lookup_v1.json`; router trong
+Ứng dụng và website đã duyệt còn có `app_exact_lookup_v1.json` và
+`web_exact_lookup_v1.json`; router trong
 `content_classification/hybrid_content_classifier.py` ưu tiên exact-match, chỉ
 dùng model đã đạt gate ở confidence từ `0.70`, còn lại yêu cầu Gemini.
 

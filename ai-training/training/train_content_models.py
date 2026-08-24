@@ -930,18 +930,25 @@ def train_all(
         resources[resource_type] = report
         output_models[resource_type] = str(output_path)
         if resource_type == "apps":
-            app_classes = taxonomy["resources"]["app"]["labels"]
-            app_records = load_records(
+            lookup_classes = taxonomy["resources"]["app"]["labels"]
+            lookup_records = load_records(
                 dataset_path, ("app_name", "display_name", "label")
             )
+            lookup_name = "app_exact_lookup_v1.json"
+        else:
+            lookup_classes = taxonomy["resources"]["web"]["labels"]
+            lookup_records = load_records(dataset_path, ("domain", "title", "label"))
+            lookup_name = "web_exact_lookup_v1.json"
+
+        if resource_type in {"apps", "websites"}:
             lookup = build_exact_lookup(
-                app_records,
-                "apps",
-                app_classes,
+                lookup_records,
+                resource_type,
+                lookup_classes,
                 dataset_sha256=report["dataset"]["sha256"],
                 generated_at=_now_iso(),
             )
-            lookup_path = output_dir / "app_exact_lookup_v1.json"
+            lookup_path = output_dir / lookup_name
             _write_json_atomic(lookup_path, lookup)
             output_lookups[resource_type] = str(lookup_path)
             report["exact_lookup"] = {
@@ -963,7 +970,7 @@ def train_all(
     )
     combined = _round_metrics(
         {
-            "report_version": "1.2.0",
+            "report_version": "1.3.0",
             "generated_at": _now_iso(),
             "taxonomy_version": taxonomy["taxonomy_version"],
             "confidence_threshold": taxonomy["confidence_threshold"],
@@ -985,9 +992,9 @@ def train_all(
                         else "exact_lookup_then_gemini_model_disabled"
                     ),
                     "websites": (
-                        "model_then_gemini"
+                        "exact_lookup_then_model_then_gemini"
                         if resources["websites"]["acceptance"]["passed"]
-                        else "gemini_model_disabled"
+                        else "exact_lookup_then_gemini_model_disabled"
                     ),
                 },
                 "combined_real_traffic_coverage": None,

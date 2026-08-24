@@ -1,0 +1,127 @@
+{
+  "catalog_version": "1.0.0",
+  "reviewed_at": "2026-08-24",
+  "review_scope": "Windows executables for Vietnamese applications with publicly auditable product or release evidence",
+  "records": [
+    {
+      "resource_type": "apps",
+      "app_name": "unikeynt.exe",
+      "display_name": "UniKey",
+      "label": "unknown",
+      "evidence_url": "https://www.unikey.org/en/certificate.html",
+      "label_basis": "Official UniKey documentation identifies UniKeyNT.exe; a Vietnamese input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "unikey.exe",
+      "display_name": "UniKey",
+      "label": "unknown",
+      "evidence_url": "https://www.unikey.org/support/ukmanual.html",
+      "label_basis": "Official UniKey manual identifies UniKey.exe; a Vietnamese input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "evkey64.exe",
+      "display_name": "EVKey",
+      "label": "unknown",
+      "evidence_url": "https://evkeyvn.com/",
+      "label_basis": "Official EVKey page identifies the 64-bit Windows executable; an input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "evkey32.exe",
+      "display_name": "EVKey",
+      "label": "unknown",
+      "evidence_url": "https://evkeyvn.com/",
+      "label_basis": "Official EVKey page identifies the 32-bit Windows executable; an input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "evkeyarm64.exe",
+      "display_name": "EVKey",
+      "label": "unknown",
+      "evidence_url": "https://evkeyvn.com/",
+      "label_basis": "Official EVKey page identifies the ARM64 Windows executable; an input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "openkey.exe",
+      "display_name": "OpenKey",
+      "label": "unknown",
+      "evidence_url": "https://github.com/tuyenvm/OpenKey/blob/master/Sources/OpenKey/win32/README.md",
+      "label_basis": "Official OpenKey repository identifies OpenKey.exe; an input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "vkey.exe",
+      "display_name": "VKey",
+      "label": "unknown",
+      "evidence_url": "https://github.com/phatMT97/VKey",
+      "label_basis": "Official VKey repository identifies VKey.exe; an input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "vkeyclassic.exe",
+      "display_name": "VKey Classic",
+      "label": "unknown",
+      "evidence_url": "https://github.com/phatMT97/VKey",
+      "label_basis": "Official VKey repository identifies VKeyClassic.exe; an input utility is outside the project app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "zalo.exe",
+      "display_name": "Zalo PC",
+      "label": "unknown",
+      "evidence_url": "https://help.zalo.me/tai-zalo/",
+      "label_basis": "Official Zalo page documents the Windows desktop application; messaging is outside the current app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "htkk.exe",
+      "display_name": "HTKK",
+      "label": "unknown",
+      "evidence_url": "https://thuedientu.gdt.gov.vn/",
+      "label_basis": "Vietnamese tax declaration software is a business utility outside the current app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "itaxviewer.exe",
+      "display_name": "iTaxViewer",
+      "label": "unknown",
+      "evidence_url": "https://thuedientu.gdt.gov.vn/",
+      "label_basis": "Vietnamese tax declaration viewer is a business utility outside the current app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "misa sme.net 2015.exe",
+      "display_name": "MISA SME.NET",
+      "label": "unknown",
+      "evidence_url": "https://forum.misa.vn/threads/cai-dat-misa-2015-tren-cac-tai-khoan-khac-nhau-tren-cung-mot-may-tinh.649/",
+      "label_basis": "MISA support identifies the desktop executable; accounting software is outside the current app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "misa mimosa.net 2020.exe",
+      "display_name": "MISA Mimosa.NET",
+      "label": "unknown",
+      "evidence_url": "https://forum.misa.vn/threads/huong-dan-xu-ly-cai-dat-phan-mem-misa-mimosa-net-2020-khong-thanh-cong-do-windows-installer-loi.45412/",
+      "label_basis": "MISA support identifies the desktop executable; accounting software is outside the current app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "misa mimosa.net 2022.exe",
+      "display_name": "MISA Mimosa.NET",
+      "label": "unknown",
+      "evidence_url": "https://forum.misa.vn/threads/huong-dan-xu-ly-cai-dat-phan-mem-misa-mimosa-2022-khong-thanh-cong-do-windows-installer-loi.58687/",
+      "label_basis": "MISA support identifies the desktop executable; accounting software is outside the current app taxonomy"
+    },
+    {
+      "resource_type": "apps",
+      "app_name": "garena.exe",
+      "display_name": "Garena",
+      "label": "entertainment",
+      "evidence_url": "https://www.garena.vn/",
+      "label_basis": "Vietnamese Garena desktop client provides access to online games"
+    }
+  ]
+}

@@ -184,6 +184,27 @@ def _validate_app_lookup(lookup: dict) -> dict:
     return lookup
 
 
+def _validate_web_lookup(lookup: dict) -> dict:
+    if (
+        lookup.get("lookup_version") != LOOKUP_VERSION
+        or lookup.get("resource_type") != "websites"
+        or lookup.get("key_field") != "domain"
+        or lookup.get("classes") != list(WEB_LABELS)
+    ):
+        raise ContentModelError("Packaged web exact lookup is incompatible")
+    labels = lookup.get("labels")
+    if not isinstance(labels, dict) or not labels or lookup.get("record_count") != len(labels):
+        raise ContentModelError("Packaged web exact lookup is empty or inconsistent")
+    if any(
+        not isinstance(key, str)
+        or normalize_domain(key) != key
+        or label not in WEB_LABELS
+        for key, label in labels.items()
+    ):
+        raise ContentModelError("Packaged web exact lookup contains invalid entries")
+    return lookup
+
+
 def _extract_features(value: str, config: dict, resource_type: str) -> Counter:
     minimum_n = int(config["minimum_n"])
     maximum_n = int(config["maximum_n"])
@@ -337,6 +358,9 @@ class ContentClassifier:
         self.app_lookup = _validate_app_lookup(_load_verified_json(
             os.path.join(models_dir, "app_exact_lookup_v1.json")
         ))
+        self.web_lookup = _validate_web_lookup(_load_verified_json(
+            os.path.join(models_dir, "web_exact_lookup_v1.json")
+        ))
         self._web_cache = {}
         self._app_cache = {}
         self._lock = threading.Lock()
@@ -347,7 +371,20 @@ class ContentClassifier:
             cached = self._web_cache.get(domain)
         if cached is not None:
             return dict(cached)
-        result = predict_web_model(self.web_model, domain)
+        exact_label = self.web_lookup["labels"].get(domain)
+        if exact_label is not None:
+            result = {
+                "domain": domain,
+                "candidate_label": exact_label,
+                "label": exact_label,
+                "confidence": 1.0,
+                "requires_gemini": False,
+                "decision_source": "exact_lookup",
+                "reason": "reviewed_identifier_match",
+                "probabilities": {},
+            }
+        else:
+            result = predict_web_model(self.web_model, domain)
         if result["label"] is not None:
             with self._lock:
                 self._web_cache[domain] = dict(result)
@@ -433,11 +470,15 @@ def verify_packaged_content_assets(models_dir=None):
     app_model = _validate_app_model(_load_verified_json(
         os.path.join(models_dir, "app_content_model_v1.json")
     ))
-    lookup = _validate_app_lookup(_load_verified_json(
+    app_lookup = _validate_app_lookup(_load_verified_json(
         os.path.join(models_dir, "app_exact_lookup_v1.json")
+    ))
+    web_lookup = _validate_web_lookup(_load_verified_json(
+        os.path.join(models_dir, "web_exact_lookup_v1.json")
     ))
     return {
         "web_model_version": web_model["model_version"],
         "app_model_version": app_model["model_version"],
-        "app_lookup_version": lookup["lookup_version"],
+        "app_lookup_version": app_lookup["lookup_version"],
+        "web_lookup_version": web_lookup["lookup_version"],
     }

@@ -102,6 +102,14 @@ def write_test_model(models_dir):
         "record_count": 1,
         "labels": {"known.exe": "learning"},
     })
+    write_json_asset(models_dir, "web_exact_lookup_v1.json", {
+        "lookup_version": "1.0.0",
+        "resource_type": "websites",
+        "key_field": "domain",
+        "classes": CLASSES,
+        "record_count": 1,
+        "labels": {"gamevui.vn": "entertainment"},
+    })
     return path
 
 
@@ -132,6 +140,16 @@ class ContentClassifierTest(unittest.TestCase):
             result = classifier.classify_app("KNOWN.EXE")
 
         self.assertEqual(result["label"], "learning")
+        self.assertEqual(result["decision_source"], "exact_lookup")
+        self.assertEqual(result["confidence"], 1.0)
+
+    def test_reviewed_web_exact_lookup_is_authoritative(self):
+        with tempfile.TemporaryDirectory() as models_dir:
+            write_test_model(models_dir)
+            classifier = ContentClassifier(models_dir)
+            result = classifier.classify_web("www.GameVui.vn")
+
+        self.assertEqual(result["label"], "entertainment")
         self.assertEqual(result["decision_source"], "exact_lookup")
         self.assertEqual(result["confidence"], 1.0)
 

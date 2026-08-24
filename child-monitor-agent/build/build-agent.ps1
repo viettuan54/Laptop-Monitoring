@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.13",
+    [string]$Version = "1.0.14",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -9,6 +9,7 @@ param(
     [string]$AppContentModelPath,
     [string]$WebContentModelPath,
     [string]$AppExactLookupPath,
+    [string]$WebExactLookupPath,
     [switch]$SkipDependencyInstall,
     [switch]$SkipInstaller
 )
@@ -153,9 +154,13 @@ if (-not $WebContentModelPath) {
 if (-not $AppExactLookupPath) {
     $AppExactLookupPath = Join-Path $WorkspaceRoot "ai-training\artifacts\content_classification\app_exact_lookup_v1.json"
 }
+if (-not $WebExactLookupPath) {
+    $WebExactLookupPath = Join-Path $WorkspaceRoot "ai-training\artifacts\content_classification\web_exact_lookup_v1.json"
+}
 Copy-JsonAssetWithHash $AppContentModelPath "app_content_model_v1.json" -RequireDeploymentApproval
 Copy-JsonAssetWithHash $WebContentModelPath "web_content_model_v1.json" -RequireDeploymentApproval
 Copy-JsonAssetWithHash $AppExactLookupPath "app_exact_lookup_v1.json"
+Copy-JsonAssetWithHash $WebExactLookupPath "web_exact_lookup_v1.json"
 
 $requiredModels = @{
     "face_landmarker.task" = "64184E229B263107BC2B804C6625DB1341FF2BB731874B0BCC2FE6544E0BC9FF"
@@ -175,7 +180,8 @@ foreach ($entry in $requiredModels.GetEnumerator()) {
 foreach ($contentAsset in @(
     "app_content_model_v1.json",
     "web_content_model_v1.json",
-    "app_exact_lookup_v1.json"
+    "app_exact_lookup_v1.json",
+    "web_exact_lookup_v1.json"
 )) {
     $contentPath = Join-Path "$ReleaseRoot\models" $contentAsset
     if (-not (Test-Path -LiteralPath $contentPath -PathType Leaf) -or

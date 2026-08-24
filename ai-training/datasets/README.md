@@ -138,9 +138,14 @@ Nguồn và giấy phép được khai báo tại
   `entertainment`, `social` và nhóm âm `unknown` gồm trang tin tức, chợ trực
   tuyến và cổng thông tin tổng hợp;
 - PhishDestroy active-domain feed (CC0) cho `unsafe`;
-- `reviewed_app_catalog.json` cho tên process Windows đã đối chiếu thủ công.
+- `reviewed_app_catalog.json` cho tên process Windows phổ biến đã đối chiếu thủ công;
+- `reviewed_vietnamese_app_catalog.json` cho process của ứng dụng Việt Nam, bao gồm
+  bộ gõ, liên lạc, khai thuế, kế toán và giải trí;
 - `reviewed_vietnamese_website_catalog.json` cho các website Việt Nam đã đối chiếu
   thủ công theo mục đích chính và có URL bằng chứng cho từng bản ghi.
+
+Catalog Việt Nam hiện có 15 process ứng dụng và 120 website; phần website được
+cân bằng 30 mẫu cho mỗi nhóm `education`, `entertainment`, `social`, `unknown`.
 
 Catalog ứng dụng phiên bản `2.0.0` có 200 process, tương ứng 50 mẫu cho mỗi nhãn
 `learning`, `entertainment`, `browsers` và `unknown`. Khi thêm bản ghi phải khai
@@ -247,6 +252,7 @@ Kết quả nằm tại `ai-training/artifacts/content_classification/`:
 - `app_content_model_v1.json`;
 - `app_exact_lookup_v1.json`;
 - `web_content_model_v1.json`;
+- `web_exact_lookup_v1.json`;
 - `evaluation_report.json`.
 
 Các artifact được `.gitignore`. Không chép model vào Agent khi
@@ -260,6 +266,10 @@ giai đoạn tích hợp inference.
 2. không có exact-match: chỉ dùng model nếu artifact đã đạt deployment gate và
    confidence từ `0.70`;
 3. model chưa đạt gate hoặc confidence thấp hơn `0.70`: bắt buộc gọi Gemini.
+
+Website dùng cùng thứ tự: domain đã duyệt trong exact lookup, model đã đạt gate
+ở confidence từ `0.70`, rồi mới đến Gemini. Nhờ vậy website Việt Nam đã duyệt
+không phụ thuộc việc domain đó rơi vào train hay held-out test.
 
 Exact lookup được kiểm tra toàn vẹn trên catalog đã duyệt, không được báo cáo như
 độ chính xác tổng quát hóa trên held-out test. Dữ liệu Agent gửi trong request

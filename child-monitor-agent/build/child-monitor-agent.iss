@@ -1,7 +1,7 @@
 #define MyAppName "Child Monitor Agent"
 #define MyAppPublisher "Laptop Monitoring Project"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.13"
+  #define MyAppVersion "1.0.14"
 #endif
 #ifndef ReleaseRoot
   #define ReleaseRoot "release\ChildMonitorAgent"

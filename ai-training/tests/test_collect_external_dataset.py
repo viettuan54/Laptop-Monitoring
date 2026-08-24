@@ -270,6 +270,35 @@ class ExternalDatasetCollectionTest(unittest.TestCase):
         for label in expected_labels:
             self.assertGreaterEqual(counts[label], 50, label)
 
+    def test_project_vietnamese_app_catalog_is_auditable(self):
+        catalog_path = (
+            TRAINING_ROOT
+            / "content_classification"
+            / "reviewed_vietnamese_app_catalog.json"
+        )
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        records = catalog["records"]
+
+        self.assertGreaterEqual(len(records), 15)
+        self.assertEqual(
+            len({record["app_name"].casefold() for record in records}), len(records)
+        )
+        for record in records:
+            self.assertEqual(record["resource_type"], "apps")
+            self.assertTrue(record["app_name"].endswith(".exe"))
+            self.assertTrue(record["evidence_url"].startswith("https://"))
+            self.assertTrue(record["label_basis"].strip())
+
+        expected = {
+            "unikeynt.exe": "unknown",
+            "evkey64.exe": "unknown",
+            "zalo.exe": "unknown",
+            "garena.exe": "entertainment",
+        }
+        actual = {record["app_name"]: record["label"] for record in records}
+        for app_name, label in expected.items():
+            self.assertEqual(actual[app_name], label)
+
     def test_project_vietnamese_website_catalog_is_balanced_and_auditable(self):
         catalog_path = (
             TRAINING_ROOT
@@ -280,15 +309,15 @@ class ExternalDatasetCollectionTest(unittest.TestCase):
         records = catalog["records"]
         counts = Counter(record["label"] for record in records)
 
-        self.assertEqual(len(records), 60)
+        self.assertEqual(len(records), 120)
         self.assertEqual(
             counts,
             Counter(
                 {
-                    "education": 15,
-                    "entertainment": 15,
-                    "social": 15,
-                    "unknown": 15,
+                    "education": 30,
+                    "entertainment": 30,
+                    "social": 30,
+                    "unknown": 30,
                 }
             ),
         )

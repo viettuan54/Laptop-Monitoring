@@ -1131,6 +1131,92 @@ function pageHead(page, actions = '') {
   return `<header class="page-head"><div class="page-head-copy"><div class="page-context"><p class="eyebrow">${state.role === 'admin' ? 'Điều hành hệ thống' : 'Đồng hành cùng gia đình'}</p><span>${escapeHtml(currentDateLabel())}</span></div><h1>${title}</h1><p>${subtitle}</p></div><div class="head-actions">${actions}</div></header>`;
 }
 
+const sectionVisuals = {
+  children: {
+    src: '/assets/section-child-profiles.jpg',
+    alt: 'Phụ huynh cùng trẻ tạo hồ sơ số an toàn',
+    eyebrow: 'Hồ sơ gia đình',
+    title: 'Mỗi trẻ có một không gian đồng hành riêng.',
+    text: 'Liên kết đúng thiết bị, chính sách và dữ liệu hoạt động để cả gia đình luôn có một góc nhìn rõ ràng.',
+  },
+  devices: {
+    src: '/assets/section-managed-devices.jpg',
+    alt: 'Laptop học tập được kết nối an toàn với hệ thống gia đình',
+    eyebrow: 'Kết nối an toàn',
+    title: 'Quản lý mọi laptop từ một nơi duy nhất.',
+    text: 'Theo dõi trạng thái Agent, lần kết nối gần nhất và thông tin cấp quyền của từng thiết bị.',
+  },
+  policies: {
+    src: '/assets/section-usage-policies.jpg',
+    alt: 'Lịch, đồng hồ và thiết bị minh họa thời gian sử dụng cân bằng',
+    eyebrow: 'Thói quen lành mạnh',
+    title: 'Giới hạn rõ ràng, đồng hành nhẹ nhàng.',
+    text: 'Thiết lập thời lượng, khung giờ và quyền truy cập phù hợp với nhịp sinh hoạt của từng trẻ.',
+  },
+  activity: {
+    src: '/assets/section-digital-activity.jpg',
+    alt: 'Bảng phân tích hoạt động ứng dụng và website trên laptop',
+    eyebrow: 'Góc nhìn cân bằng',
+    title: 'Hiểu thói quen số mà không phán xét.',
+    text: 'Xem ứng dụng, website và thời lượng theo từng thiết bị để bắt đầu những cuộc trò chuyện tích cực.',
+  },
+  alerts: {
+    src: '/assets/section-safety-alerts.jpg',
+    alt: 'Trẻ ngồi đúng tư thế và khoảng cách khi sử dụng laptop',
+    eyebrow: 'Tín hiệu an toàn',
+    title: 'Ưu tiên những điều gia đình cần quan tâm.',
+    text: 'Tập trung vào các cảnh báo về tư thế, khoảng cách mắt, thời gian và nội dung cần được xem xét.',
+  },
+  ai: {
+    src: '/assets/section-ai-insights.jpg',
+    alt: 'Trợ lý AI biến dữ liệu sức khỏe số thành gợi ý cho gia đình',
+    eyebrow: 'Cố vấn SafeNest',
+    title: 'Biến dữ liệu thành một cuộc trò chuyện tốt hơn.',
+    text: 'AI tổng hợp tín hiệu hoạt động và đưa ra gợi ý dễ hiểu, giúp phụ huynh chủ động đồng hành cùng con.',
+  },
+};
+
+function sectionVisual(page, extra = '') {
+  const visual = sectionVisuals[page];
+  if (!visual) return '';
+  const headingId = `section-visual-${page}-title`;
+  return `<section class="section-visual section-visual-${page}" aria-labelledby="${headingId}"><div class="section-visual-copy"><p class="eyebrow">${escapeHtml(visual.eyebrow)}</p><h2 id="${headingId}">${escapeHtml(visual.title)}</h2><p>${escapeHtml(visual.text)}</p>${extra ? `<div class="section-visual-extra">${extra}</div>` : ''}</div><figure class="section-visual-media"><img src="${escapeHtml(visual.src)}" alt="${escapeHtml(visual.alt)}" width="1200" height="800" loading="lazy" decoding="async"></figure></section>`;
+}
+
+const adminSectionContent = {
+  users: {
+    icon: icons.child,
+    eyebrow: 'Quản trị danh tính',
+    title: 'Tài khoản rõ trạng thái, thao tác có kiểm soát.',
+    text: 'Tìm kiếm, phân quyền, xác minh và thu hồi phiên từ cùng một không gian quản trị.',
+  },
+  blacklist: {
+    icon: icons.policy,
+    eyebrow: 'Bảo vệ toàn hệ thống',
+    title: 'Một danh sách chặn, đồng bộ đến mọi Agent.',
+    text: 'Tên miền được kiểm tra định dạng tại Backend trước khi phân phối xuống các thiết bị đang quản lý.',
+  },
+  audit: {
+    icon: icons.activity,
+    eyebrow: 'Minh bạch vận hành',
+    title: 'Mọi thay đổi nhạy cảm đều để lại dấu vết.',
+    text: 'Theo dõi người thực hiện, đối tượng tác động, thời điểm, địa chỉ IP và metadata liên quan.',
+  },
+  'api-lab': {
+    icon: icons.lab,
+    eyebrow: 'Công cụ kỹ thuật',
+    title: 'Kiểm thử Agent API trong một quy trình có cấu trúc.',
+    text: 'Chọn endpoint, chuẩn bị payload và xem phản hồi mà không phải rời khỏi Dashboard quản trị.',
+  },
+};
+
+function adminSectionIntro(page, stats = []) {
+  const intro = adminSectionContent[page];
+  if (!intro) return '';
+  const headingId = `admin-intro-${page}-title`;
+  return `<section class="admin-section-intro admin-section-intro-${page}" aria-labelledby="${headingId}"><div class="admin-intro-icon" aria-hidden="true">${intro.icon}</div><div class="admin-intro-copy"><p class="eyebrow">${escapeHtml(intro.eyebrow)}</p><h2 id="${headingId}">${escapeHtml(intro.title)}</h2><p>${escapeHtml(intro.text)}</p></div><div class="admin-intro-stats">${stats.map((item) => `<span class="admin-intro-stat"><b>${escapeHtml(item.value)}</b><small>${escapeHtml(item.label)}</small></span>`).join('')}</div></section>`;
+}
+
 async function loadParentCore(usageChildId = state.overviewChildId) {
   const overviewNow = new Date();
   const usageMonth = localMonthKey(overviewNow);
@@ -1289,7 +1375,7 @@ async function renderChildren(content) {
   const linkedDevices = state.devices.filter((device) => state.children.some((child) => String(child.child_id) === String(device.child_id))).length;
   content.innerHTML = `
     ${pageHead('children', '<button class="btn" data-action="add-child">' + icons.plus + ' Thêm hồ sơ</button>')}
-    <section class="collection-intro"><div class="collection-intro-icon">${icons.child}</div><div><strong>Mỗi trẻ có một không gian giám sát riêng</strong><p>Thiết bị, chính sách và dữ liệu hoạt động được liên kết đúng hồ sơ để phụ huynh theo dõi rõ ràng.</p></div><div class="collection-stats"><span><b>${state.children.length}</b> hồ sơ</span><span><b>${linkedDevices}</b> thiết bị đã liên kết</span></div></section>
+    ${sectionVisual('children', `<span class="section-visual-stat"><b>${state.children.length}</b> hồ sơ</span><span class="section-visual-stat"><b>${linkedDevices}</b> thiết bị đã liên kết</span>`)}
     <section class="entity-grid">${state.children.map((child) => {
       const count = state.devices.filter((device) => String(device.child_id) === String(child.child_id)).length;
       return `<article class="entity-card child-card"><div class="entity-top"><div class="entity-avatar">${escapeHtml(initials(child.name))}</div><span class="badge">${child.age ?? '—'} tuổi</span></div><h3>${escapeHtml(child.name)}</h3><p>Hồ sơ được tạo ngày ${formatDate(child.created_at, false)}.</p><div class="entity-detail"><span>${icons.device}</span><div><strong>${count} thiết bị</strong><small>${count ? 'Đang liên kết với hồ sơ này' : 'Chưa có thiết bị được liên kết'}</small></div></div><div class="entity-meta"><button class="entity-primary-action" data-action="child-policy" data-id="${child.child_id}">${icons.policy}<span>Thiết lập chính sách</span></button><div class="entity-actions"><button class="kebab" aria-label="Chỉnh sửa hồ sơ ${escapeHtml(child.name)}" title="Chỉnh sửa" data-action="edit-child" data-id="${child.child_id}">✎</button><button class="kebab danger" aria-label="Xóa hồ sơ ${escapeHtml(child.name)}" title="Xóa" data-action="delete-child" data-id="${child.child_id}">×</button></div></div></article>`;
@@ -1303,7 +1389,7 @@ async function renderDevices(content) {
   const onlineCount = state.devices.filter(isDeviceOnline).length;
   content.innerHTML = `
     ${pageHead('devices', '<button class="btn btn-secondary" data-action="agent-guide">Hướng dẫn cài Agent</button><button class="btn" data-action="add-device">' + icons.plus + ' Đăng ký thiết bị</button>')}
-    <section class="collection-intro device-intro"><div class="collection-intro-icon">${icons.device}</div><div><strong>Quản lý kết nối Agent tập trung</strong><p>Đăng ký laptop, kiểm tra heartbeat và xoay secret khi cần cấp lại quyền kết nối.</p></div><div class="collection-stats"><span><b>${onlineCount}</b> trực tuyến</span><span><b>${Math.max(0, state.devices.length - onlineCount)}</b> ngoại tuyến</span></div></section>
+    ${sectionVisual('devices', `<span class="section-visual-stat online"><b>${onlineCount}</b> trực tuyến</span><span class="section-visual-stat"><b>${Math.max(0, state.devices.length - onlineCount)}</b> ngoại tuyến</span>`)}
     <section class="entity-grid">${state.devices.map((device) => {
       const online = isDeviceOnline(device);
       return `<article class="entity-card device-card"><div class="entity-top"><div class="entity-avatar">${icons.device}</div><div class="device-badges"><span class="badge ${online ? '' : 'neutral'}"><i class="status-dot ${online ? 'online' : ''}"></i>${online ? 'Đang online' : 'Ngoại tuyến'}</span><span class="badge blue">ID #${device.device_id}</span></div></div><h3>${escapeHtml(device.device_name)}</h3><p class="entity-subtitle">${escapeHtml(childName(device.child_id))}<span>UID ${escapeHtml(device.device_uid)}</span></p><div class="device-last-seen"><strong>${online ? 'Agent đang kết nối' : device.last_seen_at ? `Lần cuối ${relativeTime(device.last_seen_at)}` : 'Agent chưa kết nối lần nào'}</strong><small>${device.last_seen_at ? formatDate(device.last_seen_at) : 'Cài Agent bằng Device Secret để bắt đầu.'}</small></div><div class="entity-meta"><small>Thêm ngày ${formatDate(device.created_at, false)}</small><div class="entity-actions"><button class="kebab" aria-label="Xoay secret của ${escapeHtml(device.device_name)}" title="Xoay secret" data-action="rotate-secret" data-id="${device.device_id}">↻</button><button class="kebab" aria-label="Đổi tên ${escapeHtml(device.device_name)}" title="Đổi tên" data-action="edit-device" data-id="${device.device_id}">✎</button><button class="kebab danger" aria-label="Xóa ${escapeHtml(device.device_name)}" title="Xóa" data-action="delete-device" data-id="${device.device_id}">×</button></div></div></article>`;
@@ -1314,7 +1400,7 @@ async function renderPolicies(content) {
   state.children = await api('/children?limit=200');
   state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
   if (!state.selectedChildId) {
-    content.innerHTML = pageHead('policies') + emptyState('⚙', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi cấu hình chính sách.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
+    content.innerHTML = pageHead('policies') + sectionVisual('policies') + emptyState('⚙', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi cấu hình chính sách.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
     return;
   }
   const [settings, policyResult] = await Promise.all([
@@ -1330,6 +1416,7 @@ async function renderPolicies(content) {
   const selectedChild = state.children.find((child) => String(child.child_id) === String(state.selectedChildId));
   content.innerHTML = `
     ${pageHead('policies')}
+    ${sectionVisual('policies')}
     <section class="policy-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Chính sách đang áp dụng cho</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${settings.daily_limit_minutes ? `${settings.daily_limit_minutes} phút mỗi ngày` : 'Không giới hạn thời gian'} · ${startTime}–${endTime}${crossesMidnight ? ' (qua ngày hôm sau)' : ''}</p></div><span class="badge ${settings.is_locked ? 'red' : ''}">${settings.is_locked ? 'Thiết bị đang khóa' : 'Được phép sử dụng'}</span></section>
     <section class="policy-layout">
       <aside class="card child-picker">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" data-action="select-policy-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi</small></span></button>`).join('')}</aside>
@@ -1415,6 +1502,7 @@ async function renderActivity(content) {
   const activeDeviceCount = new Set(filteredRows.map((item) => String(item.device_id))).size;
   content.innerHTML = `
     ${pageHead('activity', `<div class="activity-head-actions"><div class="tabs"><button class="tab ${state.activityTab === 'apps' ? 'active' : ''}" data-action="activity-tab" data-tab="apps">Ứng dụng</button><button class="tab ${state.activityTab === 'web' ? 'active' : ''}" data-action="activity-tab" data-tab="web">Website</button></div><button class="btn btn-secondary" data-action="export-activity" ${filteredRows.length ? '' : 'disabled'}>Xuất CSV</button></div>`)}
+    ${sectionVisual('activity')}
     <section class="page-summary-strip" aria-label="Tóm tắt dữ liệu đang hiển thị">
       <div><span class="summary-icon">${icons.activity}</span><span><small>Kết quả phù hợp</small><strong>${filteredRows.length} bản ghi</strong></span></div>
       <div><span class="summary-icon">◷</span><span><small>Tổng thời lượng</small><strong>${duration(filteredDuration)}</strong></span></div>
@@ -1480,6 +1568,7 @@ async function renderAlerts(content) {
   const distanceCount = state.alerts.filter((item) => item.alert_type === 'eye_distance_warning').length;
   content.innerHTML = `
     ${pageHead('alerts', `<span class="badge ${unreadCount ? 'coral' : 'neutral'}">${unreadCount} chưa đọc</span><button class="btn btn-secondary" data-action="mark-all-read" ${unreadCount ? '' : 'disabled'}>Đánh dấu mục đang hiển thị</button>`)}
+    ${sectionVisual('alerts')}
     <section class="page-summary-strip alert-summary" aria-label="Tóm tắt cảnh báo"><div><span class="summary-icon">${icons.alert}</span><span><small>Tổng cảnh báo</small><strong>${state.alerts.length} tín hiệu</strong></span></div><div><span class="summary-icon">!</span><span><small>Chưa đọc</small><strong>${unreadCount} cảnh báo</strong></span></div><div><span class="summary-icon">↗</span><span><small>Tư thế</small><strong>${postureCount} tín hiệu</strong></span></div><div><span class="summary-icon">◉</span><span><small>Khoảng cách mắt</small><strong>${distanceCount} tín hiệu</strong></span></div></section>
     <form id="alert-filter" class="filters filters-alerts">
       <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
@@ -1525,8 +1614,8 @@ async function renderAI(content) {
   content.innerHTML = `
     ${pageHead('ai', `<select class="select ai-device-select" id="ai-device"><option value="">Chọn thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(d.device_id) === String(state.selectedDeviceId) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select>`)}
     <section class="ai-layout">
+      ${sectionVisual('ai', `<button class="btn" data-action="run-analysis" ${state.selectedDeviceId ? '' : 'disabled'}>✦ Chạy phân tích mới</button>`)}
       <div class="stack">
-        <article class="card ai-hero"><h2>Biến dữ liệu hoạt động thành một cuộc trò chuyện tốt hơn.</h2><p>Gemini phân tích ứng dụng và website của thiết bị đã chọn, sau đó lưu insight theo mức độ rủi ro.</p><button class="btn" data-action="run-analysis" ${state.selectedDeviceId ? '' : 'disabled'}>✦ Chạy phân tích mới</button></article>
         <article class="card"><div class="card-head"><div><h2>Phân tích gần đây</h2><p>Kết quả của riêng thiết bị đang chọn.</p></div><div><button class="btn btn-secondary btn-sm" data-action="latest-analysis" ${state.selectedDeviceId ? '' : 'disabled'}>Kết quả mới nhất</button></div></div><div>${state.analyses.map((item) => `<article class="analysis-card"><span class="badge ${escapeHtml(String(item.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(item.risk_level))}</span><h4>${escapeHtml(item.behavior_type)}</h4><p>${escapeHtml(item.suggestion)}</p><time>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.analyzed_at)}</time></article>`).join('') || emptyState('✦', 'Chưa có phân tích', 'Chọn thiết bị và chạy phân tích AI đầu tiên.')}</div></article>
         <article class="card card-pad"><div class="card-head card-head-flush"><div><h2>Báo cáo tóm tắt</h2><p>Tạo báo cáo ngày hoặc tuần bằng Gemini.</p></div></div><div class="form-actions form-actions-start"><button class="btn btn-secondary" data-action="summary" data-period="daily" ${state.selectedDeviceId ? '' : 'disabled'}>Báo cáo ngày</button><button class="btn btn-secondary" data-action="summary" data-period="weekly" ${state.selectedDeviceId ? '' : 'disabled'}>Báo cáo tuần</button></div><div id="summary-result"></div></article>
       </div>
@@ -1564,7 +1653,7 @@ async function renderAccount(content) {
     ${pageHead('account')}
     <section class="account-grid">
       <div class="stack">
-        <article class="card profile-card"><div class="profile-cover"></div><div class="profile-body"><div class="profile-avatar">${state.role === 'admin' ? 'QT' : 'PH'}</div><h2>${state.role === 'admin' ? 'Tài khoản quản trị viên' : 'Tài khoản phụ huynh'}</h2><p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · JWT 15 phút và refresh token luân phiên.</p></div></article>
+        <article class="card profile-card"><figure class="profile-cover"><img src="/assets/section-account-security.jpg" alt="Tài khoản gia đình được bảo vệ bằng mật khẩu và thiết bị tin cậy" width="1200" height="800" loading="lazy" decoding="async"></figure><div class="profile-body"><div class="profile-avatar">${state.role === 'admin' ? 'QT' : 'PH'}</div><h2>${state.role === 'admin' ? 'Tài khoản quản trị viên' : 'Tài khoản phụ huynh'}</h2><p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · JWT 15 phút và refresh token luân phiên.</p></div></article>
         ${state.role === 'parent' ? `<article class="card card-pad push-settings">
           <div class="card-head card-head-flush"><div><h2>Thiết bị nhận thông báo</h2><p>Đăng ký Expo hoặc FCM token để nhận cảnh báo AI và cảnh báo từ Agent theo thời gian thực.</p></div><button class="btn btn-secondary btn-sm" data-action="test-push" ${state.pushTokens.some((item) => item.is_active) ? '' : 'disabled'}>Gửi thử</button></div>
           <div class="push-token-list">${state.pushTokens.map((item) => `<div class="push-token-row"><div class="list-icon">${item.provider === 'expo' ? 'EX' : 'FC'}</div><div class="list-copy"><strong>${escapeHtml(item.device_name || 'Thiết bị không tên')}</strong><small>${escapeHtml(item.provider.toUpperCase())} · ${escapeHtml(item.platform)} · ${escapeHtml(item.token_hint)}</small>${item.last_error ? `<small class="text-danger">${escapeHtml(item.last_error)}</small>` : ''}</div><span class="badge ${item.is_active ? '' : 'red'}">${item.is_active ? 'Đang nhận' : 'Đã tắt'}</span><button class="kebab danger" data-action="delete-push-token" data-id="${item.push_token_id}" title="Gỡ thiết bị">×</button></div>`).join('') || '<p class="muted">Chưa có thiết bị nhận thông báo.</p>'}</div>
@@ -1598,19 +1687,20 @@ async function renderAdminOverview(content) {
         <p class="eyebrow">Quản trị chủ động</p>
         <h2>Một góc nhìn rõ ràng<br>cho toàn bộ hệ thống.</h2>
         <p>Theo dõi quy mô, trạng thái thiết bị và các hành động nhạy cảm để giữ nền tảng ổn định, minh bạch và an toàn.</p>
+        <div class="admin-hero-flags"><span>${icons.policy} JWT & RLS</span><span>${icons.activity} Audit log</span><span>${icons.device} Agent heartbeat</span></div>
         <div class="hero-actions"><button class="btn" data-page="users">Quản lý tài khoản</button><button class="btn btn-secondary" data-page="audit">Xem nhật ký</button></div>
       </div>
       <figure class="dashboard-hero-media"><img src="/assets/admin-system-operations.jpg" alt="Quản trị viên theo dõi hoạt động và sức khỏe hệ thống" width="1200" height="800" decoding="async" fetchpriority="high"><figcaption class="hero-media-insight"><span class="hero-insight-icon">${icons.device}</span><span><small>Sức khỏe thiết bị</small><strong>${onlinePercent}% trực tuyến</strong><em>${s.devices_online} / ${s.total_devices} thiết bị có kết nối</em></span></figcaption></figure>
     </section>
-    <section class="metrics" aria-label="Chỉ số vận hành hệ thống">${metric('Người dùng', s.total_users, 'tài khoản', 'child', true)}${metric('Trẻ em', s.total_children, 'hồ sơ', 'child')}${metric('Thiết bị trực tuyến', s.devices_online, `/ ${s.total_devices} thiết bị`, 'device')}${metric('Cảnh báo hôm nay', s.alerts_today, 'tín hiệu', 'alert')}</section>
-    <section class="dashboard-grid">
+    <section class="metrics admin-kpi-grid" aria-label="Chỉ số vận hành hệ thống">${metric('Người dùng', s.total_users, 'tài khoản', 'child', true)}${metric('Trẻ em', s.total_children, 'hồ sơ', 'child')}${metric('Thiết bị trực tuyến', s.devices_online, `/ ${s.total_devices} thiết bị`, 'device')}${metric('Cảnh báo hôm nay', s.alerts_today, 'tín hiệu', 'alert')}</section>
+    <section class="dashboard-grid admin-operations-grid">
       <div class="stack">
-        <article class="card card-pad"><p class="eyebrow">Sức khỏe thiết bị</p><h2>${s.total_devices} thiết bị đang được quản lý</h2><p class="muted">Heartbeat trong 5 phút gần nhất được tính là trực tuyến.</p><div class="donut-row admin-health-chart"><div class="donut" role="img" aria-label="${onlinePercent}% thiết bị đang trực tuyến" style="--value:${onlinePercent}"><strong>${onlinePercent}%</strong></div><div class="legend"><div class="legend-row"><i class="legend-dot"></i><span>Trực tuyến</span><b>${s.devices_online}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Ngoại tuyến</span><b>${offlineDevices}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Cảnh báo hôm nay</span><b>${s.alerts_today}</b></div></div></div></article>
-        <article class="card"><div class="card-head"><div><h2>Lối tắt điều hành</h2><p>Đi thẳng đến các khu vực quản trị thường dùng.</p></div></div><div class="card-body list quick-link-list"><button class="list-item" type="button" data-page="users"><span class="list-icon">TK</span><span class="list-copy"><strong>Tài khoản người dùng</strong><small>Xem, khóa, xác minh hoặc thu hồi phiên</small></span><span class="list-arrow">→</span></button><button class="list-item" type="button" data-page="blacklist"><span class="list-icon">BL</span><span class="list-copy"><strong>Danh sách chặn toàn cục</strong><small>${s.blacklist_count} tên miền đang được đồng bộ</small></span><span class="list-arrow">→</span></button><button class="list-item" type="button" data-page="audit"><span class="list-icon">AU</span><span class="list-copy"><strong>Nhật ký kiểm toán</strong><small>Kiểm tra các thao tác nhạy cảm</small></span><span class="list-arrow">→</span></button></div></article>
+        <article class="card card-pad admin-health-card"><div class="admin-card-heading"><span class="admin-card-icon">${icons.device}</span><div><p class="eyebrow">Sức khỏe thiết bị</p><h2>${s.total_devices} thiết bị đang được quản lý</h2><p class="muted">Heartbeat trong 5 phút gần nhất được tính là trực tuyến.</p></div></div><div class="donut-row admin-health-chart"><div class="donut" role="img" aria-label="${onlinePercent}% thiết bị đang trực tuyến" style="--value:${onlinePercent}"><strong>${onlinePercent}%</strong></div><div class="legend"><div class="legend-row"><i class="legend-dot"></i><span>Trực tuyến</span><b>${s.devices_online}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Ngoại tuyến</span><b>${offlineDevices}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Cảnh báo hôm nay</span><b>${s.alerts_today}</b></div></div></div></article>
+        <article class="card admin-shortcuts-card"><div class="card-head"><div><p class="eyebrow">Điều hành nhanh</p><h2>Lối tắt quản trị</h2><p>Đi thẳng đến các khu vực được sử dụng thường xuyên.</p></div></div><div class="card-body list quick-link-list"><button class="list-item" type="button" data-page="users"><span class="list-icon">TK</span><span class="list-copy"><strong>Tài khoản người dùng</strong><small>Xem, khóa, xác minh hoặc thu hồi phiên</small></span><span class="list-arrow">→</span></button><button class="list-item" type="button" data-page="blacklist"><span class="list-icon">BL</span><span class="list-copy"><strong>Danh sách chặn toàn cục</strong><small>${s.blacklist_count} tên miền đang được đồng bộ</small></span><span class="list-arrow">→</span></button><button class="list-item" type="button" data-page="audit"><span class="list-icon">AU</span><span class="list-copy"><strong>Nhật ký kiểm toán</strong><small>Kiểm tra các thao tác nhạy cảm</small></span><span class="list-arrow">→</span></button></div></article>
       </div>
       <aside class="stack">
-        <article class="metric-card"><div class="metric-icon">${icons.policy}</div><p class="metric-label">DANH SÁCH CHẶN TOÀN CỤC</p><div class="metric-value">${s.blacklist_count}<small>tên miền</small></div></article>
-        <article class="card card-pad"><p class="eyebrow">Trạng thái vận hành</p><div class="list"><div class="list-item"><div class="list-icon">API</div><div class="list-copy"><strong>Backend API</strong><small>${state.connectionStatus === 'online' ? 'Đã kết nối và phản hồi' : 'Cần kiểm tra kết nối'}</small></div><span class="badge ${state.connectionStatus === 'online' ? '' : 'coral'}">${state.connectionStatus === 'online' ? 'Ổn định' : 'Chú ý'}</span></div><div class="list-item"><div class="list-icon">RL</div><div class="list-copy"><strong>Phân tách dữ liệu gia đình</strong><small>Parent API được bảo vệ bằng JWT và RLS</small></div><span class="badge blue">Đã cấu hình</span></div><div class="list-item"><div class="list-icon">AL</div><div class="list-copy"><strong>Audit log</strong><small>Ghi nhận thao tác quản trị nhạy cảm</small></div><span class="badge blue">Đã cấu hình</span></div></div></article>
+        <article class="metric-card admin-blacklist-card"><div class="metric-icon">${icons.policy}</div><p class="metric-label">DANH SÁCH CHẶN TOÀN CỤC</p><div class="metric-value">${s.blacklist_count}<small>tên miền</small></div><button class="admin-card-link" data-page="blacklist">Quản lý danh sách <span>→</span></button></article>
+        <article class="card card-pad admin-status-card"><div class="admin-card-heading"><span class="admin-card-icon">${icons.activity}</span><div><p class="eyebrow">Trạng thái vận hành</p><h3>Các lớp bảo vệ cốt lõi</h3></div></div><div class="list"><div class="list-item"><div class="list-icon">API</div><div class="list-copy"><strong>Backend API</strong><small>${state.connectionStatus === 'online' ? 'Đã kết nối và phản hồi' : 'Cần kiểm tra kết nối'}</small></div><span class="badge ${state.connectionStatus === 'online' ? '' : 'coral'}">${state.connectionStatus === 'online' ? 'Ổn định' : 'Chú ý'}</span></div><div class="list-item"><div class="list-icon">RL</div><div class="list-copy"><strong>Phân tách dữ liệu gia đình</strong><small>Parent API được bảo vệ bằng JWT và RLS</small></div><span class="badge blue">Đã cấu hình</span></div><div class="list-item"><div class="list-icon">AL</div><div class="list-copy"><strong>Audit log</strong><small>Ghi nhận thao tác quản trị nhạy cảm</small></div><span class="badge blue">Đã cấu hình</span></div></div></article>
       </aside>
     </section>`;
 }
@@ -1631,22 +1721,22 @@ async function renderUsers(content) {
   const adminsOnPage = state.adminUsers.filter((user) => user.role === 'admin').length;
   content.innerHTML = `
     ${pageHead('users', '<button class="btn btn-secondary" data-action="refresh-users">' + icons.refresh + ' Làm mới</button>')}
-    <section class="page-summary-strip admin-summary" aria-label="Tóm tắt tài khoản"><div><span class="summary-icon">${icons.child}</span><span><small>Tổng kết quả</small><strong>${Number(result.total) || 0} tài khoản</strong></span></div><div><span class="summary-icon">✓</span><span><small>Đang hoạt động trên trang</small><strong>${activeOnPage} tài khoản</strong></span></div><div><span class="summary-icon">${icons.admin}</span><span><small>Quản trị viên trên trang</small><strong>${adminsOnPage} tài khoản</strong></span></div></section>
+    ${adminSectionIntro('users', [{ value: Number(result.total) || 0, label: 'Tài khoản' }, { value: activeOnPage, label: 'Đang hoạt động' }, { value: adminsOnPage, label: 'Quản trị viên' }])}
     <form id="admin-user-filter" class="filters filters-users">
       <div class="field"><label>Tìm kiếm</label><input class="input" name="search" value="${escapeHtml(filter.search || '')}" placeholder="Tên hoặc email"></div>
       <div class="field"><label>Vai trò</label><select class="select" name="role"><option value="">Tất cả vai trò</option><option value="parent" ${filter.role === 'parent' ? 'selected' : ''}>Phụ huynh</option><option value="admin" ${filter.role === 'admin' ? 'selected' : ''}>Quản trị viên</option></select></div>
       <div class="field"><label>Trạng thái</label><select class="select" name="status"><option value="">Tất cả trạng thái</option><option value="active" ${filter.status === 'active' ? 'selected' : ''}>Đang hoạt động</option><option value="disabled" ${filter.status === 'disabled' ? 'selected' : ''}>Đã khóa</option></select></div>
       <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-admin-user-filter">Đặt lại</button><button class="btn" type="submit">Áp dụng</button></div>
     </form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Dữ liệu</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${state.adminUsers.map((u) => {
+    <section class="table-card admin-table-card"><div class="table-scroll"><table><thead><tr><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Dữ liệu</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${state.adminUsers.map((u) => {
       const isSelf = String(u.user_id) === String(state.userId);
       return `<tr>
-        <td class="cell-title"><strong>${escapeHtml(u.name)} ${isSelf ? '<span class="badge blue">Bạn</span>' : ''}</strong><small>#${u.user_id} · ${escapeHtml(u.email)}</small></td>
+        <td><div class="admin-user-cell"><span class="admin-user-avatar">${escapeHtml(initials(u.name))}</span><span class="cell-title"><strong>${escapeHtml(u.name)} ${isSelf ? '<span class="badge blue">Bạn</span>' : ''}</strong><small>#${u.user_id} · ${escapeHtml(u.email)}</small></span></div></td>
         <td><span class="badge ${u.role === 'admin' ? 'coral' : ''}">${u.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</span></td>
         <td><span class="badge ${u.is_active ? '' : 'red'}">${u.is_active ? 'Đang hoạt động' : 'Đã khóa'}</span><small class="status-sub">${u.is_verified ? 'Đã xác minh email' : 'Chưa xác minh email'}</small></td>
         <td><strong>${u.child_count}</strong> trẻ · <strong>${u.device_count}</strong> thiết bị</td>
         <td>${formatDate(u.created_at)}</td>
-        <td><div class="row-actions"><button class="btn btn-secondary btn-sm" data-action="view-user" data-id="${u.user_id}">Chi tiết</button><button class="kebab" title="Chỉnh sửa" data-action="edit-user" data-id="${u.user_id}">✎</button><button class="kebab" title="Thu hồi phiên" data-action="revoke-user-sessions" data-id="${u.user_id}">↻</button><button class="kebab danger" title="${isSelf ? 'Không thể xóa chính mình' : 'Xóa tài khoản'}" data-action="delete-user" data-id="${u.user_id}" ${isSelf ? 'disabled' : ''}>×</button></div></td>
+        <td><div class="row-actions"><button class="btn btn-secondary btn-sm" data-action="view-user" data-id="${u.user_id}">Chi tiết</button><button class="kebab" aria-label="Chỉnh sửa ${escapeHtml(u.name)}" title="Chỉnh sửa" data-action="edit-user" data-id="${u.user_id}">✎</button><button class="kebab" aria-label="Thu hồi phiên của ${escapeHtml(u.name)}" title="Thu hồi phiên" data-action="revoke-user-sessions" data-id="${u.user_id}">↻</button><button class="kebab danger" aria-label="${isSelf ? 'Không thể xóa tài khoản của chính mình' : `Xóa ${escapeHtml(u.name)}`}" title="${isSelf ? 'Không thể xóa chính mình' : 'Xóa tài khoản'}" data-action="delete-user" data-id="${u.user_id}" ${isSelf ? 'disabled' : ''}>×</button></div></td>
       </tr>`;
     }).join('')}</tbody></table></div>${state.adminUsers.length ? `<div class="table-footer"><span>Thao tác quản trị được ghi vào audit log</span>${paginationMarkup('users', result, 'tài khoản')}</div>` : emptyState('◎', 'Không tìm thấy tài khoản', 'Hãy thay đổi bộ lọc để xem kết quả khác.')}</section>`;
 }
@@ -1664,9 +1754,9 @@ async function renderBlacklist(content) {
   }
   content.innerHTML = `
     ${pageHead('blacklist', '<button class="btn" data-action="add-blacklist">' + icons.plus + ' Thêm tên miền</button>')}
-    <section class="collection-intro blacklist-intro"><div class="collection-intro-icon">${icons.policy}</div><div><strong>Lớp bảo vệ tên miền toàn hệ thống</strong><p>Danh sách được kiểm tra định dạng ở Backend và đồng bộ an toàn xuống tệp hosts của Agent.</p></div><div class="collection-stats"><span><b>${Number(result.total) || result.data.length}</b> tên miền phù hợp</span></div></section>
+    ${adminSectionIntro('blacklist', [{ value: Number(result.total) || result.data.length, label: 'Tên miền phù hợp' }, { value: 'Backend', label: 'Lớp kiểm tra' }, { value: 'Agent', label: 'Nơi đồng bộ' }])}
     <form id="blacklist-search" class="filters filters-search"><div class="field"><label>Tìm tên miền</label><input class="input" name="search" value="${escapeHtml(search)}" placeholder="example.com"></div><div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-blacklist-filter">Đặt lại</button><button class="btn btn-secondary" type="submit">Tìm kiếm</button></div></form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr><th>Tên miền</th><th>Lý do</th><th>Người thêm</th><th>Ngày thêm</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${result.data.map((item) => `<tr><td><strong>${escapeHtml(item.domain)}</strong></td><td>${escapeHtml(item.reason || '—')}</td><td>${escapeHtml(item.added_by_name || 'Hệ thống')}</td><td>${formatDate(item.created_at)}</td><td><button class="btn btn-danger btn-sm" data-action="delete-blacklist" data-id="${item.blacklist_id}" data-name="${escapeHtml(item.domain)}">Xóa</button></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer">${paginationMarkup('blacklist', result, 'danh sách chặn')}</div>` : emptyState('⊘', search ? 'Không tìm thấy tên miền' : 'Danh sách chặn đang trống', search ? 'Không có mục nào phù hợp với từ khóa tìm kiếm.' : 'Thêm tên miền đầu tiên để Agent bắt đầu bảo vệ.', search ? '' : '<button class="btn" data-action="add-blacklist">Thêm tên miền</button>')}</section>`;
+    <section class="table-card admin-table-card"><div class="table-scroll"><table><thead><tr><th>Tên miền</th><th>Lý do</th><th>Người thêm</th><th>Ngày thêm</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${result.data.map((item) => `<tr><td><div class="admin-domain-cell"><span>⊘</span><strong>${escapeHtml(item.domain)}</strong></div></td><td>${escapeHtml(item.reason || '—')}</td><td>${escapeHtml(item.added_by_name || 'Hệ thống')}</td><td>${formatDate(item.created_at)}</td><td><button class="btn btn-danger btn-sm" aria-label="Xóa ${escapeHtml(item.domain)} khỏi danh sách chặn" data-action="delete-blacklist" data-id="${item.blacklist_id}" data-name="${escapeHtml(item.domain)}">Xóa</button></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer">${paginationMarkup('blacklist', result, 'danh sách chặn')}</div>` : emptyState('⊘', search ? 'Không tìm thấy tên miền' : 'Danh sách chặn đang trống', search ? 'Không có mục nào phù hợp với từ khóa tìm kiếm.' : 'Thêm tên miền đầu tiên để Agent bắt đầu bảo vệ.', search ? '' : '<button class="btn" data-action="add-blacklist">Thêm tên miền</button>')}</section>`;
 }
 
 function auditMetadataPreview(metadata) {
@@ -1688,9 +1778,9 @@ async function renderAudit(content) {
   state.adminAuditLogs = result.data || [];
   content.innerHTML = `
     ${pageHead('audit')}
-    <section class="collection-intro audit-intro"><div class="collection-intro-icon">${icons.activity}</div><div><strong>Dấu vết minh bạch cho thao tác nhạy cảm</strong><p>Theo dõi ai đã thay đổi dữ liệu nào, tại thời điểm nào và từ địa chỉ IP nào.</p></div><div class="collection-stats"><span><b>${Number(result.total) || result.data.length}</b> sự kiện phù hợp</span></div></section>
+    ${adminSectionIntro('audit', [{ value: Number(result.total) || result.data.length, label: 'Sự kiện phù hợp' }, { value: 'IP', label: 'Nguồn truy cập' }, { value: 'JSON', label: 'Metadata chi tiết' }])}
     <form id="audit-filter" class="filters filters-audit"><div class="field"><label>Hành động</label><input class="input" name="action" list="audit-action-options" value="${escapeHtml(filter.action || '')}" placeholder="Ví dụ: settings.update"><datalist id="audit-action-options"><option value="settings.update"><option value="user.update"><option value="user.delete"><option value="blacklist.create"><option value="blacklist.delete"><option value="device.delete"><option value="device.rotate_secret"></datalist></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}" placeholder="Ví dụ: 1"></div><div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-audit-filter">Đặt lại</button><button class="btn" type="submit">Áp dụng</button></div></form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Chi tiết</th></tr></thead><tbody>${state.adminAuditLogs.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td>#${item.actor_user_id ?? '—'} <span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></td><td><strong>${escapeHtml(item.action)}</strong></td><td>${escapeHtml(item.target_type || '—')} #${escapeHtml(item.target_id || '—')}</td><td>${escapeHtml(item.ip_address || '—')}</td><td><button class="metadata-preview" data-action="view-audit" data-id="${item.audit_id}"><code>${escapeHtml(auditMetadataPreview(item.metadata))}</code><span>Xem</span></button></td></tr>`).join('')}</tbody></table></div>${state.adminAuditLogs.length ? `<div class="table-footer">${paginationMarkup('audit', result, 'nhật ký kiểm toán')}</div>` : emptyState('⌁', 'Không có nhật ký', Object.values(filter).some(Boolean) ? 'Không có sự kiện nào phù hợp với bộ lọc.' : 'Chưa ghi nhận thao tác quản trị nhạy cảm nào.')}</section>`;
+    <section class="table-card admin-table-card audit-table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Chi tiết</th></tr></thead><tbody>${state.adminAuditLogs.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td><div class="admin-actor-cell"><span>#${item.actor_user_id ?? '—'}</span><span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></div></td><td><span class="audit-action-badge">${escapeHtml(item.action)}</span></td><td>${escapeHtml(item.target_type || '—')} <strong>#${escapeHtml(item.target_id || '—')}</strong></td><td><code class="audit-ip">${escapeHtml(item.ip_address || '—')}</code></td><td><button class="metadata-preview" aria-label="Xem chi tiết sự kiện ${escapeHtml(item.action)}" data-action="view-audit" data-id="${item.audit_id}"><code>${escapeHtml(auditMetadataPreview(item.metadata))}</code><span>Xem</span></button></td></tr>`).join('')}</tbody></table></div>${state.adminAuditLogs.length ? `<div class="table-footer">${paginationMarkup('audit', result, 'nhật ký kiểm toán')}</div>` : emptyState('⌁', 'Không có nhật ký', Object.values(filter).some(Boolean) ? 'Không có sự kiện nào phù hợp với bộ lọc.' : 'Chưa ghi nhận thao tác quản trị nhạy cảm nào.')}</section>`;
 }
 
 const agentEndpoints = {
@@ -1712,11 +1802,12 @@ function renderApiLab(content) {
   const requestLabel = selected.method === 'GET' ? 'Tham số query JSON' : 'Nội dung JSON';
   content.innerHTML = `
     ${pageHead('api-lab')}
-    <div class="secret-box api-secret-box"><strong>X-Device-Secret tạm thời</strong><code>${state.agentSecret ? '••••••••' + state.agentSecret.slice(-6) : 'Chưa nhập secret'}</code><button class="btn btn-secondary btn-sm" data-action="set-agent-secret">${state.agentSecret ? 'Thay secret' : 'Nhập secret'}</button> <button class="btn btn-ghost btn-sm" data-action="clear-agent-secret">Xóa khỏi bộ nhớ</button></div>
+    ${adminSectionIntro('api-lab', [{ value: Object.keys(agentEndpoints).length, label: 'Endpoint mẫu' }, { value: selected.method, label: 'Phương thức đã chọn' }, { value: state.agentSecret ? 'Sẵn sàng' : 'Chưa có', label: 'Device Secret' }])}
+    <div class="secret-box api-secret-box"><span class="api-secret-icon">${icons.policy}</span><span class="api-secret-copy"><small>Thông tin xác thực phiên thử nghiệm</small><strong>X-Device-Secret tạm thời</strong><code>${state.agentSecret ? '••••••••' + state.agentSecret.slice(-6) : 'Chưa nhập secret'}</code></span><span class="api-secret-actions"><button class="btn btn-secondary btn-sm" data-action="set-agent-secret">${state.agentSecret ? 'Thay secret' : 'Nhập secret'}</button><button class="btn btn-ghost btn-sm" data-action="clear-agent-secret" ${state.agentSecret ? '' : 'disabled'}>Xóa khỏi bộ nhớ</button></span></div>
     <section class="api-lab-grid">
-      <aside class="card endpoint-list">${Object.entries(agentEndpoints).map(([key, endpoint]) => `<button class="endpoint-button ${state.agentEndpoint === key ? 'active' : ''}" data-action="select-agent-endpoint" data-endpoint="${key}"><span class="method ${endpoint.method.toLowerCase()}">${endpoint.method}</span><span><strong>${escapeHtml(endpoint.label)}</strong><small>/api${escapeHtml(endpoint.path)}</small></span></button>`).join('')}</aside>
-      <article class="card card-pad">
-        <p class="eyebrow">Trình tạo request</p><h2>${escapeHtml(selected.label)}</h2><p class="muted"><strong>${selected.method}</strong> /api${escapeHtml(selected.path)}</p>
+      <aside class="card endpoint-list"><div class="endpoint-list-head"><p class="eyebrow">Danh mục endpoint</p><strong>${Object.keys(agentEndpoints).length} tình huống thử</strong></div>${Object.entries(agentEndpoints).map(([key, endpoint]) => `<button class="endpoint-button ${state.agentEndpoint === key ? 'active' : ''}" data-action="select-agent-endpoint" data-endpoint="${key}"><span class="method ${endpoint.method.toLowerCase()}">${endpoint.method}</span><span><strong>${escapeHtml(endpoint.label)}</strong><small>/api${escapeHtml(endpoint.path)}</small></span><span class="endpoint-arrow">→</span></button>`).join('')}</aside>
+      <article class="card card-pad api-request-card">
+        <div class="api-request-heading"><span class="method ${selected.method.toLowerCase()}">${selected.method}</span><div><p class="eyebrow">Trình tạo request</p><h2>${escapeHtml(selected.label)}</h2><p class="muted">/api${escapeHtml(selected.path)}</p></div></div>
         <form id="agent-request-form"><div class="field"><label>${requestLabel}</label><textarea class="textarea agent-request-data" name="request_data" ${requestData === undefined ? 'disabled' : ''}>${requestData === undefined ? '' : escapeHtml(JSON.stringify(requestData, null, 2))}</textarea>${selected.method === 'GET' && requestData !== undefined ? '<small>Giá trị sẽ được mã hóa an toàn vào query string.</small>' : ''}</div><div class="form-actions"><button class="btn" type="submit" ${state.agentSecret ? '' : 'disabled'}>Gửi request</button></div></form>
         <div id="agent-response"></div>
       </article>
@@ -1734,7 +1825,7 @@ function deviceForm() {
 function agentGuide() {
   const serviceCommand = 'Get-Service ChildMonitorService';
   const companionCommand = "Get-CimInstance Win32_Process -Filter \"Name='ChildMonitorCompanion.exe'\"";
-  return `<div class="agent-guide"><ol><li><strong>Đăng ký thiết bị</strong><p>Tạo thiết bị trên Dashboard và lưu Device Secret được hiển thị một lần.</p></li><li><strong>Cài Agent 1.0.13 trên VMware</strong><p>Chạy file cài đặt bằng quyền Administrator. Backend URL dùng địa chỉ cố định bên dưới.</p><div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép</button></div></li><li><strong>Kiểm tra sau cài đặt</strong><p>Mở PowerShell Administrator và chạy hai lệnh:</p><div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}">Sao chép</button></div><div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(companionCommand)}">Sao chép</button></div></li><li><strong>Xác nhận dữ liệu</strong><p>Mở một ứng dụng và một trang web mới trong Edge, Chrome hoặc Cốc Cốc, chờ 1–2 phút rồi xem trang Hoạt động.</p></li></ol><div class="guide-note">Cloudflare Named Tunnel và Backend vẫn phải đang chạy để Agent kết nối được tới ${DEFAULT_BACKEND_URL}.</div></div>`;
+  return `<div class="agent-guide"><ol><li><strong>Đăng ký thiết bị</strong><p>Tạo thiết bị trên Dashboard và lưu Device Secret được hiển thị một lần.</p></li><li><strong>Cài Agent 1.0.14 trên VMware</strong><p>Chạy file cài đặt bằng quyền Administrator. Backend URL dùng địa chỉ cố định bên dưới.</p><div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép</button></div></li><li><strong>Kiểm tra sau cài đặt</strong><p>Mở PowerShell Administrator và chạy hai lệnh:</p><div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}">Sao chép</button></div><div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(companionCommand)}">Sao chép</button></div></li><li><strong>Xác nhận dữ liệu</strong><p>Mở một ứng dụng và một trang web mới trong Edge, Chrome hoặc Cốc Cốc, chờ 1–2 phút rồi xem trang Hoạt động.</p></li></ol><div class="guide-note">Cloudflare Named Tunnel và Backend vẫn phải đang chạy để Agent kết nối được tới ${DEFAULT_BACKEND_URL}.</div></div>`;
 }
 
 function confirmModal(title, text, action, id, extra = '') {

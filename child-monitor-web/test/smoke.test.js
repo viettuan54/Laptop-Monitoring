@@ -79,12 +79,22 @@ test('static server, SPA fallback and API proxy work together', async (t) => {
   assert.match(contentSecurityPolicy, /frame-ancestors 'none'/);
   assert.match(await index.text(), /id="app"/);
 
-  const jpegAsset = await fetch(
-    `http://127.0.0.1:${webPort}/assets/family-digital-wellbeing.jpg`
-  );
-  assert.equal(jpegAsset.status, 200);
-  assert.equal(jpegAsset.headers.get('content-type'), 'image/jpeg');
-  assert.ok((await jpegAsset.arrayBuffer()).byteLength > 0);
+  const jpegAssets = [
+    'family-digital-wellbeing.jpg',
+    'section-child-profiles.jpg',
+    'section-managed-devices.jpg',
+    'section-usage-policies.jpg',
+    'section-digital-activity.jpg',
+    'section-safety-alerts.jpg',
+    'section-ai-insights.jpg',
+    'section-account-security.jpg',
+  ];
+  for (const asset of jpegAssets) {
+    const jpegAsset = await fetch(`http://127.0.0.1:${webPort}/assets/${asset}`);
+    assert.equal(jpegAsset.status, 200, `${asset} should be served`);
+    assert.equal(jpegAsset.headers.get('content-type'), 'image/jpeg');
+    assert.ok((await jpegAsset.arrayBuffer()).byteLength > 10_000, `${asset} should not be empty`);
+  }
 
   const fallback = await fetch(`http://127.0.0.1:${webPort}/verify?token=demo`);
   assert.equal(fallback.status, 200);
@@ -331,8 +341,9 @@ test('redesigned dashboard shell keeps navigation usable on desktop and mobile',
     'mobile-quick-nav',
     'mobile-nav-link',
     'hero-media-insight',
-    'collection-intro',
     'page-summary-strip',
+    'section-visual',
+    'section-visual-media',
   ]) {
     assert.ok(source.includes(className), `Dashboard markup is missing ${className}`);
     assert.match(styles, new RegExp(`\\.${className}\\s*(?:[,\\{])`), `Dashboard styles are missing .${className}`);
@@ -346,11 +357,38 @@ test('redesigned dashboard shell keeps navigation usable on desktop and mobile',
   assert.match(source, /data-page="api-lab"[^>]*>\$\{icons\.lab\}/);
 });
 
+test('dashboard sections include optimized and accessible illustration assets', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
+  const assets = [
+    'section-child-profiles.jpg',
+    'section-managed-devices.jpg',
+    'section-usage-policies.jpg',
+    'section-digital-activity.jpg',
+    'section-safety-alerts.jpg',
+    'section-ai-insights.jpg',
+    'section-account-security.jpg',
+  ];
+
+  for (const asset of assets) {
+    assert.ok(source.includes(`/assets/${asset}`), `Dashboard markup is missing ${asset}`);
+    const assetPath = path.join(ROOT, 'assets', asset);
+    assert.ok(fs.existsSync(assetPath), `${asset} is missing from assets`);
+    assert.ok(fs.statSync(assetPath).size > 10_000, `${asset} is unexpectedly small`);
+  }
+
+  assert.match(source, /class="section-visual-media"><img[^>]+alt="\$\{escapeHtml\(visual\.alt\)\}"/);
+  assert.match(source, /loading="lazy" decoding="async"/);
+  assert.match(source, /class="profile-cover"><img src="\/assets\/section-account-security\.jpg" alt="[^"]+" width="1200" height="800"/);
+  assert.match(styles, /\.profile-card\s*\{[\s\S]*?grid-template-columns:/);
+  assert.match(styles, /\.profile-cover img\s*\{[\s\S]*?object-fit:\s*cover/);
+});
+
 test('redesigned data pages expose summaries, resettable filters and accessible actions', () => {
   const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /class="page-summary-strip"/);
-  assert.match(source, /class="collection-intro"/);
+  assert.match(source, /class="section-visual section-visual-/);
   assert.match(source, /data-action="clear-alert-filter"/);
   assert.match(source, /data-action="clear-admin-user-filter"/);
   assert.match(source, /data-action="clear-blacklist-filter"/);
@@ -359,6 +397,35 @@ test('redesigned data pages expose summaries, resettable filters and accessible 
   assert.match(source, /aria-label="Chỉnh sửa hồ sơ/);
   assert.match(source, /aria-label="Xóa hồ sơ/);
   assert.doesNotMatch(source, /style="grid-template-columns:/);
+});
+
+test('admin workspace presents operational context, scannable records and responsive tools', () => {
+  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
+
+  for (const className of [
+    'admin-hero-flags',
+    'admin-kpi-grid',
+    'admin-operations-grid',
+    'admin-section-intro',
+    'admin-intro-stats',
+    'admin-table-card',
+    'admin-user-avatar',
+    'admin-domain-cell',
+    'audit-action-badge',
+    'endpoint-list-head',
+    'api-request-heading',
+  ]) {
+    assert.ok(source.includes(className), `Admin markup is missing ${className}`);
+    assert.ok(styles.includes(`.${className}`), `Admin styles are missing .${className}`);
+  }
+
+  assert.match(source, /adminSectionIntro\('users'/);
+  assert.match(source, /adminSectionIntro\('blacklist'/);
+  assert.match(source, /adminSectionIntro\('audit'/);
+  assert.match(source, /adminSectionIntro\('api-lab'/);
+  assert.match(styles, /@media \(max-width:\s*610px\)[\s\S]*?\.admin-section-intro\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  assert.match(styles, /@media \(max-width:\s*1024px\)[\s\S]*?\.endpoint-list\s*\{[\s\S]*?position:\s*static/);
 });
 
 test('dashboard preserves role on startup errors and prevents duplicate sensitive actions', () => {

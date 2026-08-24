@@ -292,6 +292,7 @@ class ContentModelTrainingTest(unittest.TestCase):
 
             self.assertTrue((output_dir / "web_content_model_v1.json").is_file())
             self.assertTrue((output_dir / "app_exact_lookup_v1.json").is_file())
+            self.assertTrue((output_dir / "web_exact_lookup_v1.json").is_file())
             self.assertTrue((output_dir / "evaluation_report.json").is_file())
 
         self.assertEqual(report["confidence_threshold"], 0.7)
@@ -308,6 +309,13 @@ class ContentModelTrainingTest(unittest.TestCase):
         self.assertEqual(report["resources"]["apps"]["exact_lookup"]["record_count"], 32)
         self.assertFalse(
             report["resources"]["apps"]["exact_lookup"]["held_out_generalization_claim"]
+        )
+        self.assertEqual(
+            report["resources"]["websites"]["exact_lookup"]["record_count"], 40
+        )
+        self.assertEqual(
+            report["hybrid_pipeline"]["resource_modes"]["websites"],
+            "exact_lookup_then_model_then_gemini",
         )
         self.assertIn("test_metrics", report["resources"]["websites"])
 

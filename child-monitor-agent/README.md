@@ -49,7 +49,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.13"
+  -Version "1.0.14"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -57,14 +57,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.13.exe
+build\output\ChildMonitorSetup-1.0.14.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.13" `
+  -Version "1.0.14" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -102,12 +102,13 @@ tải trước.
 
 ## Phân loại nội dung ứng dụng và website
 
-Installer đóng gói `web_content_model_v1.json`, `app_content_model_v1.json` và
-`app_exact_lookup_v1.json` cùng checksum SHA-256. Self-test của Service sẽ dừng
+Installer đóng gói `web_content_model_v1.json`, `app_content_model_v1.json`,
+`app_exact_lookup_v1.json` và `web_exact_lookup_v1.json` cùng checksum SHA-256. Self-test của Service sẽ dừng
 nếu asset bị thiếu, sai checksum hoặc model chưa đạt deployment gate.
 
-Khi `enable_web_classification=true`, Service chỉ đưa domain đã chuẩn hóa vào
-model website cục bộ. Kết quả có confidence từ `0.70` được lưu với nguồn
+Khi `enable_web_classification=true`, Service ưu tiên domain đã duyệt trong
+`web_exact_lookup_v1.json` với nguồn `exact_lookup` và confidence `1.0`, sau đó
+đưa domain chưa biết vào model website cục bộ. Kết quả có confidence từ `0.70` được lưu với nguồn
 `trained_model`; kết quả thấp hơn ngưỡng mới gửi duy nhất domain tới Gemini và
 lưu nguồn `gemini`. Khi công tắc tắt, Agent không gọi model/Gemini và lưu trạng
 thái `disabled`, vì vậy quyền truy cập web vẫn hoạt động bình thường.
