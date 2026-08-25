@@ -4525,6 +4525,18 @@ button.list-item:hover .list-arrow {
   font-size: 0.75rem;
 }
 
+.control-time-section {
+  margin-top: 16px;
+  padding: 20px;
+  border: 1px solid #d3e2f4;
+  border-radius: 18px;
+  background: rgba(248, 251, 255, 0.88);
+}
+
+.control-time-section .policy-section-heading {
+  margin-bottom: 18px;
+}
+
 .control-switch-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6029,7 +6041,7 @@ button.list-item:hover .list-arrow {
 
   .control-command-stats {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 6px;
   }
 
@@ -6066,6 +6078,10 @@ button.list-item:hover .list-arrow {
 
   .control-switch-card {
     padding-inline: 13px;
+  }
+
+  .control-time-section {
+    padding: 16px 14px;
   }
 
   .control-privacy-note {

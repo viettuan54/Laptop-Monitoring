@@ -218,12 +218,13 @@ test('session refresh is single-flight and logout clears session-scoped state', 
   }
 });
 
-test('policy UI exposes and submits both AI classification toggles', () => {
+test('policy UI exposes and submits all AI analysis toggles', () => {
   const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /Phân loại AI & truy cập/);
   assert.match(source, /switchRow\('enable_app_classification', 'Phân loại ứng dụng'/);
   assert.match(source, /switchRow\('enable_web_classification', 'Phân loại website'/);
+  assert.match(source, /switchRow\('enable_text_moderation', 'Phân tích an toàn văn bản'/);
   assert.match(source, /'enable_app_classification',[\s\S]*'enable_web_classification'/);
 });
 
@@ -271,12 +272,19 @@ test('device controls live on a dedicated page and save independently from polic
     assert.doesNotMatch(policiesSource, new RegExp(`switchRow\\('${field}'`), `${field} must not remain in policies`);
   }
 
+  for (const field of ['daily_limit_minutes', 'allowed_start_time', 'allowed_end_time']) {
+    assert.ok(controlsSource.includes(`name="${field}"`), `${field} is missing from device controls`);
+    assert.ok(!policiesSource.includes(`name="${field}"`), `${field} must not remain in policies`);
+  }
+
   for (const className of ['control-command-hero', 'control-switch-grid', 'control-panel-card', 'control-privacy-note']) {
     assert.ok(controlsSource.includes(className), `Device-control markup is missing ${className}`);
     assert.ok(styles.includes(`.${className}`), `Device-control styles are missing .${className}`);
   }
 
   assert.doesNotMatch(policiesSource, /Kiểm soát thiết bị/);
+  assert.doesNotMatch(policiesSource, /<h3>Thời gian sử dụng<\/h3>/);
+  assert.match(source, /form\.id === 'device-control-form'[\s\S]*?data\.daily_limit_minutes = Number\(data\.daily_limit_minutes\);[\s\S]*?form\.id === 'policy-form'/);
   assert.match(styles, /@media \(max-width:\s*820px\)[\s\S]*?\.control-command-hero\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
 });
 

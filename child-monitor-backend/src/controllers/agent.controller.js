@@ -10,6 +10,100 @@ const {
   normalizeDomain,
 } = require('../services/contentClassification.service');
 const { getAgentPolicySnapshot } = require('../services/agentPolicy.service');
+const { moderateTexts } = require('../services/textModeration.service');
+
+const TEXT_MODERATION_BATCH_MAX = 20;
+const TEXT_MODERATION_SOURCES = new Set([
+  'search_query',
+  'page_content',
+  'chat_received',
+  'chat_authored',
+]);
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeTextModerationRecords(body) {
+  if (!Array.isArray(body?.records) || body.records.length < 1
+      || body.records.length > TEXT_MODERATION_BATCH_MAX) {
+    throw new TypeError(`records must contain between 1 and ${TEXT_MODERATION_BATCH_MAX} items`);
+  }
+  const seenIds = new Set();
+  return body.records.map((record, index) => {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      throw new TypeError(`records[${index}] must be an object`);
+    }
+    const clientRecordId = typeof record.client_record_id === 'string'
+      ? record.client_record_id.trim().toLowerCase()
+      : '';
+    if (!UUID_PATTERN.test(clientRecordId) || seenIds.has(clientRecordId)) {
+      throw new TypeError(`records[${index}].client_record_id is invalid or duplicated`);
+    }
+    seenIds.add(clientRecordId);
+    if (!TEXT_MODERATION_SOURCES.has(record.source_type)) {
+      throw new TypeError(`records[${index}].source_type is invalid`);
+    }
+    if (typeof record.text !== 'string') {
+      throw new TypeError(`records[${index}].text must be a string`);
+    }
+    const text = record.text.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+    if (!text || text.length > 1000 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)) {
+      throw new TypeError(`records[${index}].text length or characters are invalid`);
+    }
+    if (typeof record.occurred_at !== 'string'
+        || record.occurred_at.length > 64
+        || !/(?:Z|[+-]\d{2}:\d{2})$/i.test(record.occurred_at)
+        || Number.isNaN(Date.parse(record.occurred_at))) {
+      throw new TypeError(`records[${index}].occurred_at must be an ISO timestamp with offset`);
+    }
+    let domain = null;
+    if (record.domain !== undefined && record.domain !== null && record.domain !== '') {
+      if (typeof record.domain !== 'string') {
+        throw new TypeError(`records[${index}].domain must be a string`);
+      }
+      try {
+        domain = normalizeDomain(record.domain);
+      } catch (error) {
+        throw new TypeError(`records[${index}].domain is invalid`);
+      }
+      if (domain.length > 200) throw new TypeError(`records[${index}].domain is too long`);
+    }
+    return {
+      clientRecordId,
+      sourceType: record.source_type,
+      text,
+      occurredAt: new Date(record.occurred_at).toISOString(),
+      domain,
+    };
+  });
+}
+
+function textAlertPresentation(result, sourceType, domain) {
+  const sourceLabels = {
+    search_query: 'truy vấn tìm kiếm',
+    page_content: 'nội dung trang',
+    chat_received: 'tin nhắn trẻ nhận được',
+    chat_authored: 'tin nhắn trẻ soạn',
+  };
+  const origin = domain ? ` trên ${domain}` : '';
+  const source = sourceLabels[sourceType] || 'nội dung văn bản';
+  const presentations = {
+    self_harm: {
+      alertType: 'text_self_harm',
+      title: 'Cảnh báo dấu hiệu tự hại',
+      message: `Phát hiện dấu hiệu tự hại trong ${source}${origin}. Hãy chủ động kiểm tra và trò chuyện với trẻ.`,
+    },
+    harassment: {
+      alertType: 'text_harassment',
+      title: 'Cảnh báo bắt nạt hoặc đe dọa',
+      message: `Phát hiện dấu hiệu bắt nạt, quấy rối hoặc đe dọa trong ${source}${origin}.`,
+    },
+    violence: {
+      alertType: 'text_violence',
+      title: 'Cảnh báo ngôn từ bạo lực',
+      message: `Phát hiện ngôn từ bạo lực hoặc kích động trong ${source}${origin}.`,
+    },
+  };
+  return presentations[result.riskType];
+}
 
 // ────────────────────────────────────────────────────────────────
 // POST /api/agent/heartbeat
@@ -423,5 +517,145 @@ exports.sendVisionAlert = async (req, res) => {
   } catch (error) {
     console.error('Send vision alert error:', error);
     res.status(500).json({ message: 'Internal server error' });
+  }
+};
+
+// POST /api/agent/text-moderation/batch
+// Raw text is sent to OpenAI for immediate moderation and is never inserted into PostgreSQL.
+exports.moderateTextBatch = async (req, res) => {
+  let records;
+  try {
+    records = normalizeTextModerationRecords(req.body);
+  } catch (error) {
+    return res.status(400).json({ message: error.message });
+  }
+
+  const acceptedIds = records.map((record) => record.clientRecordId);
+  try {
+    const settingsResult = await adminPool.query(
+      'SELECT enable_text_moderation FROM settings WHERE child_id = $1',
+      [req.device.child_id]
+    );
+    if (settingsResult.rows[0]?.enable_text_moderation !== true) {
+      return res.status(201).json({
+        enabled: false,
+        accepted_client_record_ids: acceptedIds,
+        flagged_count: 0,
+      });
+    }
+
+    const existingResult = await adminPool.query(
+      `SELECT client_record_id::text AS client_record_id
+       FROM text_moderation_events
+       WHERE device_id = $1 AND client_record_id = ANY($2::uuid[])`,
+      [req.device.device_id, acceptedIds]
+    );
+    const existingIds = new Set(existingResult.rows.map((row) => row.client_record_id));
+    const pendingRecords = records.filter((record) => !existingIds.has(record.clientRecordId));
+    if (pendingRecords.length === 0) {
+      return res.status(201).json({
+        enabled: true,
+        accepted_client_record_ids: acceptedIds,
+        flagged_count: 0,
+      });
+    }
+
+    const moderation = await moderateTexts(pendingRecords.map((record) => record.text));
+    const client = await adminPool.connect();
+    const alertsToPush = [];
+    let flaggedCount = 0;
+    try {
+      await client.query('BEGIN');
+      for (let index = 0; index < pendingRecords.length; index += 1) {
+        const record = pendingRecords[index];
+        const result = moderation.results[index];
+        const eventInsert = await client.query(
+          `INSERT INTO text_moderation_events(
+             device_id, client_record_id, source_type, status, risk_type, severity,
+             primary_category, confidence, category_scores, moderation_model,
+             domain, occurred_at
+           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12)
+           ON CONFLICT (device_id, client_record_id) DO NOTHING
+           RETURNING event_id`,
+          [
+            req.device.device_id,
+            record.clientRecordId,
+            record.sourceType,
+            result.flagged ? 'flagged' : 'safe',
+            result.riskType,
+            result.severity,
+            result.primaryCategory,
+            result.confidence,
+            JSON.stringify(result.categoryScores),
+            moderation.model,
+            record.domain,
+            record.occurredAt,
+          ]
+        );
+        if (!result.flagged || eventInsert.rows.length === 0) continue;
+        flaggedCount += 1;
+        const presentation = textAlertPresentation(result, record.sourceType, record.domain);
+        if (!presentation) continue;
+
+        const recentAlert = await client.query(
+          `SELECT alert_id FROM alerts
+           WHERE device_id = $1 AND alert_type = $2
+             AND created_at > NOW() - INTERVAL '5 minutes'
+           LIMIT 1`,
+          [req.device.device_id, presentation.alertType]
+        );
+        if (recentAlert.rows.length > 0) continue;
+        const alertInsert = await client.query(
+          `INSERT INTO alerts(device_id, alert_type, message)
+           VALUES($1, $2, $3)
+           RETURNING alert_id`,
+          [req.device.device_id, presentation.alertType, presentation.message]
+        );
+        alertsToPush.push({
+          ...presentation,
+          alertId: alertInsert.rows[0].alert_id,
+        });
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+
+    if (alertsToPush.length > 0) {
+      const childResult = await adminPool.query(
+        'SELECT user_id FROM children WHERE child_id = $1',
+        [req.device.child_id]
+      );
+      const userId = childResult.rows[0]?.user_id;
+      if (userId) {
+        for (const alert of alertsToPush) {
+          sendPushNotification(userId, alert.title, alert.message, {
+            type: 'alert',
+            route: 'alerts',
+            alert_id: alert.alertId,
+            device_id: req.device.device_id,
+            alert_type: alert.alertType,
+          }).catch((error) => console.error('Failed to send text safety push:', error.message));
+        }
+      }
+    }
+
+    return res.status(201).json({
+      enabled: true,
+      accepted_client_record_ids: acceptedIds,
+      flagged_count: flaggedCount,
+    });
+  } catch (error) {
+    if (error.code === 'OPENAI_NOT_CONFIGURED' || error.code === 'OPENAI_INVALID_MODERATION_MODEL') {
+      return res.status(503).json({ message: 'Text moderation is not configured' });
+    }
+    if (error.code === 'OPENAI_MODERATION_FAILED') {
+      return res.status(502).json({ message: 'Text moderation provider failed' });
+    }
+    console.error('Text moderation batch error:', error.message);
+    return res.status(500).json({ message: 'Internal server error' });
   }
 };

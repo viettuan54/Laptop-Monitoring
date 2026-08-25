@@ -42,7 +42,7 @@ BEGIN
         CREATE TYPE risk_level AS ENUM ('low', 'medium', 'high');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'alert_type') THEN
-        CREATE TYPE alert_type AS ENUM ('time_exceeded', 'unsafe_website', 'app_overuse', 'night_usage', 'posture_warning', 'stranger_detected', 'eye_distance_warning');
+        CREATE TYPE alert_type AS ENUM ('time_exceeded', 'unsafe_website', 'app_overuse', 'night_usage', 'posture_warning', 'stranger_detected', 'eye_distance_warning', 'text_self_harm', 'text_harassment', 'text_violence');
     END IF;
 END $$;
 
@@ -116,6 +116,7 @@ CREATE TABLE IF NOT EXISTS settings (
     enable_keylog              BOOLEAN DEFAULT FALSE,
     enable_app_classification  BOOLEAN NOT NULL DEFAULT FALSE,
     enable_web_classification  BOOLEAN NOT NULL DEFAULT FALSE,
+    enable_text_moderation     BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -172,6 +173,39 @@ CREATE TABLE IF NOT EXISTS website_blacklist (
     added_by      INT REFERENCES users(user_id) ON DELETE SET NULL,
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS text_moderation_events (
+    event_id          BIGSERIAL PRIMARY KEY,
+    device_id         INT NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
+    client_record_id  UUID NOT NULL,
+    source_type       VARCHAR(24) NOT NULL CHECK (
+        source_type IN ('search_query', 'page_content', 'chat_received', 'chat_authored')
+    ),
+    status            VARCHAR(12) NOT NULL CHECK (status IN ('safe', 'flagged')),
+    risk_type         VARCHAR(20) NOT NULL CHECK (
+        risk_type IN ('none', 'self_harm', 'harassment', 'violence')
+    ),
+    severity          VARCHAR(12) NOT NULL CHECK (
+        severity IN ('low', 'medium', 'high', 'critical')
+    ),
+    primary_category  VARCHAR(40),
+    confidence        DOUBLE PRECISION NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    category_scores   JSONB NOT NULL DEFAULT '{}'::JSONB,
+    moderation_model  VARCHAR(64) NOT NULL,
+    domain            VARCHAR(200),
+    occurred_at       TIMESTAMPTZ NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (device_id, client_record_id)
+);
+
+COMMENT ON TABLE text_moderation_events IS
+    'Privacy-minimized moderation outcomes. Raw text is intentionally not stored.';
+
+CREATE INDEX IF NOT EXISTS idx_text_moderation_device_occurred
+    ON text_moderation_events(device_id, occurred_at DESC);
+CREATE INDEX IF NOT EXISTS idx_text_moderation_flagged
+    ON text_moderation_events(device_id, severity, occurred_at DESC)
+    WHERE status = 'flagged';
 
 CREATE TABLE IF NOT EXISTS push_tokens (
     push_token_id BIGSERIAL PRIMARY KEY,
@@ -302,7 +336,7 @@ GRANT USAGE ON SCHEMA public TO app_backend, app_admin;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON
     users, children, devices, app_usage, website_logs,
-    settings, ai_analysis, alerts, token_blacklist, refresh_tokens, website_blacklist,
+    settings, ai_analysis, alerts, text_moderation_events, token_blacklist, refresh_tokens, website_blacklist,
     push_tokens
 TO app_backend;
 
@@ -332,6 +366,7 @@ ALTER TABLE website_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ai_analysis ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE text_moderation_events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_tokens ENABLE ROW LEVEL SECURITY;
 ALTER TABLE push_receipts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_face_challenges ENABLE ROW LEVEL SECURITY;
@@ -395,6 +430,13 @@ USING (device_id IN (
     WHERE c.user_id = current_setting('app.current_user_id', true)::INT
 ));
 
+CREATE POLICY text_moderation_events_owner ON text_moderation_events
+USING (device_id IN (
+    SELECT d.device_id FROM devices d
+    JOIN children c ON d.child_id = c.child_id
+    WHERE c.user_id = current_setting('app.current_user_id', true)::INT
+));
+
 CREATE POLICY push_tokens_owner ON push_tokens
 USING (user_id = current_setting('app.current_user_id', true)::INT)
 WITH CHECK (user_id = current_setting('app.current_user_id', true)::INT);
@@ -417,6 +459,7 @@ BEGIN
     DELETE FROM app_usage WHERE start_time < NOW() - INTERVAL '6 months';
     DELETE FROM website_logs WHERE visit_time < NOW() - INTERVAL '6 months';
     DELETE FROM ai_analysis WHERE analyzed_at < NOW() - INTERVAL '6 months';
+    DELETE FROM text_moderation_events WHERE created_at < NOW() - INTERVAL '30 days';
     DELETE FROM alerts WHERE created_at < NOW() - INTERVAL '12 months' AND is_read = TRUE;
 END;
 $$ LANGUAGE plpgsql;

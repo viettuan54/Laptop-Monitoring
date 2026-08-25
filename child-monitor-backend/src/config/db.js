@@ -49,6 +49,7 @@ const RLS_TABLES = [
   'push_tokens', 'push_receipts',
   'admin_face_challenges',
   'child_category_policies',
+  'text_moderation_events',
 ];
 
 async function validateRlsConfiguration() {

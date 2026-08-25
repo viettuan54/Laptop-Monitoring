@@ -454,6 +454,50 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
             count = conn.execute("SELECT COUNT(*) FROM vision_alerts").fetchone()[0]
         self.assertEqual(count, 1)
 
+    def test_text_moderation_raw_content_is_deleted_after_backend_acknowledgement(self):
+        record_id = str(uuid.uuid4())
+        persisted_id, inserted = self.queue.enqueue_text_moderation(
+            client_record_id=record_id,
+            source_type="search_query",
+            content_text="mình cần được giúp đỡ",
+            occurred_at="2026-08-25T12:00:00+07:00",
+            domain="www.google.com",
+        )
+        self.assertTrue(inserted)
+        self.assertEqual(persisted_id, record_id)
+
+        api = FakeApiClient([record_id])
+        self.queue._sync_text_moderation(api)
+
+        with self.queue.get_connection() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM text_moderation_queue"
+            ).fetchone()[0]
+        self.assertEqual(count, 0)
+        self.assertEqual(api.calls[0][0], "/api/agent/text-moderation/batch")
+        self.assertEqual(
+            api.calls[0][1]["records"][0]["text"],
+            "mình cần được giúp đỡ",
+        )
+
+    def test_text_moderation_raw_content_is_retained_for_retry_on_provider_failure(self):
+        record_id = str(uuid.uuid4())
+        self.queue.enqueue_text_moderation(
+            client_record_id=record_id,
+            source_type="search_query",
+            content_text="retry me",
+            occurred_at="2026-08-25T12:00:00+07:00",
+            domain="www.google.com",
+        )
+
+        self.queue._sync_text_moderation(FakeVisionApi(status_code=502))
+
+        with self.queue.get_connection() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM text_moderation_queue"
+            ).fetchone()[0]
+        self.assertEqual(count, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

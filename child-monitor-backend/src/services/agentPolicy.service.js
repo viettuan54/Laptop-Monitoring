@@ -8,6 +8,7 @@ const DEFAULT_AGENT_CONFIG = Object.freeze({
   enable_keylog: false,
   enable_app_classification: false,
   enable_web_classification: false,
+  enable_text_moderation: false,
 });
 const MAX_POLICY_BLOCKED_DOMAINS = 5000;
 
@@ -29,7 +30,7 @@ async function getAgentPolicyConfig(db, childId) {
     db.query(
       `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
               is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-              enable_app_classification, enable_web_classification
+              enable_app_classification, enable_web_classification, enable_text_moderation
        FROM settings
        WHERE child_id = $1`,
       [childId]

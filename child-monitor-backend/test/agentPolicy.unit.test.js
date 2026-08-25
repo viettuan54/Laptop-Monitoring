@@ -38,6 +38,7 @@ test('Agent policy config includes classification switches and blocked categorie
   const config = await getAgentPolicyConfig(db, 12);
 
   assert.equal(config.enable_web_classification, true);
+  assert.equal(config.enable_text_moderation, false);
   assert.equal(config.daily_limit_minutes, 90);
   assert.deepEqual(config.blocked_web_categories, ['entertainment', 'unsafe']);
   assert.deepEqual(config.blocked_app_categories, []);

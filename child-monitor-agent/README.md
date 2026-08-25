@@ -146,6 +146,24 @@ liệu đã phân loại trước lúc nâng cấp/cài lại Agent. Đổi poli
 sẽ gỡ domain tương ứng ở heartbeat kế tiếp (tối đa khoảng 60 giây), còn cache giúp
 policy tiếp tục có hiệu lực sau reboot hoặc khi Backend tạm thời mất kết nối.
 
+## Phân tích an toàn văn bản
+
+Khi phụ huynh bật `enable_text_moderation`, Companion nhận diện truy vấn từ URL
+kết quả tìm kiếm của Google, Bing, Yahoo, DuckDuckGo, Cốc Cốc, YouTube và Brave.
+Bộ phân tích văn bản không dùng page title/window title, không đọc nội dung trang
+và không giải mã HTTPS.
+
+Truy vấn được chuyển qua Named Pipe tới Service, ghi tạm trong SQLite đã giới hạn
+ACL cho SYSTEM/Administrators, rồi gửi theo lô tối đa 20 bản ghi tới
+`POST /api/agent/text-moderation/batch`. Bản ghi dùng UUID ổn định để retry không
+tạo kết quả trùng. Khi Backend xác nhận — kể cả khi tính năng vừa bị tắt — Service
+xóa ngay văn bản gốc khỏi hàng đợi; bản ghi chưa gửi quá 7 ngày cũng tự bị xóa.
+
+Khóa OpenAI chỉ đặt tại Backend, không nằm trong Agent hay bộ cài. Phiên bản này
+mới thu thập nguồn `search_query`; schema Backend đã dành sẵn `page_content`,
+`chat_received` và `chat_authored` cho các bộ thu thập được người dùng cấp quyền
+trong giai đoạn sau.
+
 ## Edge AI: khoảng cách mắt và tư thế
 
 Khi phụ huynh bật `enable_webcam_monitoring`, Companion trong phiên đăng nhập

@@ -19,7 +19,7 @@ exports.getSettings = async (req, res) => {
     let result = await req.db.query(
       `SELECT setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
               is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-              enable_app_classification, enable_web_classification, updated_at
+              enable_app_classification, enable_web_classification, enable_text_moderation, updated_at
        FROM settings WHERE child_id = $1`,
       [child_id]
     );
@@ -38,7 +38,7 @@ exports.getSettings = async (req, res) => {
          VALUES($1)
          RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
                    is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-                   enable_app_classification, enable_web_classification, updated_at`,
+                   enable_app_classification, enable_web_classification, enable_text_moderation, updated_at`,
         [child_id]
       );
     }
@@ -62,6 +62,7 @@ exports.updateSettings = async (req, res) => {
     enable_keylog,
     enable_app_classification,
     enable_web_classification,
+    enable_text_moderation,
   } = req.body;
 
   // Validate daily_limit_minutes: số nguyên từ 0 đến 1440 (24 giờ)
@@ -89,6 +90,7 @@ exports.updateSettings = async (req, res) => {
     enable_keylog,
     enable_app_classification,
     enable_web_classification,
+    enable_text_moderation,
   };
   for (const [key, val] of Object.entries(boolFields)) {
     if (val !== undefined && val !== null && typeof val !== 'boolean') {
@@ -108,7 +110,7 @@ exports.updateSettings = async (req, res) => {
       `INSERT INTO settings (
          child_id, daily_limit_minutes, allowed_start_time, allowed_end_time, is_locked,
          enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-         enable_app_classification, enable_web_classification
+         enable_app_classification, enable_web_classification, enable_text_moderation
        )
        VALUES (
          $1,
@@ -120,7 +122,8 @@ exports.updateSettings = async (req, res) => {
          COALESCE($7, FALSE),
          COALESCE($8, FALSE),
          COALESCE($9, FALSE),
-         COALESCE($10, FALSE)
+         COALESCE($10, FALSE),
+         COALESCE($11, FALSE)
        )
        ON CONFLICT (child_id)
        DO UPDATE SET
@@ -133,10 +136,11 @@ exports.updateSettings = async (req, res) => {
          enable_keylog             = COALESCE($8, settings.enable_keylog),
          enable_app_classification = COALESCE($9, settings.enable_app_classification),
          enable_web_classification = COALESCE($10, settings.enable_web_classification),
+         enable_text_moderation     = COALESCE($11, settings.enable_text_moderation),
          updated_at                = CURRENT_TIMESTAMP
        RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
                  is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-                 enable_app_classification, enable_web_classification, updated_at`,
+                 enable_app_classification, enable_web_classification, enable_text_moderation, updated_at`,
       [
         child_id,
         daily_limit_minutes,
@@ -148,6 +152,7 @@ exports.updateSettings = async (req, res) => {
         enable_keylog,
         enable_app_classification,
         enable_web_classification,
+        enable_text_moderation,
       ]
     );
 
@@ -161,6 +166,7 @@ exports.updateSettings = async (req, res) => {
       enable_keylog,
       enable_app_classification,
       enable_web_classification,
+      enable_text_moderation,
     })
       .filter(([, value]) => value !== undefined && value !== null)
       .map(([field]) => field);

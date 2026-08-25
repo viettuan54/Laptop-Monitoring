@@ -137,6 +137,18 @@ class OfflineQueue:
             )
             """)
 
+            # Raw text is held only until the backend returns an explicit acknowledgement.
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS text_moderation_queue (
+                client_record_id TEXT PRIMARY KEY,
+                source_type TEXT NOT NULL,
+                content_text TEXT NOT NULL,
+                occurred_at TEXT NOT NULL,
+                domain TEXT,
+                created_at TEXT NOT NULL
+            )
+            """)
+
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS agent_metadata (
                 key TEXT PRIMARY KEY,
@@ -611,6 +623,38 @@ class OfflineQueue:
             logging.error(f"Failed to enqueue vision alert: {e}")
             return None, False
 
+    def enqueue_text_moderation(
+        self,
+        client_record_id,
+        source_type,
+        content_text,
+        occurred_at,
+        domain=None,
+    ):
+        """Temporarily hold raw text locally; successful sync deletes it immediately."""
+        try:
+            with self.get_connection() as conn:
+                cursor = conn.execute(
+                    """INSERT OR IGNORE INTO text_moderation_queue(
+                           client_record_id, source_type, content_text,
+                           occurred_at, domain, created_at
+                       ) VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        client_record_id,
+                        source_type,
+                        content_text,
+                        occurred_at,
+                        domain,
+                        datetime.now().astimezone().isoformat(),
+                    ),
+                )
+                inserted = cursor.rowcount == 1
+                conn.commit()
+            return client_record_id, inserted
+        except Exception as e:
+            logging.error(f"Failed to enqueue text moderation record: {e}")
+            return None, False
+
     def add_daily_usage(self, seconds, usage_date=None):
         """Cộng dồn số giây sử dụng máy cho ngày hiện tại (YYYY-MM-DD local)."""
         if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0:
@@ -661,6 +705,7 @@ class OfflineQueue:
 
         self._sync_apps(api_client)
         self._sync_webs(api_client)
+        self._sync_text_moderation(api_client)
         self._sync_vision_alerts(api_client)
         self.cleanup_synced_logs(days=7)
 
@@ -833,6 +878,81 @@ class OfflineQueue:
                 logging.error(f"Error during vision alert sync: {e}")
                 break
 
+    def _sync_text_moderation(self, api_client):
+        """Send a small text batch and erase raw text as soon as it is acknowledged."""
+        while True:
+            try:
+                with self.get_connection() as conn:
+                    conn.row_factory = sqlite3.Row
+                    rows = conn.execute(
+                        """SELECT * FROM text_moderation_queue
+                           ORDER BY created_at LIMIT 20"""
+                    ).fetchall()
+                if not rows:
+                    break
+
+                records = [{
+                    "client_record_id": row["client_record_id"],
+                    "source_type": row["source_type"],
+                    "text": row["content_text"],
+                    "occurred_at": row["occurred_at"],
+                    "domain": row["domain"],
+                } for row in rows]
+                record_ids = [record["client_record_id"] for record in records]
+                response = api_client.post(
+                    "/api/agent/text-moderation/batch",
+                    data={"records": records},
+                )
+                if response is None:
+                    return
+                if response.status_code == 201:
+                    try:
+                        accepted_ids = response.json().get(
+                            "accepted_client_record_ids", []
+                        )
+                    except (ValueError, AttributeError) as error:
+                        logging.error(
+                            f"Invalid text moderation acknowledgement: {error}"
+                        )
+                        return
+                    accepted_ids = [
+                        record_id for record_id in accepted_ids
+                        if record_id in record_ids
+                    ]
+                    if not accepted_ids:
+                        logging.error(
+                            "Text moderation returned no accepted IDs; local text was retained."
+                        )
+                        return
+                    with self.get_connection() as conn:
+                        placeholders = ",".join("?" for _ in accepted_ids)
+                        conn.execute(
+                            f"DELETE FROM text_moderation_queue "
+                            f"WHERE client_record_id IN ({placeholders})",
+                            accepted_ids,
+                        )
+                        conn.commit()
+                    if len(accepted_ids) < len(record_ids):
+                        return
+                elif response.status_code in (400, 403):
+                    # Non-retryable schema/policy rejection must not retain sensitive
+                    # text indefinitely on the child device.
+                    with self.get_connection() as conn:
+                        placeholders = ",".join("?" for _ in record_ids)
+                        conn.execute(
+                            f"DELETE FROM text_moderation_queue "
+                            f"WHERE client_record_id IN ({placeholders})",
+                            record_ids,
+                        )
+                        conn.commit()
+                    return
+                else:
+                    return
+                time.sleep(0.200)
+            except Exception as e:
+                logging.error(f"Error during text moderation sync: {e}")
+                return
+
     def cleanup_synced_logs(self, days=7):
         """Xóa các bản ghi đã sync từ X ngày trước để tối ưu dung lượng DB file."""
         try:
@@ -843,6 +963,10 @@ class OfflineQueue:
                 cursor.execute("DELETE FROM app_logs WHERE synced = 1 AND start_time < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM web_logs WHERE synced = 1 AND visit_time < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM vision_alerts WHERE synced = 1 AND created_at < datetime('now', '-' || ? || ' days')", (days,))
+                cursor.execute(
+                    "DELETE FROM text_moderation_queue "
+                    "WHERE datetime(created_at) < datetime('now', '-7 days')"
+                )
                 conn.commit()
         except Exception as e:
             logging.error(f"Failed to cleanup old synced logs: {e}")

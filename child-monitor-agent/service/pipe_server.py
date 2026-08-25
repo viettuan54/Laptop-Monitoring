@@ -5,6 +5,7 @@ import logging
 import queue
 import re
 import threading
+import unicodedata
 import uuid
 import ctypes
 from ctypes import wintypes
@@ -26,6 +27,42 @@ NON_USAGE_APPS = frozenset({"lockapp.exe", "logonui.exe"})
 class PipeServer:
     PIPE_NAME = r"\\.\pipe\ChildMonitorAgentPipe"
     VISION_ALERT_TYPES = {"posture_warning", "eye_distance_warning"}
+
+    @staticmethod
+    def validate_text_moderation_record(record, web_record_id, visit_time, domain):
+        if not isinstance(record, dict) or record.get("source_type") != "search_query":
+            raise ValueError("Invalid text moderation source")
+        client_record_id = record.get("client_record_id")
+        expected_id = str(uuid.uuid5(
+            uuid.UUID(web_record_id),
+            "text-moderation:search_query",
+        ))
+        if client_record_id != expected_id:
+            raise ValueError("Invalid text moderation client record ID")
+        if record.get("occurred_at") != visit_time:
+            raise ValueError("Text moderation timestamp does not match browser visit")
+        record_domain = record.get("domain")
+        if not isinstance(record_domain, str) or record_domain.lower() != domain.lower():
+            raise ValueError("Text moderation domain does not match browser visit")
+        content_text = record.get("text")
+        if not isinstance(content_text, str):
+            raise ValueError("Text moderation content must be text")
+        content_text = " ".join(
+            unicodedata.normalize("NFKC", content_text).split()
+        ).strip()
+        if (
+            not content_text
+            or len(content_text) > 1000
+            or any(ord(character) < 32 or ord(character) == 127 for character in content_text)
+        ):
+            raise ValueError("Text moderation content is invalid")
+        return {
+            "client_record_id": client_record_id,
+            "source_type": "search_query",
+            "content_text": content_text,
+            "occurred_at": visit_time,
+            "domain": domain.lower(),
+        }
 
     def __init__(
         self,
@@ -737,6 +774,21 @@ class PipeServer:
                 if not persisted_id:
                     raise RuntimeError("Failed to persist browser visit")
                 tracking_ack = persisted_id
+                settings = self.enforcement_core.load_cached_settings()
+                if settings.get("enable_text_moderation") is True:
+                    text_record = msg.get("text_record")
+                    if text_record is not None:
+                        text_payload = self.validate_text_moderation_record(
+                            text_record,
+                            client_record_id,
+                            visit_time,
+                            domain,
+                        )
+                        text_id, _ = self.offline_queue.enqueue_text_moderation(
+                            **text_payload
+                        )
+                        if not text_id:
+                            raise RuntimeError("Failed to persist text moderation record")
                 self.enforcement_core.remember_web_classification(
                     domain,
                     classification["category"],
@@ -782,6 +834,7 @@ class PipeServer:
                 "remaining_seconds": remaining_seconds,
                 "countdown_minutes": countdown_minutes,
                 "vision_config": self._get_vision_config(),
+                "text_moderation_config": self._get_text_moderation_config(),
             }
             if tracking_ack:
                 response_payload["tracking_ack"] = tracking_ack
@@ -821,6 +874,10 @@ class PipeServer:
             "max_torso_angle_degrees": settings.get("vision_max_torso_angle_degrees", 18.0),
             "max_shoulder_tilt_degrees": settings.get("vision_max_shoulder_tilt_degrees", 12.0),
         }
+
+    def _get_text_moderation_config(self):
+        settings = self.enforcement_core.load_cached_settings()
+        return {"enabled": settings.get("enable_text_moderation") is True}
 
     def send_command_to_companion(self, command_dict):
         """Chủ động gửi lệnh (LOCK_NOW, WARNING...) tới Companion."""

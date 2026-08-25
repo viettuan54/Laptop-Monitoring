@@ -4,15 +4,77 @@ import os
 import shutil
 import sqlite3
 import time
+import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 AGENT_VERSION = "1.0.14"
+GOOGLE_SEARCH_HOSTS = frozenset({
+    "google.com",
+    "google.com.vn",
+    "google.co.uk",
+    "google.co.jp",
+    "google.co.in",
+    "google.com.au",
+    "google.ca",
+    "google.de",
+    "google.fr",
+    "google.sg",
+})
+
+
+def extract_search_query(raw_url):
+    """Extract user-authored search text from known search result URLs only."""
+    if not isinstance(raw_url, str) or len(raw_url) > 8192:
+        return None
+    try:
+        parsed = urlparse(raw_url)
+    except ValueError:
+        return None
+    host = (parsed.hostname or "").lower().rstrip(".")
+    normalized_host = host[4:] if host.startswith("www.") else host
+    path = parsed.path.rstrip("/") or "/"
+    parameter = None
+    if normalized_host in GOOGLE_SEARCH_HOSTS and path == "/search":
+        parameter = "q"
+    elif (host == "bing.com" or host.endswith(".bing.com")) and path == "/search":
+        parameter = "q"
+    elif (host == "search.yahoo.com" or host.endswith(".search.yahoo.com")) and path == "/search":
+        parameter = "p"
+    elif (host == "duckduckgo.com" or host.endswith(".duckduckgo.com")) and path == "/":
+        parameter = "q"
+    elif (host == "coccoc.com" or host.endswith(".coccoc.com")) and path == "/search":
+        parameter = "query"
+    elif host in {"youtube.com", "www.youtube.com", "m.youtube.com"} and path == "/results":
+        parameter = "search_query"
+    elif host == "search.brave.com" and path == "/search":
+        parameter = "q"
+    if not parameter:
+        return None
+    try:
+        values = parse_qs(
+            parsed.query,
+            keep_blank_values=False,
+            max_num_fields=50,
+        ).get(parameter, [])
+    except ValueError:
+        return None
+    if not values or not isinstance(values[0], str):
+        return None
+    query = unicodedata.normalize("NFKC", values[0])
+    query = " ".join(query.split()).strip()
+    if (
+        not query
+        or len(query) > 1000
+        or any(ord(character) < 32 or ord(character) == 127 for character in query)
+    ):
+        return None
+    return query
 
 
 class WebTracker:
@@ -339,6 +401,19 @@ class WebTracker:
                     visit_time,
                     raw_url,
                 )
+                search_query = extract_search_query(raw_url)
+                text_record = None
+                if search_query:
+                    text_record = {
+                        "client_record_id": str(uuid.uuid5(
+                            uuid.UUID(client_record_id),
+                            "text-moderation:search_query",
+                        )),
+                        "source_type": "search_query",
+                        "text": search_query,
+                        "occurred_at": visit_iso,
+                        "domain": parsed.hostname.lower()[:200],
+                    }
                 response = self.pipe_client.send_web_tracking(
                     url=raw_url[:500],
                     domain=parsed.hostname.lower()[:200],
@@ -346,6 +421,7 @@ class WebTracker:
                     duration_seconds=duration_seconds,
                     page_title=(title or parsed.hostname)[:500],
                     client_record_id=client_record_id,
+                    text_record=text_record,
                 )
                 if not isinstance(response, dict) or response.get("tracking_ack") != client_record_id:
                     profile_status["error"] = "service_did_not_acknowledge"

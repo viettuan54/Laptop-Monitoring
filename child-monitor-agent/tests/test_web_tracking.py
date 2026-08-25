@@ -30,6 +30,7 @@ service_pipe_server = load_module(
 )
 
 WebTracker = companion_web_tracker.WebTracker
+extract_search_query = companion_web_tracker.extract_search_query
 PipeServer = service_pipe_server.PipeServer
 
 
@@ -48,9 +49,14 @@ class FakePipeClient:
 class FakeQueue:
     def __init__(self):
         self.web_calls = []
+        self.text_calls = []
 
     def enqueue_web_log(self, **record):
         self.web_calls.append(record)
+        return record["client_record_id"], True
+
+    def enqueue_text_moderation(self, **record):
+        self.text_calls.append(record)
         return record["client_record_id"], True
 
 
@@ -154,6 +160,23 @@ class WebTrackingTest(unittest.TestCase):
         self.assertEqual(status["records_discovered"], 1)
         self.assertEqual(status["records_forwarded"], 1)
 
+    def test_extracts_normalized_queries_only_from_known_search_result_urls(self):
+        self.assertEqual(
+            extract_search_query(
+                "https://www.google.com/search?q=bao+luc+hoc+duong&sourceid=chrome"
+            ),
+            "bao luc hoc duong",
+        )
+        self.assertEqual(
+            extract_search_query(
+                "https://www.youtube.com/results?search_query=%C4%91%E1%BB%ABng+%C4%91%C3%A1nh+nhau"
+            ),
+            "đừng đánh nhau",
+        )
+        self.assertIsNone(extract_search_query("https://example.com/?q=private"))
+        self.assertIsNone(extract_search_query("https://evil.google.example/search?q=private"))
+        self.assertIsNone(extract_search_query("https://www.google.com/search?q="))
+
     def test_discovers_coccoc_history_profiles(self):
         coccoc_history = (
             self.local_app_data
@@ -250,6 +273,44 @@ class WebTrackingTest(unittest.TestCase):
         self.assertEqual(queue.web_calls[0]["client_record_id"], record_id)
         response = json.loads(write_file.call_args.args[1].decode("utf-8"))
         self.assertEqual(response["tracking_ack"], record_id)
+
+    def test_service_queues_search_text_only_when_parent_enabled_policy(self):
+        queue = FakeQueue()
+        enforcement = FakeEnforcementCore()
+        enforcement.load_cached_settings = Mock(return_value={
+            "enable_text_moderation": True,
+        })
+        server = PipeServer(queue, enforcement)
+        web_record_id = str(uuid.uuid4())
+        text_record_id = str(uuid.uuid5(
+            uuid.UUID(web_record_id),
+            "text-moderation:search_query",
+        ))
+        visit_time = datetime.now(timezone.utc).isoformat()
+        message = json.dumps({
+            "action": "TRACK_WEB",
+            "url": "https://www.google.com/search?q=help",
+            "domain": "www.google.com",
+            "visit_time": visit_time,
+            "duration_seconds": 1,
+            "page_title": "Google Search",
+            "client_record_id": web_record_id,
+            "text_record": {
+                "client_record_id": text_record_id,
+                "source_type": "search_query",
+                "text": "  cần   giúp đỡ  ",
+                "occurred_at": visit_time,
+                "domain": "www.google.com",
+            },
+        })
+
+        with patch.object(service_pipe_server.win32file, "WriteFile"):
+            server._process_client_message(message, 123)
+
+        self.assertEqual(len(queue.text_calls), 1)
+        self.assertEqual(queue.text_calls[0]["client_record_id"], text_record_id)
+        self.assertEqual(queue.text_calls[0]["content_text"], "cần giúp đỡ")
+        self.assertNotIn("text", queue.web_calls[0])
 
     def test_service_persists_a_blocked_https_attempt_from_loopback_sink(self):
         queue = FakeQueue()

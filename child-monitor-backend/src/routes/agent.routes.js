@@ -49,4 +49,8 @@ router.post(
 // alert_type: posture_warning | stranger_detected | eye_distance_warning
 router.post('/vision-alert', deviceAuth, agentController.sendVisionAlert);
 
+// Text is accepted only for immediate moderation. The backend persists outcomes,
+// never the raw query/chat/page content.
+router.post('/text-moderation/batch', deviceAuth, agentController.moderateTextBatch);
+
 module.exports = router;

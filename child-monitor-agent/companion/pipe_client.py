@@ -48,9 +48,10 @@ class PipeClient:
         duration_seconds,
         page_title,
         client_record_id,
+        text_record=None,
     ):
         """Forward one browser-history visit to the privileged Service queue."""
-        return self._send_and_receive({
+        payload = {
             "action": "TRACK_WEB",
             "url": url,
             "domain": domain,
@@ -58,7 +59,10 @@ class PipeClient:
             "duration_seconds": duration_seconds,
             "page_title": page_title,
             "client_record_id": client_record_id,
-        })
+        }
+        if text_record:
+            payload["text_record"] = text_record
+        return self._send_and_receive(payload)
 
     def send_ping(self):
         """Gửi định kỳ PING lên Service để kiểm tra chính sách mà không làm ghi log app mới."""

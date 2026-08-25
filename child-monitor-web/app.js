@@ -91,8 +91,8 @@ const pageTitles = {
   overview: ['Tổng quan gia đình', 'Góc nhìn rõ ràng, không phán xét về thói quen số của con.'],
   children: ['Hồ sơ trẻ', 'Quản lý hồ sơ và liên kết thiết bị theo từng trẻ.'],
   devices: ['Thiết bị', 'Đăng ký laptop, quản lý định danh và secret cài đặt.'],
-  controls: ['Điều khiển thiết bị', 'Khóa máy và quản lý các khả năng giám sát của Agent.'],
-  policies: ['Chính sách sử dụng', 'Thiết lập thời gian và quyền truy cập nội dung cho từng hồ sơ.'],
+  controls: ['Điều khiển thiết bị', 'Giới hạn thời gian, khóa máy và quản lý các khả năng giám sát của Agent.'],
+  policies: ['Chính sách sử dụng', 'Thiết lập phân loại AI và quyền truy cập nội dung cho từng hồ sơ.'],
   activity: ['Hoạt động số', 'Theo dõi ứng dụng và website theo thiết bị, thời gian.'],
   alerts: ['Cảnh báo', 'Những tín hiệu phụ huynh cần xem xét và phản hồi.'],
   ai: ['Trung tâm AI', 'Phân tích hành vi, báo cáo định kỳ và tư vấn bằng AI.'],
@@ -1157,8 +1157,8 @@ const sectionVisuals = {
     src: '/assets/section-usage-policies.jpg',
     alt: 'Lịch, đồng hồ và thiết bị minh họa thời gian sử dụng cân bằng',
     eyebrow: 'Thói quen lành mạnh',
-    title: 'Giới hạn rõ ràng, đồng hành nhẹ nhàng.',
-    text: 'Thiết lập thời lượng, khung giờ và quyền truy cập phù hợp với nhịp sinh hoạt của từng trẻ.',
+    title: 'Quy tắc rõ ràng, đồng hành nhẹ nhàng.',
+    text: 'Thiết lập phân loại ứng dụng, website và quyền truy cập nội dung phù hợp cho từng trẻ.',
   },
   activity: {
     src: '/assets/section-digital-activity.jpg',
@@ -1440,6 +1440,10 @@ async function renderDeviceControls(content) {
     settings.enable_screenshot_review,
     settings.enable_keylog,
   ].filter(Boolean).length;
+  const startTime = String(settings.allowed_start_time).slice(0, 5);
+  const endTime = String(settings.allowed_end_time).slice(0, 5);
+  const crossesMidnight = startTime > endTime;
+  const dailyLimitLabel = settings.daily_limit_minutes ? `${settings.daily_limit_minutes} phút` : 'Không giới hạn';
 
   content.innerHTML = `
     ${pageHead('controls', '<button class="btn btn-secondary" data-page="devices">' + icons.device + ' Quản lý thiết bị</button>')}
@@ -1447,17 +1451,18 @@ async function renderDeviceControls(content) {
       <div class="control-command-copy">
         <p class="eyebrow">Trung tâm điều khiển Agent</p>
         <h2 id="control-command-title">Phản hồi nhanh, kiểm soát rõ ràng.</h2>
-        <p>Các thay đổi được lưu riêng khỏi chính sách thời gian và nội dung. Agent nhận cấu hình mới tại lần heartbeat tiếp theo.</p>
-        <div class="control-command-stats"><span><b>${linkedDevices.length}</b><small>Thiết bị liên kết</small></span><span><b>${onlineDevices}</b><small>Đang trực tuyến</small></span><span><b>${enabledControlCount}</b><small>Điều khiển đang bật</small></span></div>
+        <p>Giới hạn thời gian và các điều khiển Agent được quản lý tại đây, tách biệt khỏi chính sách phân loại nội dung.</p>
+        <div class="control-command-stats"><span><b>${linkedDevices.length}</b><small>Thiết bị liên kết</small></span><span><b>${onlineDevices}</b><small>Đang trực tuyến</small></span><span><b>${dailyLimitLabel}</b><small>Giới hạn mỗi ngày</small></span><span><b>${enabledControlCount}</b><small>Điều khiển đang bật</small></span></div>
       </div>
       <div class="control-command-visual" aria-hidden="true"><span class="control-device-orbit">${icons.device}</span><span class="control-shield-orbit">${icons.policy}</span><i class="control-signal signal-one"></i><i class="control-signal signal-two"></i></div>
     </section>
-    <section class="policy-summary-banner control-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Đang điều khiển thiết bị của</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${linkedDevices.length ? `${linkedDevices.length} thiết bị đã liên kết · ${onlineDevices} thiết bị đang trực tuyến` : 'Chưa có thiết bị nào liên kết với hồ sơ này.'}</p></div><span class="badge ${settings.is_locked ? 'red' : 'blue'}">${settings.is_locked ? 'Đang khóa thiết bị' : 'Cho phép sử dụng'}</span></section>
+    <section class="policy-summary-banner control-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Đang điều khiển thiết bị của</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${dailyLimitLabel} mỗi ngày · ${startTime}–${endTime}${crossesMidnight ? ' (qua ngày hôm sau)' : ''}</p></div><span class="badge ${settings.is_locked ? 'red' : 'blue'}">${settings.is_locked ? 'Đang khóa thiết bị' : 'Cho phép sử dụng'}</span></section>
     <section class="policy-layout control-layout">
       <aside class="card child-picker" aria-label="Chọn hồ sơ cần điều khiển">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" data-action="select-control-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi</small></span></button>`).join('')}</aside>
       <article class="card card-pad control-panel-card">
         <form id="device-control-form" class="form-grid" data-child-id="${settings.child_id}">
-          <header class="control-panel-heading field full"><span>${icons.control}</span><div><p class="eyebrow">Cấu hình thiết bị</p><h3>Chọn những khả năng Agent được phép thực hiện</h3><p>Mỗi công tắc được lưu độc lập và không thay đổi giới hạn thời gian hoặc quy tắc truy cập nội dung.</p></div></header>
+          <header class="control-panel-heading field full"><span>${icons.control}</span><div><p class="eyebrow">Cấu hình thiết bị</p><h3>Quản lý thời gian và khả năng của Agent</h3><p>Các thiết lập tại đây được lưu độc lập và không thay đổi quy tắc phân loại nội dung.</p></div></header>
+          <section class="control-time-section field full"><div class="policy-section-heading"><span>${icons.activity}</span><div><h3>Thời gian sử dụng</h3><p>Giới hạn được tính lại theo từng ngày tại múi giờ Việt Nam.</p></div></div><div class="policy-time-grid"><div class="field"><label>Giới hạn mỗi ngày (phút)</label><input class="input" type="number" name="daily_limit_minutes" min="0" max="1440" value="${settings.daily_limit_minutes}"><small>Nhập 0 nếu không giới hạn tổng thời gian.</small></div><div class="field"><label>Cho phép từ</label><input class="input" type="time" name="allowed_start_time" step="60" value="${startTime}"></div><div class="field"><label>Cho phép đến</label><input class="input" type="time" name="allowed_end_time" step="60" value="${endTime}"><small>Khung giờ qua đêm, ví dụ 20:00–06:00, được hỗ trợ.</small></div></div></section>
           <div class="control-switch-grid field full">
             <section class="control-switch-card control-lock-card">${switchRow('is_locked', 'Khóa thiết bị ngay', 'Chặn phiên sử dụng tiếp theo của tất cả thiết bị thuộc hồ sơ.', settings.is_locked)}</section>
             <section class="control-switch-card">${switchRow('enable_webcam_monitoring', 'Giám sát webcam', 'Bật tín hiệu Edge AI về tư thế và khoảng cách nhìn.', settings.enable_webcam_monitoring)}</section>
@@ -1485,24 +1490,22 @@ async function renderPolicies(content) {
   state.categoryPolicies = Object.fromEntries(
     (policyResult.policies || []).map((item) => [`${item.resource_type}:${item.category}`, item.action])
   );
-  const startTime = String(settings.allowed_start_time).slice(0, 5);
-  const endTime = String(settings.allowed_end_time).slice(0, 5);
-  const crossesMidnight = startTime > endTime;
   const blockedPolicyCount = Object.values(state.categoryPolicies).filter((action) => action === 'block').length;
+  const enabledClassificationCount = [settings.enable_app_classification, settings.enable_web_classification, settings.enable_text_moderation].filter(Boolean).length;
   const selectedChild = state.children.find((child) => String(child.child_id) === String(state.selectedChildId));
   content.innerHTML = `
     ${pageHead('policies')}
     ${sectionVisual('policies')}
-    <section class="policy-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Chính sách đang áp dụng cho</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${settings.daily_limit_minutes ? `${settings.daily_limit_minutes} phút mỗi ngày` : 'Không giới hạn thời gian'} · ${startTime}–${endTime}${crossesMidnight ? ' (qua ngày hôm sau)' : ''}</p></div><span class="badge blue">${blockedPolicyCount} nhóm đang chặn</span></section>
+    <section class="policy-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Chính sách đang áp dụng cho</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${enabledClassificationCount}/3 lớp phân tích đang bật · ${blockedPolicyCount} nhóm nội dung đang chặn</p></div><span class="badge blue">${blockedPolicyCount} nhóm đang chặn</span></section>
     <section class="policy-layout">
       <aside class="card child-picker">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" data-action="select-policy-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi</small></span></button>`).join('')}</aside>
       <article class="card card-pad">
         <form id="policy-form" class="form-grid" data-child-id="${settings.child_id}">
-          <section class="policy-form-section field full"><div class="policy-section-heading"><span>${icons.activity}</span><div><h3>Thời gian sử dụng</h3><p>Giới hạn được tính lại theo từng ngày tại múi giờ Việt Nam.</p></div></div><div class="policy-time-grid"><div class="field"><label>Giới hạn mỗi ngày (phút)</label><input class="input" type="number" name="daily_limit_minutes" min="0" max="1440" value="${settings.daily_limit_minutes}"><small>Nhập 0 nếu không giới hạn tổng thời gian.</small></div><div class="field"><label>Cho phép từ</label><input class="input" type="time" name="allowed_start_time" step="60" value="${startTime}"></div><div class="field"><label>Cho phép đến</label><input class="input" type="time" name="allowed_end_time" step="60" value="${endTime}"><small>Khung giờ qua đêm, ví dụ 20:00–06:00, được hỗ trợ.</small></div></div></section>
           <div class="field full">
             <section class="setting-section"><h3>Phân loại AI & truy cập</h3><p>Chỉ phân loại và áp dụng chính sách Cho phép/Chặn khi công tắc tương ứng được bật. Khi tắt, nội dung đó được truy cập bình thường.</p>
               ${switchRow('enable_app_classification', 'Phân loại ứng dụng', 'Gán một trong 4 nhãn ứng dụng rồi áp dụng chính sách truy cập.', settings.enable_app_classification)}
               ${switchRow('enable_web_classification', 'Phân loại website', 'Gán một trong 5 nhãn website rồi áp dụng chính sách truy cập.', settings.enable_web_classification)}
+              ${switchRow('enable_text_moderation', 'Phân tích an toàn văn bản', 'Phân tích truy vấn tìm kiếm theo ngữ cảnh để cảnh báo dấu hiệu tự hại, bắt nạt hoặc bạo lực. Không lưu nguyên văn trên máy chủ.', settings.enable_text_moderation)}
             </section>
             <section class="setting-section"><h3>Quyền truy cập theo danh mục</h3><p>Chọn Cho phép hoặc Chặn cho từng nhóm. Với website, Agent ghi nhớ tên miền đã được AI phân loại và chặn các lần truy cập tiếp theo khi nhóm tương ứng đang chọn Chặn.</p>
               <div class="policy-groups">
@@ -1663,6 +1666,9 @@ function alertPresentation(type) {
     unsafe_website: { label: 'Website không an toàn', symbol: '!', tone: 'danger' },
     app_overuse: { label: 'Ứng dụng dùng quá lâu', symbol: 'A', tone: 'warning' },
     night_usage: { label: 'Sử dụng thiết bị ban đêm', symbol: '☾', tone: 'info' },
+    text_self_harm: { label: 'Dấu hiệu tự hại', symbol: '!', tone: 'danger' },
+    text_harassment: { label: 'Bắt nạt hoặc đe dọa', symbol: '!', tone: 'danger' },
+    text_violence: { label: 'Ngôn từ bạo lực', symbol: '!', tone: 'warning' },
   }[type] || { label: 'Cảnh báo thiết bị', symbol: '!', tone: 'info' };
 }
 
@@ -1958,6 +1964,7 @@ async function handleSubmit(event) {
         'enable_keylog',
       ];
       controlFields.forEach((name) => { data[name] = form.elements[name].checked; });
+      data.daily_limit_minutes = Number(data.daily_limit_minutes);
       await api(`/settings/${form.dataset.childId}`, { method: 'PUT', body: data });
       toast('Đã lưu điều khiển thiết bị', 'Agent sẽ nhận cấu hình mới ở heartbeat tiếp theo.');
       await renderDeviceControls(document.querySelector('#page-content'));
@@ -1965,9 +1972,9 @@ async function handleSubmit(event) {
       const bools = [
         'enable_app_classification',
         'enable_web_classification',
+        'enable_text_moderation',
       ];
       bools.forEach((name) => { data[name] = form.elements[name].checked; });
-      data.daily_limit_minutes = Number(data.daily_limit_minutes);
       const settingsBody = Object.fromEntries(
         Object.entries(data).filter(([name]) => !name.startsWith('policy_'))
       );
