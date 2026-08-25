@@ -75,6 +75,7 @@ const icons = {
   home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 10 9-7 9 7v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1Z"/></svg>',
   child: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="8" r="4"/><path d="M5 21c0-4.4 3.1-7 7-7s7 2.6 7 7"/></svg>',
   device: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="14" rx="2"/><path d="M2 21h20M9 17v4m6-4v4"/></svg>',
+  control: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 6h9m4 0h3M4 12h3m4 0h9M4 18h7m4 0h5"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="13" cy="18" r="2"/></svg>',
   policy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3 5 6v5c0 4.7 2.8 8.1 7 10 4.2-1.9 7-5.3 7-10V6Z"/><path d="m9 12 2 2 4-5"/></svg>',
   activity: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>',
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/></svg>',
@@ -90,7 +91,8 @@ const pageTitles = {
   overview: ['Tổng quan gia đình', 'Góc nhìn rõ ràng, không phán xét về thói quen số của con.'],
   children: ['Hồ sơ trẻ', 'Quản lý hồ sơ và liên kết thiết bị theo từng trẻ.'],
   devices: ['Thiết bị', 'Đăng ký laptop, quản lý định danh và secret cài đặt.'],
-  policies: ['Chính sách sử dụng', 'Thiết lập thời gian và các lớp bảo vệ cho từng hồ sơ.'],
+  controls: ['Điều khiển thiết bị', 'Khóa máy và quản lý các khả năng giám sát của Agent.'],
+  policies: ['Chính sách sử dụng', 'Thiết lập thời gian và quyền truy cập nội dung cho từng hồ sơ.'],
   activity: ['Hoạt động số', 'Theo dõi ứng dụng và website theo thiết bị, thời gian.'],
   alerts: ['Cảnh báo', 'Những tín hiệu phụ huynh cần xem xét và phản hồi.'],
   ai: ['Trung tâm AI', 'Phân tích hành vi, báo cáo định kỳ và tư vấn bằng AI.'],
@@ -1014,6 +1016,7 @@ function renderShell() {
     ['overview', 'Tổng quan', 'home'],
     ['children', 'Hồ sơ trẻ', 'child'],
     ['devices', 'Thiết bị', 'device'],
+    ['controls', 'Điều khiển thiết bị', 'control'],
     ['policies', 'Chính sách', 'policy'],
     ['activity', 'Hoạt động', 'activity'],
     ['alerts', 'Cảnh báo', 'alert'],
@@ -1028,7 +1031,10 @@ function renderShell() {
   const nav = state.role === 'admin' ? adminNav : parentNav;
   const mobileNav = state.role === 'admin'
     ? [adminNav[0], adminNav[1], adminNav[3], ['account', 'Tài khoản', 'account']]
-    : [parentNav[0], parentNav[4], parentNav[5], parentNav[3]];
+    : ['overview', 'activity', 'alerts', 'controls'].map((page) => {
+      const item = parentNav.find(([itemPage]) => itemPage === page);
+      return page === 'controls' ? [item[0], 'Điều khiển', item[2]] : item;
+    });
   const systemPages = ['account', 'api-lab'];
   const unreadAlerts = state.unreadAlertCount;
   const connectionLabel = state.connectionStatus === 'online'
@@ -1103,6 +1109,7 @@ async function navigate(page) {
       overview: renderOverview,
       children: renderChildren,
       devices: renderDevices,
+      controls: renderDeviceControls,
       policies: renderPolicies,
       activity: renderActivity,
       alerts: renderAlerts,
@@ -1186,18 +1193,30 @@ function sectionVisual(page, extra = '') {
 const adminSectionContent = {
   users: {
     icon: icons.child,
+    src: '/assets/admin-user-management.jpg',
+    alt: 'Không gian quản trị tài khoản phụ huynh và hồ sơ gia đình an toàn',
+    width: 1536,
+    height: 1024,
     eyebrow: 'Quản trị danh tính',
     title: 'Tài khoản rõ trạng thái, thao tác có kiểm soát.',
     text: 'Tìm kiếm, phân quyền, xác minh và thu hồi phiên từ cùng một không gian quản trị.',
   },
   blacklist: {
     icon: icons.policy,
+    src: '/assets/admin-domain-blacklist.jpg',
+    alt: 'Lá chắn bảo vệ laptop gia đình khỏi các tên miền không an toàn',
+    width: 1693,
+    height: 929,
     eyebrow: 'Bảo vệ toàn hệ thống',
     title: 'Một danh sách chặn, đồng bộ đến mọi Agent.',
     text: 'Tên miền được kiểm tra định dạng tại Backend trước khi phân phối xuống các thiết bị đang quản lý.',
   },
   audit: {
     icon: icons.activity,
+    src: '/assets/admin-audit-trail.jpg',
+    alt: 'Dòng thời gian minh bạch của các sự kiện quản trị hệ thống',
+    width: 1672,
+    height: 941,
     eyebrow: 'Minh bạch vận hành',
     title: 'Mọi thay đổi nhạy cảm đều để lại dấu vết.',
     text: 'Theo dõi người thực hiện, đối tượng tác động, thời điểm, địa chỉ IP và metadata liên quan.',
@@ -1214,7 +1233,10 @@ function adminSectionIntro(page, stats = []) {
   const intro = adminSectionContent[page];
   if (!intro) return '';
   const headingId = `admin-intro-${page}-title`;
-  return `<section class="admin-section-intro admin-section-intro-${page}" aria-labelledby="${headingId}"><div class="admin-intro-icon" aria-hidden="true">${intro.icon}</div><div class="admin-intro-copy"><p class="eyebrow">${escapeHtml(intro.eyebrow)}</p><h2 id="${headingId}">${escapeHtml(intro.title)}</h2><p>${escapeHtml(intro.text)}</p></div><div class="admin-intro-stats">${stats.map((item) => `<span class="admin-intro-stat"><b>${escapeHtml(item.value)}</b><small>${escapeHtml(item.label)}</small></span>`).join('')}</div></section>`;
+  const media = intro.src
+    ? `<figure class="admin-intro-media"><img src="${escapeHtml(intro.src)}" alt="${escapeHtml(intro.alt)}" width="${intro.width}" height="${intro.height}" loading="lazy" decoding="async"></figure>`
+    : '';
+  return `<section class="admin-section-intro admin-section-intro-${page}" aria-labelledby="${headingId}"><div class="admin-intro-icon" aria-hidden="true">${intro.icon}</div><div class="admin-intro-copy"><p class="eyebrow">${escapeHtml(intro.eyebrow)}</p><h2 id="${headingId}">${escapeHtml(intro.title)}</h2><p>${escapeHtml(intro.text)}</p></div><div class="admin-intro-stats">${stats.map((item) => `<span class="admin-intro-stat"><b>${escapeHtml(item.value)}</b><small>${escapeHtml(item.label)}</small></span>`).join('')}</div>${media}</section>`;
 }
 
 async function loadParentCore(usageChildId = state.overviewChildId) {
@@ -1396,6 +1418,59 @@ async function renderDevices(content) {
     }).join('') || emptyState('▣', 'Chưa có thiết bị', 'Đăng ký laptop và lưu secret để cài đặt Agent.', '<button class="btn" data-action="add-device">Đăng ký thiết bị</button>')}</section>`;
 }
 
+async function renderDeviceControls(content) {
+  state.children = await api('/children?limit=200');
+  state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
+  if (!state.selectedChildId) {
+    content.innerHTML = pageHead('controls') + emptyState('⌁', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi điều khiển các thiết bị liên kết.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
+    return;
+  }
+
+  const [settings, deviceResult] = await Promise.all([
+    api(`/settings/${state.selectedChildId}`),
+    api('/devices?limit=200'),
+  ]);
+  state.devices = deviceResult.data || [];
+  const selectedChild = state.children.find((child) => String(child.child_id) === String(state.selectedChildId));
+  const linkedDevices = state.devices.filter((device) => String(device.child_id) === String(state.selectedChildId));
+  const onlineDevices = linkedDevices.filter(isDeviceOnline).length;
+  const enabledControlCount = [
+    settings.is_locked,
+    settings.enable_webcam_monitoring,
+    settings.enable_screenshot_review,
+    settings.enable_keylog,
+  ].filter(Boolean).length;
+
+  content.innerHTML = `
+    ${pageHead('controls', '<button class="btn btn-secondary" data-page="devices">' + icons.device + ' Quản lý thiết bị</button>')}
+    <section class="control-command-hero" aria-labelledby="control-command-title">
+      <div class="control-command-copy">
+        <p class="eyebrow">Trung tâm điều khiển Agent</p>
+        <h2 id="control-command-title">Phản hồi nhanh, kiểm soát rõ ràng.</h2>
+        <p>Các thay đổi được lưu riêng khỏi chính sách thời gian và nội dung. Agent nhận cấu hình mới tại lần heartbeat tiếp theo.</p>
+        <div class="control-command-stats"><span><b>${linkedDevices.length}</b><small>Thiết bị liên kết</small></span><span><b>${onlineDevices}</b><small>Đang trực tuyến</small></span><span><b>${enabledControlCount}</b><small>Điều khiển đang bật</small></span></div>
+      </div>
+      <div class="control-command-visual" aria-hidden="true"><span class="control-device-orbit">${icons.device}</span><span class="control-shield-orbit">${icons.policy}</span><i class="control-signal signal-one"></i><i class="control-signal signal-two"></i></div>
+    </section>
+    <section class="policy-summary-banner control-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Đang điều khiển thiết bị của</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${linkedDevices.length ? `${linkedDevices.length} thiết bị đã liên kết · ${onlineDevices} thiết bị đang trực tuyến` : 'Chưa có thiết bị nào liên kết với hồ sơ này.'}</p></div><span class="badge ${settings.is_locked ? 'red' : 'blue'}">${settings.is_locked ? 'Đang khóa thiết bị' : 'Cho phép sử dụng'}</span></section>
+    <section class="policy-layout control-layout">
+      <aside class="card child-picker" aria-label="Chọn hồ sơ cần điều khiển">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" data-action="select-control-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi</small></span></button>`).join('')}</aside>
+      <article class="card card-pad control-panel-card">
+        <form id="device-control-form" class="form-grid" data-child-id="${settings.child_id}">
+          <header class="control-panel-heading field full"><span>${icons.control}</span><div><p class="eyebrow">Cấu hình thiết bị</p><h3>Chọn những khả năng Agent được phép thực hiện</h3><p>Mỗi công tắc được lưu độc lập và không thay đổi giới hạn thời gian hoặc quy tắc truy cập nội dung.</p></div></header>
+          <div class="control-switch-grid field full">
+            <section class="control-switch-card control-lock-card">${switchRow('is_locked', 'Khóa thiết bị ngay', 'Chặn phiên sử dụng tiếp theo của tất cả thiết bị thuộc hồ sơ.', settings.is_locked)}</section>
+            <section class="control-switch-card">${switchRow('enable_webcam_monitoring', 'Giám sát webcam', 'Bật tín hiệu Edge AI về tư thế và khoảng cách nhìn.', settings.enable_webcam_monitoring)}</section>
+            <section class="control-switch-card">${switchRow('enable_screenshot_review', 'Xem xét ảnh chụp màn hình', 'Cho phép quy trình đánh giá hình ảnh khi cần thiết.', settings.enable_screenshot_review)}</section>
+            <section class="control-switch-card control-sensitive-card">${switchRow('enable_keylog', 'Ghi nhận phím bấm', 'Tính năng nhạy cảm; chỉ bật khi thật sự cần và đã thông báo phù hợp.', settings.enable_keylog)}</section>
+          </div>
+          <aside class="control-privacy-note field full"><span>${icons.policy}</span><div><strong>Ưu tiên quyền riêng tư</strong><p>Webcam, ảnh chụp màn hình và phím bấm đều mặc định tắt. Hãy chỉ kích hoạt trong phạm vi giám sát phù hợp với gia đình.</p></div></aside>
+          <div class="form-actions policy-save-bar field full"><span><strong>Sẵn sàng cập nhật điều khiển</strong><small>Cấu hình sẽ được Agent nhận ở heartbeat tiếp theo.</small></span><button class="btn" type="submit">Lưu điều khiển</button></div>
+        </form>
+      </article>
+    </section>`;
+}
+
 async function renderPolicies(content) {
   state.children = await api('/children?limit=200');
   state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
@@ -1413,23 +1488,18 @@ async function renderPolicies(content) {
   const startTime = String(settings.allowed_start_time).slice(0, 5);
   const endTime = String(settings.allowed_end_time).slice(0, 5);
   const crossesMidnight = startTime > endTime;
+  const blockedPolicyCount = Object.values(state.categoryPolicies).filter((action) => action === 'block').length;
   const selectedChild = state.children.find((child) => String(child.child_id) === String(state.selectedChildId));
   content.innerHTML = `
     ${pageHead('policies')}
     ${sectionVisual('policies')}
-    <section class="policy-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Chính sách đang áp dụng cho</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${settings.daily_limit_minutes ? `${settings.daily_limit_minutes} phút mỗi ngày` : 'Không giới hạn thời gian'} · ${startTime}–${endTime}${crossesMidnight ? ' (qua ngày hôm sau)' : ''}</p></div><span class="badge ${settings.is_locked ? 'red' : ''}">${settings.is_locked ? 'Thiết bị đang khóa' : 'Được phép sử dụng'}</span></section>
+    <section class="policy-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Chính sách đang áp dụng cho</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${settings.daily_limit_minutes ? `${settings.daily_limit_minutes} phút mỗi ngày` : 'Không giới hạn thời gian'} · ${startTime}–${endTime}${crossesMidnight ? ' (qua ngày hôm sau)' : ''}</p></div><span class="badge blue">${blockedPolicyCount} nhóm đang chặn</span></section>
     <section class="policy-layout">
       <aside class="card child-picker">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" data-action="select-policy-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi</small></span></button>`).join('')}</aside>
       <article class="card card-pad">
         <form id="policy-form" class="form-grid" data-child-id="${settings.child_id}">
           <section class="policy-form-section field full"><div class="policy-section-heading"><span>${icons.activity}</span><div><h3>Thời gian sử dụng</h3><p>Giới hạn được tính lại theo từng ngày tại múi giờ Việt Nam.</p></div></div><div class="policy-time-grid"><div class="field"><label>Giới hạn mỗi ngày (phút)</label><input class="input" type="number" name="daily_limit_minutes" min="0" max="1440" value="${settings.daily_limit_minutes}"><small>Nhập 0 nếu không giới hạn tổng thời gian.</small></div><div class="field"><label>Cho phép từ</label><input class="input" type="time" name="allowed_start_time" step="60" value="${startTime}"></div><div class="field"><label>Cho phép đến</label><input class="input" type="time" name="allowed_end_time" step="60" value="${endTime}"><small>Khung giờ qua đêm, ví dụ 20:00–06:00, được hỗ trợ.</small></div></div></section>
           <div class="field full">
-            <section class="setting-section"><h3>Kiểm soát thiết bị</h3><p>Agent nhận cấu hình mới ở lần heartbeat tiếp theo.</p>
-              ${switchRow('is_locked', 'Khóa thiết bị ngay', 'Chặn phiên sử dụng tiếp theo.', settings.is_locked)}
-              ${switchRow('enable_webcam_monitoring', 'Giám sát webcam', 'Bật tín hiệu tư thế và khoảng cách nhìn.', settings.enable_webcam_monitoring)}
-              ${switchRow('enable_screenshot_review', 'Xem xét ảnh chụp màn hình', 'Cho phép quy trình đánh giá hình ảnh.', settings.enable_screenshot_review)}
-              ${switchRow('enable_keylog', 'Ghi nhận phím bấm', 'Tính năng nhạy cảm, chỉ bật khi thực sự cần.', settings.enable_keylog)}
-            </section>
             <section class="setting-section"><h3>Phân loại AI & truy cập</h3><p>Chỉ phân loại và áp dụng chính sách Cho phép/Chặn khi công tắc tương ứng được bật. Khi tắt, nội dung đó được truy cập bình thường.</p>
               ${switchRow('enable_app_classification', 'Phân loại ứng dụng', 'Gán một trong 4 nhãn ứng dụng rồi áp dụng chính sách truy cập.', settings.enable_app_classification)}
               ${switchRow('enable_web_classification', 'Phân loại website', 'Gán một trong 5 nhãn website rồi áp dụng chính sách truy cập.', settings.enable_web_classification)}
@@ -1880,12 +1950,19 @@ async function handleSubmit(event) {
     } else if (form.id === 'edit-device-form') {
       await api(`/devices/${form.dataset.id}`, { method: 'PUT', body: { device_name: data.device_name } });
       closeModal(); toast('Đã đổi tên thiết bị'); await navigate('devices');
-    } else if (form.id === 'policy-form') {
-      const bools = [
+    } else if (form.id === 'device-control-form') {
+      const controlFields = [
         'is_locked',
         'enable_webcam_monitoring',
         'enable_screenshot_review',
         'enable_keylog',
+      ];
+      controlFields.forEach((name) => { data[name] = form.elements[name].checked; });
+      await api(`/settings/${form.dataset.childId}`, { method: 'PUT', body: data });
+      toast('Đã lưu điều khiển thiết bị', 'Agent sẽ nhận cấu hình mới ở heartbeat tiếp theo.');
+      await renderDeviceControls(document.querySelector('#page-content'));
+    } else if (form.id === 'policy-form') {
+      const bools = [
         'enable_app_classification',
         'enable_web_classification',
       ];
@@ -2182,6 +2259,7 @@ async function handleClick(event) {
     if (action === 'rotate-secret') return confirmModal('Xoay Device Secret?', 'Secret cũ bị vô hiệu ngay lập tức. Bạn phải cập nhật lại Agent.', 'confirm-rotate-secret', id);
     if (action === 'confirm-rotate-secret') { const result = await api(`/devices/${id}/rotate-secret`, { method: 'POST' }); closeModal(); return showSecret(result); }
     if (action === 'copy-secret') { await navigator.clipboard.writeText(document.querySelector('#secret-value').textContent); return toast('Đã sao chép secret'); }
+    if (action === 'select-control-child') { state.selectedChildId = id; return renderDeviceControls(document.querySelector('#page-content')); }
     if (action === 'select-policy-child') { state.selectedChildId = id; return renderPolicies(document.querySelector('#page-content')); }
     if (action === 'activity-tab') {
       state.activityTab = button.dataset.tab;
