@@ -33,6 +33,21 @@ Kiểm tra:
 Invoke-RestMethod http://127.0.0.1:8100/health
 ```
 
+## Kết nối Backend
+
+Trong `child-monitor-backend/.env`, chọn provider local và dùng cùng shared secret
+đã đặt ở `TEXT_SAFETY_API_KEY`:
+
+```env
+TEXT_MODERATION_PROVIDER=local
+LOCAL_MODERATION_URL=http://127.0.0.1:8100
+LOCAL_MODERATION_API_KEY=replace-with-the-same-long-random-secret
+LOCAL_MODERATION_TIMEOUT_MS=15000
+```
+
+Backend chỉ gọi OpenAI khi cấu hình rõ `TEXT_MODERATION_PROVIDER=openai`; không có
+fallback ngầm từ local sang dịch vụ bên ngoài.
+
 Moderate một batch:
 
 ```powershell

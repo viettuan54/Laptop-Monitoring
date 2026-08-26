@@ -1,141 +1,124 @@
-const MODERATION_ENDPOINT = 'https://api.openai.com/v1/moderations';
-const DEFAULT_MODERATION_MODEL = 'omni-moderation-latest';
-const SUPPORTED_MODERATION_MODELS = new Set([
-  DEFAULT_MODERATION_MODEL,
-  'omni-moderation-2024-09-26',
+const {
+  CATEGORY_RULES,
+  normalizeOpenAIResult,
+} = require('./textModeration/contract');
+const {
+  DEFAULT_LOCAL_MODERATION_URL,
+  getLocalConfig,
+  moderateWithLocal,
+} = require('./textModeration/local.provider');
+const {
+  DEFAULT_OPENAI_MODERATION_MODEL,
+  OPENAI_MODERATION_ENDPOINT,
+  getOpenAIConfig,
+  moderateWithOpenAI,
+} = require('./textModeration/openai.provider');
+
+const DEFAULT_TEXT_MODERATION_PROVIDER = 'local';
+const SUPPORTED_TEXT_MODERATION_PROVIDERS = new Set(['local', 'openai']);
+const VALID_SOURCE_TYPES = new Set([
+  'search_query',
+  'page_content',
+  'chat_received',
+  'chat_authored',
 ]);
 
-const CATEGORY_RULES = Object.freeze({
-  'self-harm/intent': { riskType: 'self_harm', severity: 'critical', priority: 40 },
-  'self-harm/instructions': { riskType: 'self_harm', severity: 'critical', priority: 40 },
-  'harassment/threatening': { riskType: 'harassment', severity: 'critical', priority: 30 },
-  'hate/threatening': { riskType: 'harassment', severity: 'critical', priority: 30 },
-  'self-harm': { riskType: 'self_harm', severity: 'high', priority: 25 },
-  harassment: { riskType: 'harassment', severity: 'high', priority: 20 },
-  hate: { riskType: 'harassment', severity: 'high', priority: 20 },
-  'violence/graphic': { riskType: 'violence', severity: 'high', priority: 15 },
-  violence: { riskType: 'violence', severity: 'high', priority: 10 },
-});
-
-const SEVERITY_ORDER = Object.freeze({ low: 0, medium: 1, high: 2, critical: 3 });
-
 function getModerationConfig(environment = process.env) {
-  const model = String(environment.OPENAI_MODERATION_MODEL || DEFAULT_MODERATION_MODEL).trim();
-  if (!SUPPORTED_MODERATION_MODELS.has(model)) {
-    const error = new Error('OPENAI_MODERATION_MODEL is not supported');
-    error.code = 'OPENAI_INVALID_MODERATION_MODEL';
+  const provider = String(
+    environment.TEXT_MODERATION_PROVIDER || DEFAULT_TEXT_MODERATION_PROVIDER
+  ).trim().toLowerCase();
+  if (!SUPPORTED_TEXT_MODERATION_PROVIDERS.has(provider)) {
+    const error = new Error('TEXT_MODERATION_PROVIDER must be local or openai');
+    error.code = 'TEXT_MODERATION_INVALID_CONFIG';
     throw error;
   }
-  const apiKey = String(environment.OPENAI_API_KEY || '').trim();
-  if (!apiKey) {
-    const error = new Error('OpenAI moderation is not configured');
-    error.code = 'OPENAI_NOT_CONFIGURED';
-    throw error;
-  }
-  return { apiKey, model };
+  const providerConfig = provider === 'local'
+    ? getLocalConfig(environment)
+    : getOpenAIConfig(environment);
+  return { provider, ...providerConfig };
 }
 
-function normalizeModerationResult(result) {
-  const categories = result?.categories || {};
-  const scores = result?.category_scores || {};
-  const activeRules = Object.entries(CATEGORY_RULES)
-    .filter(([category]) => categories[category] === true)
-    .map(([category, rule]) => ({
-      category,
-      ...rule,
-      score: Number.isFinite(scores[category]) ? scores[category] : 0,
-    }));
+function directionForSource(sourceType) {
+  if (sourceType === 'chat_received') return 'received';
+  if (sourceType === 'chat_authored') return 'authored';
+  return 'unknown';
+}
 
-  const relevantScores = Object.fromEntries(
-    Object.keys(CATEGORY_RULES).map((category) => [
-      category,
-      Number.isFinite(scores[category]) ? scores[category] : 0,
-    ])
-  );
-
-  if (activeRules.length === 0) {
-    return {
-      flagged: false,
-      riskType: 'none',
-      severity: 'low',
-      primaryCategory: null,
-      confidence: Math.max(0, ...Object.values(relevantScores)),
-      categoryScores: relevantScores,
-    };
+function normalizeRecords(records) {
+  if (!Array.isArray(records) || records.length === 0 || records.length > 20) {
+    throw new TypeError('Moderation input must contain between 1 and 20 records');
   }
+  const seenIds = new Set();
+  return records.map((record, index) => {
+    if (!record || typeof record !== 'object' || Array.isArray(record)) {
+      throw new TypeError(`Moderation record ${index} must be an object`);
+    }
+    const id = String(record.id ?? record.clientRecordId ?? index).trim();
+    const sourceType = record.sourceType || 'page_content';
+    const direction = record.direction || directionForSource(sourceType);
+    const context = record.context ?? [];
+    if (!id || id.length > 128 || seenIds.has(id)) {
+      throw new TypeError(`Moderation record ${index} has an invalid or duplicated ID`);
+    }
+    seenIds.add(id);
+    if (typeof record.text !== 'string' || !record.text.trim() || record.text.length > 4000) {
+      throw new TypeError(`Moderation record ${index} has invalid text`);
+    }
+    if (!VALID_SOURCE_TYPES.has(sourceType)) {
+      throw new TypeError(`Moderation record ${index} has an invalid source type`);
+    }
+    if (!['unknown', 'received', 'authored'].includes(direction)) {
+      throw new TypeError(`Moderation record ${index} has an invalid direction`);
+    }
+    if (!Array.isArray(context) || context.length > 5
+        || context.some((value) => typeof value !== 'string'
+          || !value.trim() || value.length > 1000)) {
+      throw new TypeError(`Moderation record ${index} has invalid context`);
+    }
+    return { id, text: record.text, sourceType, direction, context };
+  });
+}
 
-  activeRules.sort((left, right) => (
-    SEVERITY_ORDER[right.severity] - SEVERITY_ORDER[left.severity]
-    || right.priority - left.priority
-    || right.score - left.score
-  ));
-  const primary = activeRules[0];
-  return {
-    flagged: true,
-    riskType: primary.riskType,
-    severity: primary.severity,
-    primaryCategory: primary.category,
-    confidence: Math.max(...activeRules.map((item) => item.score)),
-    categoryScores: relevantScores,
-  };
+async function moderateRecords(records, options = {}) {
+  const normalizedRecords = normalizeRecords(records);
+  const config = getModerationConfig(options.environment);
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') {
+    const error = new Error('fetch is unavailable');
+    error.code = 'TEXT_MODERATION_PROVIDER_FAILED';
+    throw error;
+  }
+  const providerOptions = { config, fetchImpl };
+  return config.provider === 'local'
+    ? moderateWithLocal(normalizedRecords, providerOptions)
+    : moderateWithOpenAI(normalizedRecords, providerOptions);
 }
 
 async function moderateTexts(texts, options = {}) {
-  if (!Array.isArray(texts) || texts.length === 0 || texts.length > 20) {
-    throw new TypeError('Moderation input must contain between 1 and 20 texts');
+  if (!Array.isArray(texts)) {
+    throw new TypeError('Moderation input must be an array');
   }
-  const { apiKey, model } = getModerationConfig(options.environment);
-  const fetchImpl = options.fetchImpl || globalThis.fetch;
-  if (typeof fetchImpl !== 'function') {
-    throw new Error('fetch is unavailable');
-  }
-
-  let lastError;
-  for (let attempt = 1; attempt <= 2; attempt += 1) {
-    try {
-      const response = await fetchImpl(MODERATION_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ model, input: texts }),
-        signal: AbortSignal.timeout(15_000),
-      });
-      if (!response.ok) {
-        const error = new Error(`OpenAI moderation returned HTTP ${response.status}`);
-        error.code = 'OPENAI_MODERATION_FAILED';
-        error.status = response.status;
-        throw error;
-      }
-      const payload = await response.json();
-      if (!Array.isArray(payload?.results) || payload.results.length !== texts.length) {
-        const error = new Error('OpenAI moderation returned an invalid result count');
-        error.code = 'OPENAI_MODERATION_FAILED';
-        throw error;
-      }
-      return {
-        model: typeof payload.model === 'string' ? payload.model : model,
-        results: payload.results.map(normalizeModerationResult),
-      };
-    } catch (error) {
-      lastError = error;
-      const retryable = error?.name === 'TimeoutError'
-        || error?.name === 'AbortError'
-        || error?.code === 'ECONNRESET'
-        || (Number.isInteger(error?.status) && (error.status === 429 || error.status >= 500));
-      if (!retryable || attempt === 2) break;
-    }
-  }
-  if (!lastError.code) lastError.code = 'OPENAI_MODERATION_FAILED';
-  throw lastError;
+  return moderateRecords(
+    texts.map((text, index) => ({
+      id: String(index),
+      text,
+      sourceType: 'page_content',
+    })),
+    options
+  );
 }
 
 module.exports = {
   CATEGORY_RULES,
-  DEFAULT_MODERATION_MODEL,
-  MODERATION_ENDPOINT,
+  DEFAULT_LOCAL_MODERATION_URL,
+  DEFAULT_MODERATION_MODEL: DEFAULT_OPENAI_MODERATION_MODEL,
+  DEFAULT_OPENAI_MODERATION_MODEL,
+  DEFAULT_TEXT_MODERATION_PROVIDER,
+  MODERATION_ENDPOINT: OPENAI_MODERATION_ENDPOINT,
+  OPENAI_MODERATION_ENDPOINT,
   getModerationConfig,
+  moderateRecords,
   moderateTexts,
-  normalizeModerationResult,
+  normalizeModerationResult: normalizeOpenAIResult,
+  normalizeOpenAIResult,
 };

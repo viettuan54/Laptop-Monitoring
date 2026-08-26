@@ -10,7 +10,7 @@ const {
   normalizeDomain,
 } = require('../services/contentClassification.service');
 const { getAgentPolicySnapshot } = require('../services/agentPolicy.service');
-const { moderateTexts } = require('../services/textModeration.service');
+const { moderateRecords } = require('../services/textModeration.service');
 
 const TEXT_MODERATION_BATCH_MAX = 20;
 const TEXT_MODERATION_SOURCES = new Set([
@@ -521,7 +521,8 @@ exports.sendVisionAlert = async (req, res) => {
 };
 
 // POST /api/agent/text-moderation/batch
-// Raw text is sent to OpenAI for immediate moderation and is never inserted into PostgreSQL.
+// Raw text is sent to the configured moderation provider for immediate analysis and
+// is never inserted into PostgreSQL.
 exports.moderateTextBatch = async (req, res) => {
   let records;
   try {
@@ -560,7 +561,7 @@ exports.moderateTextBatch = async (req, res) => {
       });
     }
 
-    const moderation = await moderateTexts(pendingRecords.map((record) => record.text));
+    const moderation = await moderateRecords(pendingRecords);
     const client = await adminPool.connect();
     const alertsToPush = [];
     let flaggedCount = 0;
@@ -649,10 +650,10 @@ exports.moderateTextBatch = async (req, res) => {
       flagged_count: flaggedCount,
     });
   } catch (error) {
-    if (error.code === 'OPENAI_NOT_CONFIGURED' || error.code === 'OPENAI_INVALID_MODERATION_MODEL') {
+    if (error.code === 'TEXT_MODERATION_INVALID_CONFIG') {
       return res.status(503).json({ message: 'Text moderation is not configured' });
     }
-    if (error.code === 'OPENAI_MODERATION_FAILED') {
+    if (error.code === 'TEXT_MODERATION_PROVIDER_FAILED') {
       return res.status(502).json({ message: 'Text moderation provider failed' });
     }
     console.error('Text moderation batch error:', error.message);

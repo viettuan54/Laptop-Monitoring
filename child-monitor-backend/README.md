@@ -67,17 +67,26 @@ biến nhãn AI của domain thành quyết định chặn cục bộ. Cả hai 
 `GET /api/agent/config` vẫn trả thêm blacklist tên miền toàn cục. Cấu hình
 `GEMINI_API_KEY` và `GEMINI_MODEL` là bắt buộc nếu muốn dùng fallback Gemini.
 
-Phân tích an toàn văn bản dùng OpenAI Moderation API và chỉ chạy khi phụ huynh bật
-`enable_text_moderation=true`. Khóa chỉ được đặt ở Backend:
+Phân tích an toàn văn bản chỉ chạy khi phụ huynh bật
+`enable_text_moderation=true`. Backend mặc định gọi Local Moderation Service:
 
 ```env
-OPENAI_API_KEY=sk-...
-OPENAI_MODERATION_MODEL=omni-moderation-latest
+TEXT_MODERATION_PROVIDER=local
+LOCAL_MODERATION_URL=http://127.0.0.1:8100
+LOCAL_MODERATION_API_KEY=replace-with-the-same-text-safety-api-key
+LOCAL_MODERATION_TIMEOUT_MS=15000
 ```
+
+`LOCAL_MODERATION_API_KEY` phải giống `TEXT_SAFETY_API_KEY` của service Python.
+OpenAI vẫn có thể được chọn rõ ràng làm provider dự phòng bằng
+`TEXT_MODERATION_PROVIDER=openai`, `OPENAI_API_KEY` và
+`OPENAI_MODERATION_MODEL=omni-moderation-latest`; hệ thống không tự gửi nội dung sang
+OpenAI khi đang cấu hình `local`.
 
 Kết quả được ánh xạ vào ba nhóm `self_harm`, `harassment`, `violence`; cảnh báo
 không chứa lại câu tìm kiếm/chat gốc. Metadata kết quả được giữ 30 ngày, còn văn
-bản đầu vào chỉ tồn tại trong request xử lý.
+bản đầu vào chỉ tồn tại trong request xử lý và hàng đợi retry tối đa 7 ngày trên
+Agent. Xem hướng dẫn chạy service tại `../ai-training/text_safety/README.md`.
 
 Production bắt buộc cấu hình:
 

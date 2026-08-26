@@ -1,6 +1,7 @@
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const http = require('node:http');
 const path = require('node:path');
 const bcrypt = require('bcrypt');
 const dotenv = require('dotenv');
@@ -651,4 +652,137 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
     body: JSON.stringify({ domain: 'youtube.com' }),
   });
   assert.equal(noFallback.status, 409);
+});
+
+test('Agent text moderation reaches the local provider, stores metadata and creates one alert', async () => {
+  const rawText = 'Cách tự tử - integration private text';
+  const clientRecordId = crypto.randomUUID();
+  let providerCalls = 0;
+  let capturedProviderRequest;
+  const providerSecret = 'integration-local-secret-123';
+  const providerServer = http.createServer((providerRequest, providerResponse) => {
+    const chunks = [];
+    providerRequest.on('data', (chunk) => chunks.push(chunk));
+    providerRequest.on('end', () => {
+      providerCalls += 1;
+      assert.equal(providerRequest.method, 'POST');
+      assert.equal(providerRequest.url, '/v1/moderate');
+      assert.equal(providerRequest.headers['x-local-moderation-key'], providerSecret);
+      capturedProviderRequest = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const item = capturedProviderRequest.items[0];
+      providerResponse.writeHead(200, { 'content-type': 'application/json' });
+      providerResponse.end(JSON.stringify({
+        provider: 'local',
+        model: 'vi-context-rules-integration',
+        taxonomyVersion: '1.0.0',
+        results: [{
+          id: item.id,
+          flagged: true,
+          action: 'alert',
+          riskType: 'self_harm',
+          severity: 'critical',
+          primaryCategory: 'self-harm/instructions',
+          confidence: 0.94,
+          categoryScores: { 'self-harm/instructions': 0.94 },
+          matchedSignals: ['self_harm_plan_or_method_request'],
+        }],
+      }));
+    });
+  });
+  providerServer.listen(0, '127.0.0.1');
+  await new Promise((resolve, reject) => {
+    providerServer.once('listening', resolve);
+    providerServer.once('error', reject);
+  });
+
+  const previousProvider = process.env.TEXT_MODERATION_PROVIDER;
+  const previousUrl = process.env.LOCAL_MODERATION_URL;
+  const previousKey = process.env.LOCAL_MODERATION_API_KEY;
+  try {
+    process.env.TEXT_MODERATION_PROVIDER = 'local';
+    process.env.LOCAL_MODERATION_URL = `http://127.0.0.1:${providerServer.address().port}`;
+    process.env.LOCAL_MODERATION_API_KEY = providerSecret;
+    await adminPool.query(
+      `INSERT INTO settings(child_id, enable_text_moderation)
+       VALUES($1, TRUE)
+       ON CONFLICT (child_id) DO UPDATE SET enable_text_moderation = TRUE`,
+      [childOne]
+    );
+
+    const payload = {
+      records: [{
+        client_record_id: clientRecordId,
+        source_type: 'search_query',
+        text: rawText,
+        occurred_at: new Date().toISOString(),
+        domain: 'search.example.test',
+      }],
+    };
+    const sendBatch = () => request('/api/agent/text-moderation/batch', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-device-id': String(deviceOne),
+        'x-device-secret': plaintextDeviceSecret,
+      },
+      body: JSON.stringify(payload),
+    });
+    const first = await sendBatch();
+    const retry = await sendBatch();
+
+    assert.equal(first.status, 201);
+    assert.deepEqual(first.body.accepted_client_record_ids, [clientRecordId]);
+    assert.equal(first.body.flagged_count, 1);
+    assert.equal(retry.status, 201);
+    assert.equal(retry.body.flagged_count, 0);
+    assert.equal(providerCalls, 1);
+    assert.equal(capturedProviderRequest.items[0].id, clientRecordId);
+    assert.equal(capturedProviderRequest.items[0].text, rawText);
+    assert.equal(capturedProviderRequest.items[0].sourceType, 'search_query');
+    assert.equal(capturedProviderRequest.items[0].direction, 'unknown');
+
+    const event = await adminPool.query(
+      `SELECT status, risk_type, severity, primary_category, confidence,
+              moderation_model, category_scores
+       FROM text_moderation_events
+       WHERE device_id = $1 AND client_record_id = $2`,
+      [deviceOne, clientRecordId]
+    );
+    assert.equal(event.rows.length, 1);
+    assert.equal(event.rows[0].status, 'flagged');
+    assert.equal(event.rows[0].risk_type, 'self_harm');
+    assert.equal(event.rows[0].severity, 'critical');
+    assert.equal(event.rows[0].primary_category, 'self-harm/instructions');
+    assert.equal(event.rows[0].confidence, 0.94);
+    assert.equal(event.rows[0].moderation_model, 'vi-context-rules-integration');
+    assert.equal(event.rows[0].category_scores['self-harm/instructions'], 0.94);
+    assert.equal(JSON.stringify(event.rows[0]).includes(rawText), false);
+
+    const alerts = await adminPool.query(
+      `SELECT alert_type::text AS alert_type, message
+       FROM alerts
+       WHERE device_id = $1 AND alert_type = 'text_self_harm'`,
+      [deviceOne]
+    );
+    assert.equal(alerts.rows.length, 1);
+    assert.equal(alerts.rows[0].alert_type, 'text_self_harm');
+    assert.equal(alerts.rows[0].message.includes(rawText), false);
+
+    const columns = await adminPool.query(
+      `SELECT column_name
+       FROM information_schema.columns
+       WHERE table_schema = 'public' AND table_name = 'text_moderation_events'`
+    );
+    const columnNames = columns.rows.map((row) => row.column_name);
+    assert.equal(columnNames.includes('text'), false);
+    assert.equal(columnNames.includes('content_text'), false);
+  } finally {
+    if (previousProvider === undefined) delete process.env.TEXT_MODERATION_PROVIDER;
+    else process.env.TEXT_MODERATION_PROVIDER = previousProvider;
+    if (previousUrl === undefined) delete process.env.LOCAL_MODERATION_URL;
+    else process.env.LOCAL_MODERATION_URL = previousUrl;
+    if (previousKey === undefined) delete process.env.LOCAL_MODERATION_API_KEY;
+    else process.env.LOCAL_MODERATION_API_KEY = previousKey;
+    await new Promise((resolve) => providerServer.close(resolve));
+  }
 });
