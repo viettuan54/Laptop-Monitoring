@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://laptopmonitor.local/schema/text_safety_record.schema.json",
+  "title": "Text safety annotation record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "record_id",
+    "text",
+    "labels",
+    "source_type",
+    "direction",
+    "split",
+    "provenance"
+  ],
+  "properties": {
+    "record_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "conversation_id": {
+      "type": ["string", "null"],
+      "maxLength": 128,
+      "description": "An anonymized grouping key used to prevent split leakage."
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "context": {
+      "type": "array",
+      "maxItems": 5,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000
+      },
+      "default": []
+    },
+    "labels": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "self-harm",
+          "self-harm/intent",
+          "self-harm/instructions",
+          "harassment",
+          "harassment/threatening",
+          "hate",
+          "hate/threatening",
+          "violence",
+          "violence/inciting",
+          "violence/graphic"
+        ]
+      }
+    },
+    "source_type": {
+      "enum": [
+        "search_query",
+        "page_content",
+        "chat_received",
+        "chat_authored"
+      ]
+    },
+    "direction": {
+      "enum": ["unknown", "received", "authored"]
+    },
+    "severity": {
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "requires_immediate_alert": {
+      "type": "boolean",
+      "default": false
+    },
+    "annotator_ids": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64
+      },
+      "description": "Pseudonymous reviewer IDs; never names or email addresses."
+    },
+    "split": {
+      "enum": ["train", "validation", "test"]
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "license", "allowed_use"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1, "maxLength": 300},
+        "license": {"type": "string", "minLength": 1, "maxLength": 100},
+        "allowed_use": {"enum": ["research", "commercial", "internal_evaluation"]}
+      }
+    }
+  }
+}

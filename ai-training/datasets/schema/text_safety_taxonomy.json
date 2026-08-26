@@ -1,0 +1,105 @@
+{
+  "schema_version": "1.0.0",
+  "taxonomy_version": "1.0.0",
+  "language": "vi",
+  "purpose": "Child text-safety risk detection. Results are safety signals, not diagnoses or punitive decisions.",
+  "source_types": [
+    "search_query",
+    "page_content",
+    "chat_received",
+    "chat_authored"
+  ],
+  "directions": [
+    "unknown",
+    "received",
+    "authored"
+  ],
+  "risk_types": [
+    "none",
+    "self_harm",
+    "harassment",
+    "violence"
+  ],
+  "severity_levels": [
+    "low",
+    "medium",
+    "high",
+    "critical"
+  ],
+  "actions": [
+    "allow",
+    "review",
+    "alert"
+  ],
+  "categories": {
+    "self-harm": {
+      "risk_type": "self_harm",
+      "default_severity": "high",
+      "alert_threshold": 0.72,
+      "description": "General references indicating possible self-harm risk."
+    },
+    "self-harm/intent": {
+      "risk_type": "self_harm",
+      "default_severity": "critical",
+      "alert_threshold": 0.65,
+      "description": "First-person intent, planning, or inability to stay safe."
+    },
+    "self-harm/instructions": {
+      "risk_type": "self_harm",
+      "default_severity": "critical",
+      "alert_threshold": 0.65,
+      "description": "Requests for, provision of, or encouragement toward self-harm instructions."
+    },
+    "harassment": {
+      "risk_type": "harassment",
+      "default_severity": "high",
+      "alert_threshold": 0.72,
+      "description": "Targeted insults, humiliation, exclusion, or repeated hostile language."
+    },
+    "harassment/threatening": {
+      "risk_type": "harassment",
+      "default_severity": "critical",
+      "alert_threshold": 0.65,
+      "description": "Targeted threats or coercion directed at a person."
+    },
+    "hate": {
+      "risk_type": "harassment",
+      "default_severity": "high",
+      "alert_threshold": 0.72,
+      "description": "Dehumanizing or exclusionary content targeting a protected group."
+    },
+    "hate/threatening": {
+      "risk_type": "harassment",
+      "default_severity": "critical",
+      "alert_threshold": 0.65,
+      "description": "Threats targeting a protected group."
+    },
+    "violence": {
+      "risk_type": "violence",
+      "default_severity": "high",
+      "alert_threshold": 0.72,
+      "description": "Violent acts or credible violent language."
+    },
+    "violence/inciting": {
+      "risk_type": "violence",
+      "default_severity": "critical",
+      "alert_threshold": 0.65,
+      "description": "Calls to commit or coordinate violence."
+    },
+    "violence/graphic": {
+      "risk_type": "violence",
+      "default_severity": "high",
+      "alert_threshold": 0.72,
+      "description": "Graphic descriptions of injury, death, or bodily harm."
+    }
+  },
+  "privacy": {
+    "persist_raw_text": false,
+    "log_raw_text": false,
+    "maximum_text_characters": 4000,
+    "maximum_context_items": 5,
+    "maximum_context_item_characters": 1000,
+    "backend_metadata_retention_days": 30,
+    "agent_pending_text_retention_days": 7
+  }
+}

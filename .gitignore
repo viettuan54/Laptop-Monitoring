@@ -51,6 +51,9 @@ ai-training/datasets/content/reports/
 ai-training/datasets/content/raw-cache/
 ai-training/datasets/content/record_provenance.jsonl
 ai-training/datasets/content/app_metadata_provenance.jsonl
+ai-training/datasets/text_safety/*
+!ai-training/datasets/text_safety/README.md
+!ai-training/datasets/text_safety/*.example.jsonl
 .runtime/
 child-monitor-agent/build/dist/
 child-monitor-agent/build/work/
