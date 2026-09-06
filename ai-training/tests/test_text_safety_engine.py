@@ -18,6 +18,13 @@ class TextSafetyNormalizationTest(unittest.TestCase):
         self.assertIn("khong", normalized.folded)
         self.assertIn("chet", normalized.folded)
 
+    def test_normalizes_requested_teencode_spacing_repetition_and_emoji(self):
+        normalized = normalize_text("DMM m là n g uuuuuu 💀")
+
+        self.assertIn("dit me may", normalized.unicode)
+        self.assertIn("may la ngu", normalized.folded)
+        self.assertIn("emoji_skull", normalized.unicode)
+
     def test_does_not_confuse_vietnamese_tu_tu_with_self_harm_phrase(self):
         engine = ContextRuleEngine()
 

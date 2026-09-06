@@ -1,6 +1,6 @@
 # Thiết kế phân tích an toàn văn bản
 
-## Phạm vi giai đoạn 1–2
+## Phạm vi giai đoạn 1–4
 
 Local Moderation Service nhận tối đa 20 đoạn văn bản mỗi request, phân tích tại máy
 chủ của dự án và trả về kết quả chuẩn hóa để Backend lưu vào
@@ -11,7 +11,9 @@ Bản đầu dùng engine `vi-context-rules-v1`. Đây là baseline luật-ngữ
 kiến trúc, quyền riêng tư và luồng cảnh báo; điểm số của nó là heuristic, không phải
 xác suất đã được hiệu chỉnh. Nó không được coi là model production hoặc công cụ chẩn
 đoán. Engine PhoBERT/ONNX sẽ thay thế hoặc kết hợp với baseline sau khi có dataset đã
-được duyệt và báo cáo đánh giá.
+được duyệt và báo cáo đánh giá. Từ giai đoạn 4, pipeline fine-tune encoder
+multi-label nằm ở `text_safety.training`; baseline vẫn giữ vai trò safety net cho
+đến khi một artifact đạt deployment gate và được tích hợp qua thay đổi riêng.
 
 ## Taxonomy
 
@@ -118,9 +120,10 @@ an toàn tăng recall trong lúc chưa có model đã được đánh giá.
 ## Dataset và chia tập
 
 - Mỗi record phải có provenance và quyền sử dụng rõ ràng.
-- Tối thiểu hai người duyệt đối với mẫu self-harm hoặc đe dọa nghiêm trọng.
-- Tách train/validation/test theo `conversation_id`, không tách các câu trong cùng hội
-  thoại sang nhiều tập.
+- Tối thiểu hai người duyệt cho mọi record; với self-harm/đe dọa nghiêm trọng,
+  reviewer phải có hướng dẫn escalation riêng.
+- Tách train/validation/test theo `conversation_id` hoặc `subject_id`, không tách
+  các câu trong cùng hội thoại/người dùng sang nhiều tập.
 - Dataset research-only không được đưa vào artifact thương mại khi chưa có quyền.
 - Không dùng dữ liệu cảnh báo của người dùng để train tự động.
 
@@ -134,9 +137,25 @@ an toàn tăng recall trong lúc chưa có model đã được đánh giá.
 - Input vượt giới hạn hoặc field lạ bị trả 422 mà không echo raw text.
 - Unit test không cần tải model hoặc truy cập Internet.
 
+## Giai đoạn 4: encoder huấn luyện và đánh giá
+
+- Default model là `FacebookAI/xlm-roberta-base` ở revision bất biến, cấu hình tại
+  `text_safety_training_config.json`; PhoBERT chỉ được thay vào sau khi license
+  review được ghi nhận trong config mới.
+- Input là JSONL canonical từ ViHSD, UIT-ViCTSD, ViHOS, dữ liệu nội bộ đã ẩn danh
+  và tập self-harm được kiểm duyệt riêng. Mỗi record giữ provenance, hai reviewer,
+  target, direction, severity và quyết định alert.
+- Normalizer xử lý Unicode, teencode, ký tự tách rời, lặp ký tự, emoji và ngữ cảnh
+  Việt–Anh. Tập review phải có các mẫu phủ định và trích dẫn để model không suy luận
+  sai ý định của người nói.
+- Chỉ validation được dùng chọn threshold; test chỉ dùng một lần sau cùng. Báo cáo
+  có precision/recall/F1 từng nhãn, confusion matrix nhị phân, FP/FN theo record ID
+  và recall riêng cho self-harm intent/đe dọa nghiêm trọng.
+- `training_manifest.json` lưu version model/dataset/config, hash dataset/config,
+  revision model, split và phân bố nguồn. Không có raw text trong report.
+
 ## Ngoài phạm vi hiện tại
 
-- Tải và fine-tune PhoBERT/XLM-R.
-- Hiệu chỉnh ngưỡng trên validation set thật.
-- Tích hợp provider local vào Node Backend.
+- Tích hợp artifact encoder đạt gate vào Local Moderation Service/ONNX runtime.
+- Thay đổi provider Backend hoặc tự động gửi cảnh báo dựa riêng vào model mới.
 - Realtime blocking hoặc tự động can thiệp khẩn cấp.

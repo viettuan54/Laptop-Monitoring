@@ -1,0 +1,40 @@
+{
+  "manifest_version": "1.0.0",
+  "dataset_version": "vi-text-safety-v1",
+  "sources": [
+    {
+      "source_id": "vihsd",
+      "purpose": "offensive and hate-language coverage",
+      "intake_status": "convert_to_canonical_jsonl_after_license_review",
+      "required_provenance_source": "vihsd"
+    },
+    {
+      "source_id": "uit_victsd",
+      "purpose": "Vietnamese toxicity coverage",
+      "intake_status": "convert_to_canonical_jsonl_after_license_review",
+      "required_provenance_source": "uit_victsd"
+    },
+    {
+      "source_id": "vhos",
+      "purpose": "offensive-span and obfuscation coverage",
+      "intake_status": "convert_to_canonical_jsonl_after_license_review",
+      "required_provenance_source": "vhos"
+    },
+    {
+      "source_id": "internal_anonymized",
+      "purpose": "reviewed product-domain language only",
+      "intake_status": "requires_anonymization_and_two_reviewer_approval",
+      "required_provenance_source": "internal_anonymized"
+    },
+    {
+      "source_id": "self_harm_reviewed",
+      "purpose": "separately constructed and clinically/safety reviewed self-harm contrast set",
+      "intake_status": "requires_safety_review_and_two_reviewer_approval",
+      "required_provenance_source": "self_harm_reviewed"
+    }
+  ],
+  "notes": [
+    "Do not copy this manifest's status into provenance. Each accepted record must state its verified source, license and allowed_use.",
+    "The default trainer accepts commercial and internal_evaluation records only. Do not add research-only data to a deployment candidate until its terms have been reviewed and the configuration has been explicitly changed."
+  ]
+}

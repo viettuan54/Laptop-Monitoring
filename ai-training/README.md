@@ -15,6 +15,14 @@ Phân loại nội dung ứng dụng/website dùng taxonomy riêng tại
 buộc chạy `content_classification/validate_dataset.py`; chỉ dataset có exit code
 `0` mới được chuyển sang bước chia train/validation/test.
 
+Phân loại an toàn văn bản tiếng Việt dùng contract
+`datasets/schema/text_safety_record.schema.json` và taxonomy
+`datasets/schema/text_safety_taxonomy.json`. Pipeline
+`text_safety/training.py` kiểm tra ẩn danh/provenance/hai reviewer, chia theo
+`conversation_id` hoặc `subject_id`, fine-tune encoder multi-label và tạo báo cáo
+precision/recall/F1, confusion matrix, FP/FN cùng recall cho nhãn critical. Hướng
+dẫn intake dữ liệu và lệnh train nằm tại `datasets/text_safety/README.md`.
+
 Thu thập dữ liệu ngoài bằng `content_classification/collect_external_dataset.py`.
 Công cụ tải các nguồn CC0 đã cho phép, chuẩn hóa domain/tên process, cách ly bản
 ghi xung đột vào hàng đợi duyệt, lưu provenance rồi tự chạy validator. Chi tiết

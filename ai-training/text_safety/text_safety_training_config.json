@@ -1,0 +1,65 @@
+{
+  "config_version": "1.0.0",
+  "model_version": "vi-text-safety-xlm-r-v1",
+  "dataset_version": "vi-text-safety-v1",
+  "allowed_dataset_uses": [
+    "commercial",
+    "internal_evaluation"
+  ],
+  "model": {
+    "id": "FacebookAI/xlm-roberta-base",
+    "revision": "2cfd5ad1f384a79c5dd5d64b612fe16d3fa95292",
+    "license_review": "MIT model card reviewed 2026-09-06; independently review every dataset license before admitting it."
+  },
+  "split_ratios": {
+    "train": 0.7,
+    "validation": 0.15,
+    "test": 0.15
+  },
+  "split_seed": "child-monitor-text-safety-v1",
+  "training": {
+    "max_length": 256,
+    "epochs": 4,
+    "learning_rate": 0.00002,
+    "train_batch_size": 8,
+    "eval_batch_size": 16,
+    "weight_decay": 0.01,
+    "warmup_ratio": 0.1,
+    "seed": 20260906
+  },
+  "threshold_tuning": {
+    "candidates": [
+      0.15,
+      0.2,
+      0.25,
+      0.3,
+      0.35,
+      0.4,
+      0.45,
+      0.5,
+      0.55,
+      0.6,
+      0.65,
+      0.7,
+      0.75,
+      0.8,
+      0.85
+    ],
+    "minimum_recall": {
+      "self-harm/intent": 0.92,
+      "harassment/threatening": 0.9,
+      "hate/threatening": 0.9,
+      "violence/inciting": 0.9
+    }
+  },
+  "acceptance": {
+    "minimum_macro_f1": 0.65,
+    "minimum_test_support_per_critical_label": 20,
+    "minimum_test_recall": {
+      "self-harm/intent": 0.9,
+      "harassment/threatening": 0.88,
+      "hate/threatening": 0.88,
+      "violence/inciting": 0.88
+    }
+  }
+}

@@ -83,6 +83,18 @@ Invoke-RestMethod `
 Không chạy Uvicorn với `--reload` trong production và không bind `0.0.0.0` nếu service
 không nằm sau private network/firewall.
 
+## Huấn luyện encoder multi-label (giai đoạn 4)
+
+Pipeline huấn luyện nằm trong `text_safety.training`. Nó dùng XLM-R base đa ngôn
+ngữ đã pin revision trong `text_safety_training_config.json`; model card công bố
+giấy phép MIT. Đây là default phù hợp để đánh giá dữ liệu nội bộ, còn từng dataset
+vẫn bắt buộc được kiểm tra license/provenance riêng trước khi được phép train.
+
+Xem contract, hướng dẫn gán nhãn và lệnh train ở
+`../datasets/text_safety/README.md`. Pipeline chưa tự động thay baseline runtime:
+chỉ artifact đạt deployment gate mới là ứng viên cho bước tích hợp/inference tiếp
+theo.
+
 ## Chạy test
 
 ```powershell

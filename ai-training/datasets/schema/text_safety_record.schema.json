@@ -8,10 +8,28 @@
     "record_id",
     "text",
     "labels",
+    "target",
     "source_type",
     "direction",
+    "severity",
+    "requires_immediate_alert",
+    "annotator_ids",
     "split",
     "provenance"
+  ],
+  "anyOf": [
+    {
+      "properties": {
+        "conversation_id": {"type": "string", "minLength": 1}
+      },
+      "required": ["conversation_id"]
+    },
+    {
+      "properties": {
+        "subject_id": {"type": "string", "minLength": 1}
+      },
+      "required": ["subject_id"]
+    }
   ],
   "properties": {
     "record_id": {
@@ -23,6 +41,11 @@
       "type": ["string", "null"],
       "maxLength": 128,
       "description": "An anonymized grouping key used to prevent split leakage."
+    },
+    "subject_id": {
+      "type": ["string", "null"],
+      "maxLength": 128,
+      "description": "An anonymized user/participant grouping key when conversation_id is unavailable."
     },
     "text": {
       "type": "string",
@@ -36,6 +59,22 @@
         "type": "string",
         "minLength": 1,
         "maxLength": 1000
+      },
+      "default": []
+    },
+    "offensive_spans": {
+      "type": "array",
+      "maxItems": 20,
+      "description": "Optional source evidence, e.g. a reviewed ViHOS offensive span. It is not an inference-time feature.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["start", "end"],
+        "properties": {
+          "start": {"type": "integer", "minimum": 0},
+          "end": {"type": "integer", "minimum": 1},
+          "source_label": {"type": "string", "minLength": 1, "maxLength": 128}
+        }
       },
       "default": []
     },
@@ -56,6 +95,10 @@
           "violence/graphic"
         ]
       }
+    },
+    "target": {
+      "enum": ["unknown", "self", "individual", "child", "group"],
+      "description": "Reviewed target of the language; never use a real name or identifier."
     },
     "source_type": {
       "enum": [
@@ -78,6 +121,7 @@
     "annotator_ids": {
       "type": "array",
       "uniqueItems": true,
+      "minItems": 2,
       "items": {
         "type": "string",
         "minLength": 1,
