@@ -93,7 +93,9 @@ vẫn bắt buộc được kiểm tra license/provenance riêng trước khi đ
 Xem contract, hướng dẫn gán nhãn và lệnh train ở
 `../datasets/text_safety/README.md`. Pipeline chưa tự động thay baseline runtime:
 chỉ artifact đạt deployment gate mới là ứng viên cho bước tích hợp/inference tiếp
-theo.
+theo. `--validate-only` kiểm tra tính hợp lệ, leakage và phân bố nhãn trước khi
+tải encoder. Model dùng cùng định dạng đầu vào với API moderation thông qua
+`format_model_input(text, source_type, direction, context)`.
 
 ## Chạy test
 

@@ -75,19 +75,6 @@ class AnnotationRecord:
     def labels(self) -> tuple[str, ...]:
         return tuple(self.payload["labels"])
 
-    @property
-    def group_key(self) -> str:
-        conversation_id = self.payload.get("conversation_id")
-        if conversation_id:
-            return f"conversation:{conversation_id}"
-        subject_id = self.payload.get("subject_id")
-        if subject_id:
-            return f"subject:{subject_id}"
-        raise TextSafetyTrainingError(
-            f"Record {self.record_id} must have a non-empty conversation_id or subject_id"
-        )
-
-
 def canonical_labels() -> tuple[str, ...]:
     return tuple(load_taxonomy().categories)
 
@@ -144,7 +131,7 @@ def _fallback_schema_error(payload: dict[str, Any]) -> str | None:
     }
     required = {
         "record_id", "text", "labels", "target", "source_type", "direction", "severity",
-        "requires_immediate_alert", "annotator_ids", "split", "provenance",
+        "requires_immediate_alert", "annotator_ids", "provenance",
     }
     missing = sorted(required - set(payload))
     if missing:
@@ -152,15 +139,20 @@ def _fallback_schema_error(payload: dict[str, Any]) -> str | None:
     unexpected = sorted(set(payload) - allowed)
     if unexpected:
         return f"unexpected field {unexpected[0]}"
-    if not isinstance(payload["record_id"], str) or not payload["record_id"].strip():
-        return "record_id must be a non-empty string"
+    if not isinstance(payload["record_id"], str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", payload["record_id"]):
+        return "record_id must be a pseudonymous identifier"
     if not isinstance(payload["text"], str) or not 1 <= len(payload["text"]) <= 4000:
         return "text must contain 1 to 4000 characters"
-    if not isinstance(payload["labels"], list) or len(set(payload["labels"])) != len(payload["labels"]):
+    if (
+        not isinstance(payload["labels"], list)
+        or any(not isinstance(label, str) for label in payload["labels"])
+        or len(set(payload["labels"])) != len(payload["labels"])
+    ):
         return "labels must be a unique array"
-    if not isinstance(payload["context"], list) or len(payload["context"]) > 5:
+    context = payload.get("context", [])
+    if not isinstance(context, list) or len(context) > 5:
         return "context must contain at most five items"
-    if any(not isinstance(value, str) or not 1 <= len(value) <= 1000 for value in payload["context"]):
+    if any(not isinstance(value, str) or not 1 <= len(value) <= 1000 for value in context):
         return "context items must contain 1 to 1000 characters"
     spans = payload.get("offensive_spans", [])
     if not isinstance(spans, list) or len(spans) > 20:
@@ -185,9 +177,14 @@ def _fallback_schema_error(payload: dict[str, Any]) -> str | None:
     if not isinstance(payload["requires_immediate_alert"], bool):
         return "requires_immediate_alert must be boolean"
     annotators = payload["annotator_ids"]
-    if not isinstance(annotators, list) or len(annotators) < 2 or len(set(annotators)) != len(annotators):
+    if (
+        not isinstance(annotators, list)
+        or len(annotators) < 2
+        or any(not isinstance(value, str) or not 1 <= len(value) <= 64 for value in annotators)
+        or len(set(annotators)) != len(annotators)
+    ):
         return "annotator_ids must contain at least two unique reviewers"
-    if payload["split"] not in {"train", "validation", "test"}:
+    if "split" in payload and payload["split"] not in {"train", "validation", "test"}:
         return "split is invalid"
     if not isinstance(payload["provenance"], dict):
         return "provenance must be an object"
@@ -252,24 +249,29 @@ def validate_annotation_records(
     records: Iterable[AnnotationRecord],
     *,
     allowed_uses: set[str] | None = None,
+    enforce_existing_splits: bool = False,
 ) -> list[AnnotationRecord]:
     """Validate schema, consent/provenance, de-identification and leakage risks.
 
-    Exceptions intentionally identify only record IDs and fields, never the source
-    text.  This makes it safe to put CLI errors in CI logs.
+    Existing split assignments are checked only when explicitly preserved; fresh
+    grouped splitting ignores old assignments. Errors never include source text.
     """
 
     validator = _schema_validator()
     labels = set(canonical_labels())
-    allowed_uses = allowed_uses or {"commercial", "internal_evaluation"}
+    if allowed_uses is None:
+        allowed_uses = {"commercial", "internal_evaluation"}
     accepted: list[AnnotationRecord] = []
     record_ids: set[str] = set()
-    normalized_text_splits: dict[str, str] = {}
-    groups: dict[str, set[str]] = defaultdict(set)
 
     for record in records:
         payload = record.payload
-        record_id = str(payload.get("record_id", f"line-{record.source_line}"))
+        candidate_id = payload.get("record_id")
+        record_id = (
+            candidate_id
+            if isinstance(candidate_id, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", candidate_id)
+            else f"line-{record.source_line}"
+        )
         if validator is None:
             fallback_error = _fallback_schema_error(payload)
             if fallback_error:
@@ -279,7 +281,8 @@ def validate_annotation_records(
             if schema_errors:
                 error = schema_errors[0]
                 raise TextSafetyTrainingError(
-                    f"Record {record_id} fails schema at {_validation_error_location(error)}: {error.message}"
+                    f"Record {record_id} fails schema at {_validation_error_location(error)} "
+                    f"({error.validator})"
                 )
         if record_id in record_ids:
             raise TextSafetyTrainingError(f"Duplicate record_id: {record_id}")
@@ -297,24 +300,12 @@ def validate_annotation_records(
                 raise TextSafetyTrainingError(
                     f"Record {record_id} has an offensive span outside the text bounds"
                 )
-        group_key = record.group_key
-        groups[group_key].add(payload["split"])
-        normalized_hash = _sha256_text(normalize_text(payload["text"]).unicode)
-        known_split = normalized_text_splits.get(normalized_hash)
-        if known_split is not None and known_split != payload["split"]:
-            raise TextSafetyTrainingError(
-                f"Record {record_id} duplicates text assigned to another split"
-            )
-        normalized_text_splits[normalized_hash] = payload["split"]
         accepted.append(record)
 
-    for group_key, splits in groups.items():
-        if len(splits) > 1:
-            raise TextSafetyTrainingError(
-                f"Conversation/subject group {group_key} appears in more than one split"
-            )
     if not accepted:
         raise TextSafetyTrainingError("No annotation records supplied")
+    if enforce_existing_splits:
+        _validate_group_ownership(_group_records(accepted))
     return accepted
 
 
@@ -366,21 +357,80 @@ def _stable_group_order(seed: str, group_key: str) -> str:
     return hashlib.sha256(f"{seed}:{group_key}".encode("utf-8")).hexdigest()
 
 
+def _group_records(records: Sequence[AnnotationRecord]) -> dict[str, list[AnnotationRecord]]:
+    """Connect records sharing a user, conversation, or normalized text.
+
+    A user can have several conversations and identical text can occur in
+    unrelated conversations or sources. All connected records must stay in one
+    split to make a held-out evaluation meaningful.
+    """
+
+    parents: dict[str, str] = {}
+
+    def root(key: str) -> str:
+        parents.setdefault(key, key)
+        path: list[str] = []
+        current = key
+        while parents[current] != current:
+            path.append(current)
+            current = parents[current]
+        for member in path:
+            parents[member] = current
+        return current
+
+    def connect(first: str, second: str) -> None:
+        first_root, second_root = root(first), root(second)
+        if first_root != second_root:
+            parents[max(first_root, second_root)] = min(first_root, second_root)
+
+    record_keys: list[str] = []
+    for record in records:
+        payload = record.payload
+        keys = [
+            f"text:{_sha256_text(normalize_text(payload['text']).unicode)}"
+        ]
+        if payload.get("conversation_id"):
+            keys.append(f"conversation:{payload['conversation_id']}")
+        if payload.get("subject_id"):
+            keys.append(f"subject:{payload['subject_id']}")
+        if len(keys) == 1:
+            raise TextSafetyTrainingError("Every record needs a conversation or subject ID")
+        for key in keys[1:]:
+            connect(keys[0], key)
+        record_keys.append(keys[0])
+
+    grouped: dict[str, list[AnnotationRecord]] = defaultdict(list)
+    for record, key in zip(records, record_keys):
+        grouped[root(key)].append(record)
+    return dict(grouped)
+
+
+def _validate_group_ownership(grouped: dict[str, list[AnnotationRecord]]) -> None:
+    for records in grouped.values():
+        splits = {record.payload.get("split") for record in records}
+        if None in splits:
+            raise TextSafetyTrainingError(
+                "Every record must have a split when --preserve-splits is used"
+            )
+        if len(splits) > 1:
+            raise TextSafetyTrainingError(
+                "A user, conversation, or duplicate text appears in multiple preserved splits"
+            )
+
+
 def grouped_multilabel_split(
     records: Sequence[AnnotationRecord],
     *,
     ratios: dict[str, float],
     seed: str,
 ) -> tuple[dict[str, list[AnnotationRecord]], dict[str, Any]]:
-    """Split complete conversations/subjects with a deterministic label-aware greedy pass."""
+    """Split connected user/conversation/text groups deterministically."""
 
     ratios = _validate_split_ratios(ratios)
-    grouped: dict[str, list[AnnotationRecord]] = defaultdict(list)
-    for record in records:
-        grouped[record.group_key].append(record)
+    grouped = _group_records(records)
     if len(grouped) < 3:
         raise TextSafetyTrainingError(
-            "At least three conversation/subject groups are required for train/validation/test"
+            "At least three independent user/conversation/text groups are required for train/validation/test"
         )
 
     label_names = canonical_labels()
@@ -414,15 +464,21 @@ def grouped_multilabel_split(
             if would_leave_empty:
                 continue
             projected_size = current_sizes[split] + len(group_records)
-            size_cost = ((projected_size - target_sizes[split]) / max(target_sizes[split], 1)) ** 2
+            size_cost = (
+                (projected_size - target_sizes[split]) ** 2
+                - (current_sizes[split] - target_sizes[split]) ** 2
+            ) / max(target_sizes[split], 1)
             label_cost = sum(
-                ((current_labels[split][label] + group_labels[label] - target_labels[split][label])
-                / max(target_labels[split][label], 1)) ** 2
+                (
+                    (current_labels[split][label] + group_labels[label] - target_labels[split][label]) ** 2
+                    - (current_labels[split][label] - target_labels[split][label]) ** 2
+                ) / max(target_labels[split][label], 1)
                 for label in label_names
                 if label_totals[label]
             )
-            # Label balance is more important than equal raw row counts for this task.
-            candidates.append((label_cost * 3 + size_cost, split))
+            # Compare marginal changes to the total objective. Comparing each
+            # split's absolute error biases the assignment toward small splits.
+            candidates.append((label_cost + size_cost, split))
         if not candidates:  # defensive fallback for unusual ratio/group combinations
             candidates = [(0.0, split) for split in ratios]
         _, selected = min(candidates, key=lambda value: (value[0], value[1]))
@@ -434,7 +490,7 @@ def grouped_multilabel_split(
     for group_key, group_records in grouped.items():
         splits[assignments[group_key]].extend(group_records)
     metadata = {
-        "strategy": "deterministic_grouped_multilabel_greedy_v1",
+        "strategy": "deterministic_connected_group_multilabel_greedy_v3",
         "seed": seed,
         "group_count": len(grouped),
         "record_count": len(records),
@@ -450,37 +506,66 @@ def grouped_multilabel_split(
 def preserved_group_splits(
     records: Sequence[AnnotationRecord],
 ) -> tuple[dict[str, list[AnnotationRecord]], dict[str, Any]]:
+    grouped = _group_records(records)
+    _validate_group_ownership(grouped)
     splits = {"train": [], "validation": [], "test": []}
-    owners: dict[str, str] = {}
-    for record in records:
-        split = record.payload["split"]
-        owner = owners.setdefault(record.group_key, split)
-        if owner != split:
-            raise TextSafetyTrainingError(
-                f"Conversation/subject group {record.group_key} appears in more than one split"
-            )
-        splits[split].append(record)
+    for group_records in grouped.values():
+        splits[group_records[0].payload["split"]].extend(group_records)
     if any(not records_in_split for records_in_split in splits.values()):
         raise TextSafetyTrainingError("Preserved splits require non-empty train, validation and test")
     return splits, {
         "strategy": "provided_grouped_splits",
-        "group_count": len(owners),
+        "group_count": len(grouped),
         "record_count": len(records),
         "split_counts": {split: len(items) for split, items in splits.items()},
+        "label_counts": {
+            split: {
+                label: sum(label in record.labels for record in items)
+                for label in canonical_labels()
+            }
+            for split, items in splits.items()
+        },
     }
 
 
-def format_model_text(record: AnnotationRecord) -> str:
-    """Normalize robustly while retaining reviewed source/direction/target context."""
+def validate_split_coverage(splits: dict[str, list[AnnotationRecord]]) -> None:
+    """Reject a run that cannot learn or tune every output label."""
 
+    for split in ("train", "validation", "test"):
+        if not splits.get(split):
+            raise TextSafetyTrainingError(f"The {split} split is empty")
+    for split in ("train", "validation"):
+        records = splits[split]
+        for label in canonical_labels():
+            positives = sum(label in record.labels for record in records)
+            if positives == 0 or positives == len(records):
+                raise TextSafetyTrainingError(
+                    f"The {split} split needs both positive and negative examples for {label}"
+                )
+
+
+def format_model_input(
+    text: str,
+    source_type: str,
+    direction: str = "unknown",
+    context: Sequence[str] = (),
+) -> str:
+    """Format only fields available to the moderation API at inference time."""
+
+    prefix = f"nguon_{source_type} huong_{direction}"
+    context_text = " ".join(normalize_text(value).unicode for value in context)
+    text = normalize_text(text).unicode
+    return " ".join(part for part in (prefix, context_text, text) if part)
+
+
+def format_model_text(record: AnnotationRecord) -> str:
     payload = record.payload
-    prefix = (
-        f"nguon_{payload['source_type']} huong_{payload['direction']} "
-        f"muc_tieu_{payload['target']}"
+    return format_model_input(
+        payload["text"],
+        payload["source_type"],
+        payload["direction"],
+        payload.get("context", ()),
     )
-    context = " ".join(normalize_text(value).unicode for value in payload.get("context", []))
-    text = normalize_text(payload["text"]).unicode
-    return " ".join(part for part in (prefix, context, text) if part)
 
 
 def label_vector(record: AnnotationRecord, labels: Sequence[str] | None = None) -> list[float]:
@@ -613,6 +698,8 @@ def select_thresholds(
     unknown_requirements = set(minimum_recall) - set(labels)
     if unknown_requirements:
         raise TextSafetyTrainingError("minimum_recall contains labels outside taxonomy")
+    if len(records) != len(probabilities) or any(len(row) != len(labels) for row in probabilities):
+        raise TextSafetyTrainingError("Validation prediction dimensions do not match the records and labels")
     thresholds: dict[str, float] = {}
     details: dict[str, Any] = {}
     actual_matrix = [label_vector(record, labels) for record in records]
@@ -672,6 +759,7 @@ def load_training_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     config = _load_json(path)
     required = {
         "config_version",
+        "model_version",
         "dataset_version",
         "model",
         "split_ratios",
@@ -687,28 +775,52 @@ def load_training_config(path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
     model = config["model"]
     if not isinstance(model, dict) or not model.get("id") or not model.get("revision"):
         raise TextSafetyTrainingError("model.id and immutable model.revision are required")
+    uses = config.get("allowed_dataset_uses", ["commercial", "internal_evaluation"])
+    if not isinstance(uses, list) or not uses or not set(uses).issubset(
+        {"research", "commercial", "internal_evaluation"}
+    ):
+        raise TextSafetyTrainingError("allowed_dataset_uses must be a non-empty list of supported uses")
     training = config["training"]
     if int(training.get("max_length", 0)) < 32 or int(training.get("max_length", 0)) > 512:
         raise TextSafetyTrainingError("training.max_length must be between 32 and 512")
     if int(training.get("epochs", 0)) < 1:
         raise TextSafetyTrainingError("training.epochs must be at least 1")
+    if int(training.get("train_batch_size", 0)) < 1 or int(training.get("eval_batch_size", 0)) < 1:
+        raise TextSafetyTrainingError("training batch sizes must be positive")
+    if float(training.get("learning_rate", 0)) <= 0:
+        raise TextSafetyTrainingError("training.learning_rate must be positive")
     thresholds = config["threshold_tuning"]
-    if not isinstance(thresholds.get("candidates"), list):
-        raise TextSafetyTrainingError("threshold_tuning.candidates must be a list")
+    candidates = thresholds.get("candidates")
+    if not isinstance(candidates, list) or not candidates or any(
+        not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 < value < 1
+        for value in candidates
+    ):
+        raise TextSafetyTrainingError("threshold_tuning.candidates must contain probabilities between 0 and 1")
     label_set = set(canonical_labels())
     if not set(thresholds.get("minimum_recall", {})).issubset(label_set):
         raise TextSafetyTrainingError("threshold_tuning.minimum_recall has unknown taxonomy labels")
+    if any(not 0 <= float(value) <= 1 for value in thresholds.get("minimum_recall", {}).values()):
+        raise TextSafetyTrainingError("threshold_tuning.minimum_recall must be between 0 and 1")
     acceptance = config["acceptance"]
     if not set(acceptance.get("minimum_test_recall", {})).issubset(label_set):
         raise TextSafetyTrainingError("acceptance.minimum_test_recall has unknown taxonomy labels")
-    if float(acceptance.get("minimum_macro_f1", -1)) < 0 or int(
-        acceptance.get("minimum_test_support_per_critical_label", -1)
-    ) < 0:
-        raise TextSafetyTrainingError("acceptance thresholds must be non-negative")
+    if not 0 <= float(acceptance.get("minimum_macro_f1", -1)) <= 1 or int(
+        acceptance.get("minimum_test_support_per_critical_label", 0)
+    ) < 1 or any(
+        not 0 <= float(value) <= 1
+        for value in acceptance.get("minimum_test_recall", {}).values()
+    ):
+        raise TextSafetyTrainingError("acceptance thresholds must have valid ranges and positive support")
     return config
 
 
-def deployment_gate(report: dict[str, Any], acceptance: dict[str, Any]) -> dict[str, Any]:
+def deployment_gate(
+    report: dict[str, Any],
+    acceptance: dict[str, Any],
+    *,
+    dataset_uses: set[str] | None = None,
+    validation_thresholds: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """A model is not approved just because aggregate accuracy looks good."""
 
     minimum_macro_f1 = float(acceptance["minimum_macro_f1"])
@@ -740,11 +852,32 @@ def deployment_gate(report: dict[str, Any], acceptance: dict[str, Any]) -> dict[
                 },
             ]
         )
+    if dataset_uses is not None:
+        gates.append(
+            {
+                "name": "dataset_use_approved_for_deployment",
+                "actual": sorted(dataset_uses),
+                "required": ["commercial"],
+                "passed": dataset_uses == {"commercial"},
+            }
+        )
+    if validation_thresholds is not None:
+        for label in minimum_critical_recall:
+            details = validation_thresholds[label]
+            gates.append(
+                {
+                    "name": f"{METRIC_ALIASES.get(label, label)}_validation_recall_constraint",
+                    "actual": details["selected"]["recall"],
+                    "required": details["minimum_recall"],
+                    "passed": details["recall_constraint_met"],
+                }
+            )
     return {"passed": all(gate["passed"] for gate in gates), "gates": gates}
 
 
 def _load_training_dependencies():
     try:
+        import accelerate  # noqa: F401 -- Trainer requires Accelerate at runtime.
         import torch
         from transformers import (
             AutoModelForSequenceClassification,
@@ -755,7 +888,8 @@ def _load_training_dependencies():
         )
     except ImportError as error:  # pragma: no cover - depends on optional install
         raise TrainingDependencyError(
-            "Training requires PyTorch and Transformers. Install text_safety/requirements-training.txt."
+            "Training requires PyTorch, Transformers and Accelerate. "
+            "Install text_safety/requirements-training.txt."
         ) from error
     return (
         torch,
@@ -917,6 +1051,30 @@ def train_model(
     return model, tokenizer, predict(validation_dataset), predict(test_dataset), run_summary
 
 
+def prepare_training_data(
+    input_paths: Sequence[Path],
+    *,
+    config_path: Path = DEFAULT_CONFIG_PATH,
+    preserve_splits: bool = False,
+) -> tuple[dict[str, Any], list[AnnotationRecord], dict[str, list[AnnotationRecord]], dict[str, Any]]:
+    """Validate data and splits before acquiring or downloading a large model."""
+
+    config = load_training_config(config_path)
+    records = validate_annotation_records(
+        load_jsonl_records(input_paths),
+        allowed_uses=set(config.get("allowed_dataset_uses", ["commercial", "internal_evaluation"])),
+        enforce_existing_splits=preserve_splits,
+    )
+    if preserve_splits:
+        splits, split_metadata = preserved_group_splits(records)
+    else:
+        splits, split_metadata = grouped_multilabel_split(
+            records, ratios=config["split_ratios"], seed=str(config["split_seed"])
+        )
+    validate_split_coverage(splits)
+    return config, records, splits, split_metadata
+
+
 def run_training(
     input_paths: Sequence[Path],
     *,
@@ -926,17 +1084,9 @@ def run_training(
 ) -> dict[str, Any]:
     """Run the complete preparation → training → held-out evaluation workflow."""
 
-    config = load_training_config(config_path)
-    records = validate_annotation_records(
-        load_jsonl_records(input_paths),
-        allowed_uses=set(config.get("allowed_dataset_uses", ["commercial", "internal_evaluation"])),
+    config, records, splits, split_metadata = prepare_training_data(
+        input_paths, config_path=config_path, preserve_splits=preserve_splits
     )
-    if preserve_splits:
-        splits, split_metadata = preserved_group_splits(records)
-    else:
-        splits, split_metadata = grouped_multilabel_split(
-            records, ratios=config["split_ratios"], seed=str(config["split_seed"])
-        )
     model, tokenizer, validation_probabilities, test_probabilities, run_summary = train_model(
         splits, config, output_dir
     )
@@ -952,11 +1102,17 @@ def run_training(
     test_report = multilabel_evaluation(
         splits["test"], test_probabilities, thresholds, labels=labels
     )
-    gate = deployment_gate(test_report, config["acceptance"])
+    gate = deployment_gate(
+        test_report,
+        config["acceptance"],
+        dataset_uses={record.payload["provenance"]["allowed_use"] for record in records},
+        validation_thresholds=threshold_report,
+    )
     timestamp = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
     dataset_hash = dataset_fingerprint(records)
     manifest = {
-        "pipeline_version": "text-safety-training-v1",
+        "pipeline_version": "text-safety-training-v2",
+        "model_input_format_version": "text-safety-input-v2",
         "created_at": timestamp,
         "model_version": config["model_version"],
         "dataset_version": config["dataset_version"],
@@ -980,6 +1136,7 @@ def run_training(
         "base_model": run_summary["base_model"],
         "base_model_revision": run_summary["resolved_revision"],
         "labels": list(labels),
+        "model_input_format_version": "text-safety-input-v2",
         "thresholds": thresholds,
         "deployment_approved": gate["passed"],
         "manifest_file": "../training_manifest.json",
@@ -1013,8 +1170,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        required=True,
         help="New, not-yet-created artifact directory for this immutable model version.",
+    )
+    parser.add_argument(
+        "--validate-only",
+        action="store_true",
+        help="Validate reviewed data and split coverage without downloading a model.",
     )
     parser.add_argument(
         "--preserve-splits",
@@ -1027,6 +1188,26 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     try:
+        if args.validate_only:
+            config, records, _, split_metadata = prepare_training_data(
+                args.input,
+                config_path=args.config,
+                preserve_splits=args.preserve_splits,
+            )
+            print(
+                json.dumps(
+                    {
+                        "status": "valid",
+                        "dataset_version": config["dataset_version"],
+                        "dataset_fingerprint_sha256": dataset_fingerprint(records),
+                        "split": split_metadata,
+                    },
+                    ensure_ascii=False,
+                )
+            )
+            return 0
+        if args.output_dir is None:
+            raise TextSafetyTrainingError("--output-dir is required unless --validate-only is used")
         report = run_training(
             args.input,
             config_path=args.config,

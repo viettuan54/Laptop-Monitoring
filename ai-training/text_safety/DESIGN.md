@@ -122,8 +122,9 @@ an toàn tăng recall trong lúc chưa có model đã được đánh giá.
 - Mỗi record phải có provenance và quyền sử dụng rõ ràng.
 - Tối thiểu hai người duyệt cho mọi record; với self-harm/đe dọa nghiêm trọng,
   reviewer phải có hướng dẫn escalation riêng.
-- Tách train/validation/test theo `conversation_id` hoặc `subject_id`, không tách
-  các câu trong cùng hội thoại/người dùng sang nhiều tập.
+- Tách train/validation/test theo nhóm liên thông bởi `conversation_id`,
+  `subject_id` và văn bản trùng sau chuẩn hóa; không tách cùng hội thoại/người dùng
+  hoặc câu trùng sang nhiều tập.
 - Dataset research-only không được đưa vào artifact thương mại khi chưa có quyền.
 - Không dùng dữ liệu cảnh báo của người dùng để train tự động.
 
@@ -153,6 +154,8 @@ an toàn tăng recall trong lúc chưa có model đã được đánh giá.
   và recall riêng cho self-harm intent/đe dọa nghiêm trọng.
 - `training_manifest.json` lưu version model/dataset/config, hash dataset/config,
   revision model, split và phân bố nguồn. Không có raw text trong report.
+- Preflight kiểm tra train/validation có mẫu dương và âm cho từng nhãn trước khi
+  tải model; `--validate-only` chạy kiểm tra này không cần dependency deep learning.
 
 ## Ngoài phạm vi hiện tại
 

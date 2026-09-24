@@ -1,6 +1,6 @@
 {
-  "config_version": "1.0.0",
-  "model_version": "vi-text-safety-xlm-r-v1",
+  "config_version": "1.1.0",
+  "model_version": "vi-text-safety-xlm-r-v2",
   "dataset_version": "vi-text-safety-v1",
   "allowed_dataset_uses": [
     "commercial",

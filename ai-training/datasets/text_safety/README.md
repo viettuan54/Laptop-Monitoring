@@ -24,8 +24,11 @@ Nguyên tắc bắt buộc:
 - Mỗi record phải có ít nhất hai `annotator_ids`, `target`, `direction`,
   `severity` và `requires_immediate_alert`. Công cụ import cũng nhận key UI
   `requiresImmediateAlert` rồi chuẩn hóa thành `requires_immediate_alert`.
-- Mỗi record phải có `conversation_id` hoặc `subject_id`; pipeline không cho
-  phép một nhóm này xuất hiện ở nhiều split.
+- Mỗi record phải có `conversation_id` hoặc `subject_id`; nên cung cấp cả hai
+  nếu có để giữ các hội thoại của cùng người dùng trong một split.
+- `split` là tùy chọn khi để pipeline tự chia lại. Với `--preserve-splits`, mọi
+  record phải có split và không được chia cùng người dùng, hội thoại hoặc văn bản
+  trùng sau chuẩn hóa sang nhiều tập.
 - Ghi rõ nguồn, giấy phép và phạm vi sử dụng trong `provenance`.
 - Không tự động đưa chat thu được từ Agent vào dataset.
 - Mẫu self-harm/đe dọa nghiêm trọng phải được ít nhất hai người duyệt trước khi đưa
@@ -80,7 +83,7 @@ python -m text_safety.training `
   --input .\datasets\text_safety\accepted\vhos.jsonl `
   --input .\datasets\text_safety\accepted\internal.jsonl `
   --input .\datasets\text_safety\accepted\self_harm.jsonl `
-  --output-dir .\artifacts\text_safety\vi-text-safety-xlm-r-v1
+  --output-dir .\artifacts\text_safety\vi-text-safety-xlm-r-v2
 Pop-Location
 ```
 
@@ -91,9 +94,25 @@ python -m pip install -r .\ai-training\text_safety\requirements.txt
 python -m pip install -r .\ai-training\text_safety\requirements-training.txt
 ```
 
-Mặc định pipeline gán lại split 70/15/15 bằng khóa `conversation_id` trước,
-hoặc `subject_id` khi không có hội thoại. Dùng `--preserve-splits` chỉ khi split
-đã được reviewer chốt; validator vẫn từ chối group bị chia cắt. Để model, dataset
+Có thể kiểm tra dữ liệu và phép chia trước khi cài PyTorch hoặc tải model:
+
+```powershell
+Push-Location .\ai-training
+python -m text_safety.training `
+  --input .\datasets\text_safety\accepted\vihsd.jsonl `
+  --input .\datasets\text_safety\accepted\uit_victsd.jsonl `
+  --input .\datasets\text_safety\accepted\vhos.jsonl `
+  --input .\datasets\text_safety\accepted\internal.jsonl `
+  --input .\datasets\text_safety\accepted\self_harm.jsonl `
+  --validate-only
+Pop-Location
+```
+
+Mặc định pipeline gán lại split 70/15/15 theo các nhóm liên thông bởi
+`subject_id`, `conversation_id` và văn bản trùng sau chuẩn hóa. Split cũ không
+ảnh hưởng chế độ này. Dùng `--preserve-splits` khi split đã được reviewer chốt;
+pipeline sẽ từ chối nhóm bị chia cắt. Cả train và validation phải có mẫu dương
+và âm cho từng nhãn; nếu thiếu, preflight dừng trước khi tải model. Để model, dataset
 và config có thể audit lại, output chứa `training_manifest.json`,
 `training_config.json`, `thresholds.json`, metadata của model và
 `evaluation_report.json`.
@@ -102,5 +121,8 @@ Báo cáo test có precision/recall/F1 cho từng nhãn, confusion matrix nhị 
 từng nhãn, danh sách false positive/false negative chỉ gồm `record_id` và nhãn,
 và recall riêng cho `self_harm_intent` cùng các nhãn đe dọa nghiêm trọng. Ngưỡng
 được chọn chỉ từ validation; test không được dùng để chỉnh ngưỡng. Artifact chỉ
-được đánh dấu `deployment_approved=true` khi vượt toàn bộ gate macro-F1, support
-và recall critical đã cấu hình — không dựa vào accuracy.
+được đánh dấu `deployment_approved=true` khi vượt toàn bộ gate macro-F1, support,
+recall critical trên validation/test và tất cả record có `allowed_use=commercial`.
+Record `internal_evaluation` vẫn có thể dùng để thử nghiệm, nhưng artifact sẽ
+không được duyệt triển khai. Model input chỉ gồm text, source type, direction và
+context như API moderation; `target` là metadata do reviewer gán, không là feature.
