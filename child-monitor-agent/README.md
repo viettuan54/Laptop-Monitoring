@@ -148,6 +148,11 @@ policy tiếp tục có hiệu lực sau reboot hoặc khi Backend tạm thời 
 
 ## Phân tích an toàn văn bản
 
+Phạm vi phiên bản tiếp theo đã chốt trong
+[đặc tả thu thập văn bản](docs/text_collection_scope.md): truy vấn tìm kiếm
+và nội dung trang công khai được cho phép trên Chrome/Edge; chat để giai đoạn
+sau. Nội dung trang chưa được thu thập trong code hiện tại.
+
 Khi phụ huynh bật `enable_text_moderation`, Companion nhận diện truy vấn từ URL
 kết quả tìm kiếm của Google, Bing, Yahoo, DuckDuckGo, Cốc Cốc, YouTube và Brave.
 Bộ phân tích văn bản không dùng page title/window title, không đọc nội dung trang
@@ -159,8 +164,8 @@ ACL cho SYSTEM/Administrators, rồi gửi theo lô tối đa 20 bản ghi tới
 tạo kết quả trùng. Khi Backend xác nhận — kể cả khi tính năng vừa bị tắt — Service
 xóa ngay văn bản gốc khỏi hàng đợi; bản ghi chưa gửi quá 7 ngày cũng tự bị xóa.
 
-Khóa OpenAI chỉ đặt tại Backend, không nằm trong Agent hay bộ cài. Phiên bản này
-mới thu thập nguồn `search_query`; schema Backend đã dành sẵn `page_content`,
+Model ba nhãn chạy qua service local phía Backend, không dùng OpenAI Moderation.
+Phiên bản hiện tại mới thu thập nguồn `search_query`; schema Backend đã dành sẵn `page_content`,
 `chat_received` và `chat_authored` cho các bộ thu thập được người dùng cấp quyền
 trong giai đoạn sau.
 

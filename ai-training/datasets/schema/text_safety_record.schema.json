@@ -1,146 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://laptopmonitor.local/schema/text_safety_record.schema.json",
-  "title": "Text safety annotation record",
+  "title": "Three-label Vietnamese school-violence record",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "record_id",
-    "text",
-    "labels",
-    "target",
-    "source_type",
-    "direction",
-    "severity",
-    "requires_immediate_alert",
-    "annotator_ids",
-    "provenance"
-  ],
-  "anyOf": [
-    {
-      "properties": {
-        "conversation_id": {"type": "string", "minLength": 1}
-      },
-      "required": ["conversation_id"]
-    },
-    {
-      "properties": {
-        "subject_id": {"type": "string", "minLength": 1}
-      },
-      "required": ["subject_id"]
-    }
-  ],
+  "required": ["id", "text", "label", "split", "source_ids", "review_status", "source"],
   "properties": {
-    "record_id": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 128,
-      "pattern": "^[A-Za-z0-9_-]+$"
-    },
-    "conversation_id": {
-      "type": ["string", "null"],
-      "maxLength": 128,
-      "description": "An anonymized grouping key used to prevent split leakage."
-    },
-    "subject_id": {
-      "type": ["string", "null"],
-      "maxLength": 128,
-      "description": "An anonymized user/participant grouping key when conversation_id is unavailable."
-    },
-    "text": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 4000
-    },
-    "context": {
-      "type": "array",
-      "maxItems": 5,
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1000
-      },
-      "default": []
-    },
-    "offensive_spans": {
-      "type": "array",
-      "maxItems": 20,
-      "description": "Optional source evidence, e.g. a reviewed ViHOS offensive span. It is not an inference-time feature.",
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["start", "end"],
-        "properties": {
-          "start": {"type": "integer", "minimum": 0},
-          "end": {"type": "integer", "minimum": 1},
-          "source_label": {"type": "string", "minLength": 1, "maxLength": 128}
-        }
-      },
-      "default": []
-    },
-    "labels": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "enum": [
-          "self-harm",
-          "self-harm/intent",
-          "self-harm/instructions",
-          "harassment",
-          "harassment/threatening",
-          "hate",
-          "hate/threatening",
-          "violence",
-          "violence/inciting",
-          "violence/graphic"
-        ]
-      }
-    },
-    "target": {
-      "enum": ["unknown", "self", "individual", "child", "group"],
-      "description": "Reviewed target of the language; never use a real name or identifier."
-    },
-    "source_type": {
-      "enum": [
-        "search_query",
-        "page_content",
-        "chat_received",
-        "chat_authored"
-      ]
-    },
-    "direction": {
-      "enum": ["unknown", "received", "authored"]
-    },
-    "severity": {
-      "enum": ["low", "medium", "high", "critical"]
-    },
-    "requires_immediate_alert": {
-      "type": "boolean",
-      "default": false
-    },
-    "annotator_ids": {
-      "type": "array",
-      "uniqueItems": true,
-      "minItems": 2,
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 64
-      },
-      "description": "Pseudonymous reviewer IDs; never names or email addresses."
-    },
-    "split": {
-      "enum": ["train", "validation", "test"]
-    },
-    "provenance": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["source", "license", "allowed_use"],
-      "properties": {
-        "source": {"type": "string", "minLength": 1, "maxLength": 300},
-        "license": {"type": "string", "minLength": 1, "maxLength": 100},
-        "allowed_use": {"enum": ["research", "commercial", "internal_evaluation"]}
-      }
-    }
+    "id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "text": {"type": "string", "minLength": 1, "maxLength": 4000},
+    "label": {"enum": ["SAFE", "RISK", "HIGH_RISK"]},
+    "split": {"enum": ["train", "validation", "test"]},
+    "source_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+    "review_status": {"enum": ["unreviewed", "reviewed"]},
+    "source": {"type": "string", "minLength": 1}
   }
 }

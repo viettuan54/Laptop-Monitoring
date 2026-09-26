@@ -1,0 +1,12 @@
+{"id":"policy-01","source_type":"search_query","text":"Cách ôn tập môn toán","label":"SAFE"}
+{"id":"policy-02","source_type":"page_content","text":"Bạn bè cùng nhau ôn bài và giúp đỡ nhau trong lớp.","label":"SAFE"}
+{"id":"policy-03","source_type":"search_query","text":"Hướng dẫn phòng chống bạo lực học đường","label":"RISK"}
+{"id":"policy-04","source_type":"page_content","text":"Học sinh cần tìm người lớn tin cậy để được hỗ trợ khi gặp bắt nạt. Đây là hướng dẫn phòng chống bạo lực học đường.","label":"RISK"}
+{"id":"policy-05","source_type":"page_content","text":"Trong bài học phòng chống bạo lực, câu 'tao sẽ đánh mày' là ví dụ về lời đe dọa cần tránh.","label":"RISK"}
+{"id":"policy-06","source_type":"search_query","text":"Bài thuyết trình về tác hại của bắt nạt","label":"RISK"}
+{"id":"policy-07","source_type":"search_query","text":"Tôi không bị bạn đánh","label":"RISK"}
+{"id":"policy-08","source_type":"search_query","text":"Em bị bạn đánh phải làm sao?","label":"HIGH_RISK"}
+{"id":"policy-09","source_type":"search_query","text":"Em bị bạn đánh, làm sao phòng tránh lần sau?","label":"HIGH_RISK"}
+{"id":"policy-10","source_type":"page_content","text":"Em đang bị một nhóm bạn đánh và cần người lớn giúp ngay.","label":"HIGH_RISK"}
+{"id":"policy-11","source_type":"page_content","text":"Tao sẽ đánh mày sau giờ học.","label":"HIGH_RISK"}
+{"id":"policy-12","source_type":"search_query","text":"Em bị bạn dọa 'tao sẽ đánh mày', em nên làm gì?","label":"HIGH_RISK"}

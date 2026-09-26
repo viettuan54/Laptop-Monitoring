@@ -48,6 +48,7 @@ function getLocalConfig(environment) {
     apiKey,
     endpoint: `${baseUrl}/v1/moderate`,
     timeoutMs,
+    requireApprovedModel: environment.NODE_ENV === 'production',
   };
 }
 
@@ -99,8 +100,13 @@ async function moderateWithLocal(records, options) {
 
       const payload = await response.json();
       if (payload?.provider !== 'local' || !isSafeModelName(payload.model)
+          || !/^\d+\.\d+\.\d+$/.test(payload.labelVersion || '')
+          || typeof payload.deploymentEligible !== 'boolean'
           || !Array.isArray(payload.results) || payload.results.length !== records.length) {
         throw providerFailure('Local moderation returned an invalid response');
+      }
+      if (config.requireApprovedModel && !payload.deploymentEligible) {
+        throw providerFailure('Unapproved three-label model is unavailable in production');
       }
       let normalizedResults;
       try {

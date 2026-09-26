@@ -77,6 +77,7 @@ function normalizeTextModerationRecords(body) {
 }
 
 function textAlertPresentation(result, sourceType, domain) {
+  if (result.label !== 'HIGH_RISK') return null;
   const sourceLabels = {
     search_query: 'truy vấn tìm kiếm',
     page_content: 'nội dung trang',
@@ -85,24 +86,11 @@ function textAlertPresentation(result, sourceType, domain) {
   };
   const origin = domain ? ` trên ${domain}` : '';
   const source = sourceLabels[sourceType] || 'nội dung văn bản';
-  const presentations = {
-    self_harm: {
-      alertType: 'text_self_harm',
-      title: 'Cảnh báo dấu hiệu tự hại',
-      message: `Phát hiện dấu hiệu tự hại trong ${source}${origin}. Hãy chủ động kiểm tra và trò chuyện với trẻ.`,
-    },
-    harassment: {
-      alertType: 'text_harassment',
-      title: 'Cảnh báo bắt nạt hoặc đe dọa',
-      message: `Phát hiện dấu hiệu bắt nạt, quấy rối hoặc đe dọa trong ${source}${origin}.`,
-    },
-    violence: {
-      alertType: 'text_violence',
-      title: 'Cảnh báo ngôn từ bạo lực',
-      message: `Phát hiện ngôn từ bạo lực hoặc kích động trong ${source}${origin}.`,
-    },
+  return {
+    alertType: 'text_violence',
+    title: 'Cảnh báo nguy cơ bạo lực học đường cao',
+    message: `Phát hiện nội dung có nguy cơ bạo lực học đường cao trong ${source}${origin}. Vui lòng kiểm tra trực tiếp.`,
   };
-  return presentations[result.riskType];
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -572,10 +560,10 @@ exports.moderateTextBatch = async (req, res) => {
         const result = moderation.results[index];
         const eventInsert = await client.query(
           `INSERT INTO text_moderation_events(
-             device_id, client_record_id, source_type, status, risk_type, severity,
-             primary_category, confidence, category_scores, moderation_model,
+             device_id, client_record_id, source_type, status, severity,
+             classification_label, confidence, label_scores, moderation_model,
              domain, occurred_at
-           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10,$11,$12)
+           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
            ON CONFLICT (device_id, client_record_id) DO NOTHING
            RETURNING event_id`,
           [
@@ -583,11 +571,10 @@ exports.moderateTextBatch = async (req, res) => {
             record.clientRecordId,
             record.sourceType,
             result.flagged ? 'flagged' : 'safe',
-            result.riskType,
-            result.severity,
-            result.primaryCategory,
+            { SAFE: 'low', RISK: 'medium', HIGH_RISK: 'high' }[result.label],
+            result.label,
             result.confidence,
-            JSON.stringify(result.categoryScores),
+            JSON.stringify(result.scores),
             moderation.model,
             record.domain,
             record.occurredAt,

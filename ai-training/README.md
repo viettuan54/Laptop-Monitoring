@@ -1,5 +1,11 @@
 # Edge AI training workspace
 
+Model bạo lực học đường mới dùng **ba nhãn loại trừ nhau** `SAFE`, `RISK`,
+`HIGH_RISK`; xem `school_violence/README.md`. File 6.000 câu được chuẩn hóa,
+chia lại để tránh trùng văn bản giữa các tập và train baseline thử nghiệm ở
+`artifacts/school_violence/`. Service `text_safety` và backend hiện cũng dùng
+đúng ba nhãn này; artifact thử nghiệm chưa được phép chạy production.
+
 Thư mục này dành cho thu thập dữ liệu, xử lý đặc trưng và huấn luyện model.
 Nó được tách khỏi code chạy thật trong `child-monitor-agent`.
 
@@ -15,13 +21,12 @@ Phân loại nội dung ứng dụng/website dùng taxonomy riêng tại
 buộc chạy `content_classification/validate_dataset.py`; chỉ dataset có exit code
 `0` mới được chuyển sang bước chia train/validation/test.
 
-Phân loại an toàn văn bản tiếng Việt dùng contract
-`datasets/schema/text_safety_record.schema.json` và taxonomy
-`datasets/schema/text_safety_taxonomy.json`. Pipeline
-`text_safety/training.py` kiểm tra ẩn danh/provenance/hai reviewer, chia theo
-`conversation_id` hoặc `subject_id`, fine-tune encoder multi-label và tạo báo cáo
-precision/recall/F1, confusion matrix, FP/FN cùng recall cho nhãn critical. Hướng
-dẫn intake dữ liệu và lệnh train nằm tại `datasets/text_safety/README.md`.
+Phân loại văn bản tiếng Việt dùng hợp đồng ba nhãn ở
+`school_violence/labels.json` và `datasets/schema/text_safety_record.schema.json`.
+`text_safety/training.py` gọi cùng trainer với `school_violence/training.py`:
+loại trùng, chia nhóm văn bản chuẩn hóa, train và báo cáo precision/recall/F1
+cùng confusion matrix. Dataset hiện thiếu người dùng/hội thoại nên không thể
+tuyên bố đã chia độc lập theo các ID đó. Xem `datasets/text_safety/README.md`.
 
 Thu thập dữ liệu ngoài bằng `content_classification/collect_external_dataset.py`.
 Công cụ tải các nguồn CC0 đã cho phép, chuẩn hóa domain/tên process, cách ly bản

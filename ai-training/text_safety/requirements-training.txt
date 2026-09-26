@@ -1,7 +1,0 @@
-# Optional dependencies for ai-training/text_safety/training.py only.
-# Keep these separate from the lightweight local-moderation service requirements.
-torch>=2.4,<3
-transformers>=4.46,<5
-accelerate>=0.26,<2
-sentencepiece>=0.2,<1
-safetensors>=0.4,<1

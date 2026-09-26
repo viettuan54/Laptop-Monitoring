@@ -1,0 +1,18 @@
+{
+  "task": "school_violence_severity",
+  "version": "2.0.0",
+  "problem_type": "single_label_classification",
+  "labels": ["SAFE", "RISK", "HIGH_RISK"],
+  "description": "Mutually exclusive school-violence severity tiers; a label is a review signal, not evidence that a child is a victim.",
+  "annotation_policy_version": "1.0.0",
+  "definitions": {
+    "SAFE": "No school-violence risk signal in the available text; ordinary learning, friendship and unrelated content.",
+    "RISK": "Bullying concerns, prevention/support guidance or general discussion without an explicit personal victim report, direct threat or urgent request for help.",
+    "HIGH_RISK": "Explicit personal report of being assaulted, bullied or coerced; victim-related request for help; or a direct threat of violence."
+  },
+  "precedence": [
+    "An explicit personal victim report or direct threat takes precedence over prevention wording.",
+    "Prevention/help guidance alone is RISK, not proof that the reader is a victim.",
+    "Negation, quotations and fictional/educational examples must be interpreted in context; keyword presence alone is insufficient."
+  ]
+}

@@ -1,21 +1,12 @@
 const {
-  CATEGORY_RULES,
-  normalizeOpenAIResult,
+  LABELS,
 } = require('./textModeration/contract');
 const {
   DEFAULT_LOCAL_MODERATION_URL,
   getLocalConfig,
   moderateWithLocal,
 } = require('./textModeration/local.provider');
-const {
-  DEFAULT_OPENAI_MODERATION_MODEL,
-  OPENAI_MODERATION_ENDPOINT,
-  getOpenAIConfig,
-  moderateWithOpenAI,
-} = require('./textModeration/openai.provider');
-
 const DEFAULT_TEXT_MODERATION_PROVIDER = 'local';
-const SUPPORTED_TEXT_MODERATION_PROVIDERS = new Set(['local', 'openai']);
 const VALID_SOURCE_TYPES = new Set([
   'search_query',
   'page_content',
@@ -27,15 +18,12 @@ function getModerationConfig(environment = process.env) {
   const provider = String(
     environment.TEXT_MODERATION_PROVIDER || DEFAULT_TEXT_MODERATION_PROVIDER
   ).trim().toLowerCase();
-  if (!SUPPORTED_TEXT_MODERATION_PROVIDERS.has(provider)) {
-    const error = new Error('TEXT_MODERATION_PROVIDER must be local or openai');
+  if (provider !== 'local') {
+    const error = new Error('TEXT_MODERATION_PROVIDER must be local for the three-label classifier');
     error.code = 'TEXT_MODERATION_INVALID_CONFIG';
     throw error;
   }
-  const providerConfig = provider === 'local'
-    ? getLocalConfig(environment)
-    : getOpenAIConfig(environment);
-  return { provider, ...providerConfig };
+  return { provider, ...getLocalConfig(environment) };
 }
 
 function directionForSource(sourceType) {
@@ -89,9 +77,7 @@ async function moderateRecords(records, options = {}) {
     throw error;
   }
   const providerOptions = { config, fetchImpl };
-  return config.provider === 'local'
-    ? moderateWithLocal(normalizedRecords, providerOptions)
-    : moderateWithOpenAI(normalizedRecords, providerOptions);
+  return moderateWithLocal(normalizedRecords, providerOptions);
 }
 
 async function moderateTexts(texts, options = {}) {
@@ -109,16 +95,10 @@ async function moderateTexts(texts, options = {}) {
 }
 
 module.exports = {
-  CATEGORY_RULES,
+  LABELS,
   DEFAULT_LOCAL_MODERATION_URL,
-  DEFAULT_MODERATION_MODEL: DEFAULT_OPENAI_MODERATION_MODEL,
-  DEFAULT_OPENAI_MODERATION_MODEL,
   DEFAULT_TEXT_MODERATION_PROVIDER,
-  MODERATION_ENDPOINT: OPENAI_MODERATION_ENDPOINT,
-  OPENAI_MODERATION_ENDPOINT,
   getModerationConfig,
   moderateRecords,
   moderateTexts,
-  normalizeModerationResult: normalizeOpenAIResult,
-  normalizeOpenAIResult,
 };

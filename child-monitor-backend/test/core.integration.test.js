@@ -673,18 +673,16 @@ test('Agent text moderation reaches the local provider, stores metadata and crea
       providerResponse.writeHead(200, { 'content-type': 'application/json' });
       providerResponse.end(JSON.stringify({
         provider: 'local',
-        model: 'vi-context-rules-integration',
-        taxonomyVersion: '1.0.0',
+        model: 'vi-school-violence-integration',
+        labelVersion: '2.0.0',
+        deploymentEligible: false,
         results: [{
           id: item.id,
           flagged: true,
           action: 'alert',
-          riskType: 'self_harm',
-          severity: 'critical',
-          primaryCategory: 'self-harm/instructions',
+          label: 'HIGH_RISK',
           confidence: 0.94,
-          categoryScores: { 'self-harm/instructions': 0.94 },
-          matchedSignals: ['self_harm_plan_or_method_request'],
+          scores: { SAFE: 0.02, RISK: 0.04, HIGH_RISK: 0.94 },
         }],
       }));
     });
@@ -742,30 +740,30 @@ test('Agent text moderation reaches the local provider, stores metadata and crea
     assert.equal(capturedProviderRequest.items[0].direction, 'unknown');
 
     const event = await adminPool.query(
-      `SELECT status, risk_type, severity, primary_category, confidence,
-              moderation_model, category_scores
+      `SELECT status, risk_type, severity, classification_label, confidence,
+              moderation_model, label_scores
        FROM text_moderation_events
        WHERE device_id = $1 AND client_record_id = $2`,
       [deviceOne, clientRecordId]
     );
     assert.equal(event.rows.length, 1);
     assert.equal(event.rows[0].status, 'flagged');
-    assert.equal(event.rows[0].risk_type, 'self_harm');
-    assert.equal(event.rows[0].severity, 'critical');
-    assert.equal(event.rows[0].primary_category, 'self-harm/instructions');
+    assert.equal(event.rows[0].risk_type, null);
+    assert.equal(event.rows[0].severity, 'high');
+    assert.equal(event.rows[0].classification_label, 'HIGH_RISK');
     assert.equal(event.rows[0].confidence, 0.94);
-    assert.equal(event.rows[0].moderation_model, 'vi-context-rules-integration');
-    assert.equal(event.rows[0].category_scores['self-harm/instructions'], 0.94);
+    assert.equal(event.rows[0].moderation_model, 'vi-school-violence-integration');
+    assert.equal(event.rows[0].label_scores.HIGH_RISK, 0.94);
     assert.equal(JSON.stringify(event.rows[0]).includes(rawText), false);
 
     const alerts = await adminPool.query(
       `SELECT alert_type::text AS alert_type, message
        FROM alerts
-       WHERE device_id = $1 AND alert_type = 'text_self_harm'`,
+       WHERE device_id = $1 AND alert_type = 'text_violence'`,
       [deviceOne]
     );
     assert.equal(alerts.rows.length, 1);
-    assert.equal(alerts.rows[0].alert_type, 'text_self_harm');
+    assert.equal(alerts.rows[0].alert_type, 'text_violence');
     assert.equal(alerts.rows[0].message.includes(rawText), false);
 
     const columns = await adminPool.query(

@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy lần lượt toàn bộ migration đến `migration_v21.sql`. Với database hiện có, tối thiểu phải chạy:
+Chạy lần lượt toàn bộ migration đến `migration_v22.sql`. Với database hiện có, tối thiểu phải chạy:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql
@@ -29,12 +29,14 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v18.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v19.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v20.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v21.sql
+psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v22.sql
 ```
 
 `migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ; `migration_v17.sql` lưu nguồn/độ tin cậy của nhãn website và đánh dấu các dòng cần backfill; `migration_v18.sql` thêm index cho snapshot domain đã phân loại dùng khi Agent đồng bộ policy chặn.
 `migration_v19.sql` chuyển thời gian telemetry sang `TIMESTAMPTZ`, giữ log sáu tháng và chuẩn bị dữ liệu cho báo cáo theo ngày/tháng ở múi giờ Việt Nam.
 `migration_v20.sql` lưu ProductName/FileDescription không nhạy cảm, nguồn và độ tin cậy của nhãn ứng dụng; đồng thời tạo index cho app backfill.
 `migration_v21.sql` thêm công tắc phân tích văn bản, bảng kết quả đã tối giản dữ liệu và ba loại cảnh báo tự hại/bắt nạt/bạo lực. Bảng này không có cột chứa văn bản gốc.
+`migration_v22.sql` thêm `classification_label` và `label_scores` cho ba nhãn mới; giữ các cột cũ chỉ để đọc lịch sử. Phải chạy migration này trước khi nhận batch phân loại mới.
 
 Hãy dùng role sở hữu schema (thường là `postgres`), vì role chỉ được `GRANT` quyền đọc/ghi không thể chạy `ALTER TABLE`.
 
@@ -78,12 +80,10 @@ LOCAL_MODERATION_TIMEOUT_MS=15000
 ```
 
 `LOCAL_MODERATION_API_KEY` phải giống `TEXT_SAFETY_API_KEY` của service Python.
-OpenAI vẫn có thể được chọn rõ ràng làm provider dự phòng bằng
-`TEXT_MODERATION_PROVIDER=openai`, `OPENAI_API_KEY` và
-`OPENAI_MODERATION_MODEL=omni-moderation-latest`; hệ thống không tự gửi nội dung sang
-OpenAI khi đang cấu hình `local`.
+Chỉ provider local hỗ trợ hợp đồng ba nhãn; cấu hình `openai` sẽ bị từ chối.
 
-Kết quả được ánh xạ vào ba nhóm `self_harm`, `harassment`, `violence`; cảnh báo
+Kết quả có một nhãn `SAFE`, `RISK` hoặc `HIGH_RISK`; chỉ `HIGH_RISK` tạo cảnh báo.
+Cảnh báo
 không chứa lại câu tìm kiếm/chat gốc. Metadata kết quả được giữ 30 ngày, còn văn
 bản đầu vào chỉ tồn tại trong request xử lý và hàng đợi retry tối đa 7 ngày trên
 Agent. Xem hướng dẫn chạy service tại `../ai-training/text_safety/README.md`.

@@ -11,15 +11,14 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import get_settings
-from .engine import ContextRuleEngine, ModerationInput
+from .engine import ModerationInput, ThreeLabelEngine
 from .taxonomy import load_taxonomy
 
 
 SourceType = Literal["search_query", "page_content", "chat_received", "chat_authored"]
 Direction = Literal["unknown", "received", "authored"]
-Severity = Literal["low", "medium", "high", "critical"]
 Action = Literal["allow", "review", "alert"]
-RiskType = Literal["none", "self_harm", "harassment", "violence"]
+Label = Literal["SAFE", "RISK", "HIGH_RISK"]
 
 
 class ModerationItemModel(BaseModel):
@@ -68,12 +67,9 @@ class ModerationResultModel(BaseModel):
     id: str
     flagged: bool
     action: Action
-    riskType: RiskType
-    severity: Severity
-    primaryCategory: str | None
+    label: Label
     confidence: float = Field(ge=0, le=1)
-    categoryScores: dict[str, float]
-    matchedSignals: list[str]
+    scores: dict[Label, float]
 
 
 class ModerationBatchResponse(BaseModel):
@@ -81,21 +77,23 @@ class ModerationBatchResponse(BaseModel):
 
     provider: Literal["local"] = "local"
     model: str
-    taxonomyVersion: str
+    labelVersion: str
+    deploymentEligible: bool
     results: list[ModerationResultModel]
 
 
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     provider: Literal["local"] = "local"
-    engine: Literal["context_rules"] = "context_rules"
+    engine: Literal["character_ngram_nb"] = "character_ngram_nb"
     model: str
-    taxonomyVersion: str
+    labelVersion: str
+    deploymentEligible: bool
 
 
 @lru_cache(maxsize=1)
-def get_engine() -> ContextRuleEngine:
-    return ContextRuleEngine(model_version=get_settings().model_version)
+def get_engine() -> ThreeLabelEngine:
+    return ThreeLabelEngine(model_path=get_settings().model_path)
 
 
 def require_api_key(
@@ -146,8 +144,9 @@ async def sanitized_validation_error(
 def health() -> HealthResponse:
     taxonomy = load_taxonomy()
     return HealthResponse(
-        model=get_settings().model_version,
-        taxonomyVersion=taxonomy.version,
+        model=get_engine().model_version,
+        labelVersion=taxonomy["version"],
+        deploymentEligible=get_settings().deployment_eligible,
     )
 
 
@@ -160,7 +159,7 @@ def model_info(_: None = Depends(require_api_key)) -> HealthResponse:
 def moderate(
     payload: ModerationBatchRequest,
     _: None = Depends(require_api_key),
-    engine: ContextRuleEngine = Depends(get_engine),
+    engine: ThreeLabelEngine = Depends(get_engine),
 ) -> ModerationBatchResponse:
     items = [
         ModerationInput(
@@ -174,6 +173,7 @@ def moderate(
     ]
     return ModerationBatchResponse(
         model=engine.model_version,
-        taxonomyVersion=engine.taxonomy.version,
+        labelVersion=load_taxonomy()["version"],
+        deploymentEligible=get_settings().deployment_eligible,
         results=engine.moderate_batch(items),
     )

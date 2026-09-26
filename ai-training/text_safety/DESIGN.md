@@ -1,164 +1,31 @@
-# Thiết kế phân tích an toàn văn bản
+# Thiết kế phân loại văn bản ba nhãn
 
-## Phạm vi giai đoạn 1–4
+Phạm vi thu thập đã chốt tại
+[đặc tả Agent](../../child-monitor-agent/docs/text_collection_scope.md):
+`search_query` và `page_content`, chưa triển khai chat. Bộ thu thập nội dung
+trang và tổng hợp đoạn chưa có trong code hiện tại.
 
-Local Moderation Service nhận tối đa 20 đoạn văn bản mỗi request, phân tích tại máy
-chủ của dự án và trả về kết quả chuẩn hóa để Backend lưu vào
-`text_moderation_events`. Service không ghi nội dung gốc xuống đĩa và không phụ thuộc
-OpenAI.
+Hệ thống hiện dùng **single-label classification** cho bạo lực học đường:
+`SAFE` (không thấy nguy cơ trong phạm vi tập huấn luyện), `RISK` (cần xem xét),
+`HIGH_RISK` (nguy cơ cao). Tên và thứ tự chuẩn ở
+`../school_violence/labels.json`. Mỗi câu nhận đúng một nhãn; không còn
+phân loại theo các danh mục kiểm duyệt cũ.
 
-Bản đầu dùng engine `vi-context-rules-v1`. Đây là baseline luật-ngữ-cảnh để kiểm tra
-kiến trúc, quyền riêng tư và luồng cảnh báo; điểm số của nó là heuristic, không phải
-xác suất đã được hiệu chỉnh. Nó không được coi là model production hoặc công cụ chẩn
-đoán. Engine PhoBERT/ONNX sẽ thay thế hoặc kết hợp với baseline sau khi có dataset đã
-được duyệt và báo cáo đánh giá. Từ giai đoạn 4, pipeline fine-tune encoder
-multi-label nằm ở `text_safety.training`; baseline vẫn giữ vai trò safety net cho
-đến khi một artifact đạt deployment gate và được tích hợp qua thay đổi riêng.
+Luồng: CSV nguồn → loại câu trùng → chia theo nhóm văn bản chuẩn hóa → train
+Naive Bayes ký tự 3–5 gram → báo cáo per-label precision/recall/F1 và confusion
+matrix → artifact → service local → backend. API trả `label`, `scores`,
+`confidence`, `flagged`, `action`. `RISK` được lưu để xem xét, `HIGH_RISK`
+cho phép tạo cảnh báo. Migration v22 thêm `classification_label` và
+`label_scores` cho sự kiện mới; các cột moderation cũ chỉ giữ để đọc lịch sử.
 
-## Taxonomy
+Model hiện tại train từ câu tổng hợp chưa được kiểm duyệt. Test tổng hợp đạt
+điểm rất cao do câu lặp khuôn, nhưng không đo khả năng tổng quát trên chat thật.
+Artifact có `deployment_eligible=false`; service production từ chối khởi động
+với artifact này. Điểm `confidence` là score chuẩn hóa của Naive Bayes, chưa
+được hiệu chuẩn xác suất. Không dùng một mình để ra quyết định kỷ luật hoặc
+chẩn đoán. Ba nhãn không thay thế đánh giá chuyên biệt cho tự hại.
 
-Nguồn chuẩn là `datasets/schema/text_safety_taxonomy.json`. Các nhãn chi tiết được
-gom vào ba nhóm tương thích `migration_v21.sql`:
-
-| Nhóm lưu DB | Nhãn chi tiết |
-| --- | --- |
-| `self_harm` | `self-harm`, `self-harm/intent`, `self-harm/instructions` |
-| `harassment` | `harassment`, `harassment/threatening`, `hate`, `hate/threatening` |
-| `violence` | `violence`, `violence/inciting`, `violence/graphic` |
-
-Mức độ theo thứ tự `low < medium < high < critical`. Kết quả có ba hành động:
-
-- `allow`: không có tín hiệu đạt ngưỡng.
-- `review`: tín hiệu yếu hoặc cần thêm ngữ cảnh, chưa gửi cảnh báo khẩn cấp.
-- `alert`: tín hiệu high/critical đạt ngưỡng và được phép tạo cảnh báo phụ huynh.
-
-Backend hiện tại chỉ lưu `safe/flagged`; khi tích hợp, `alert` ánh xạ thành `flagged`,
-còn `allow/review` chưa tạo push. Việc lưu riêng review sẽ được cân nhắc ở migration
-sau, không sửa migration v21 đã chạy.
-
-## API contract
-
-`POST /v1/moderate` nhận JSON:
-
-```json
-{
-  "items": [
-    {
-      "id": "event-123",
-      "text": "Nội dung cần kiểm tra",
-      "sourceType": "chat_received",
-      "direction": "received",
-      "context": ["Tối đa năm câu gần nhất"]
-    }
-  ]
-}
-```
-
-Response:
-
-```json
-{
-  "provider": "local",
-  "model": "vi-context-rules-v1",
-  "taxonomyVersion": "1.0.0",
-  "results": [
-    {
-      "id": "event-123",
-      "flagged": true,
-      "action": "alert",
-      "riskType": "harassment",
-      "severity": "critical",
-      "primaryCategory": "harassment/threatening",
-      "confidence": 0.93,
-      "categoryScores": {},
-      "matchedSignals": ["targeted_threat"]
-    }
-  ]
-}
-```
-
-`matchedSignals` chỉ chứa mã quy tắc, không chứa đoạn văn bản khớp. Backend không cần
-lưu trường này trong giai đoạn MVP.
-
-Giới hạn contract:
-
-- 1–20 items/request.
-- `text`: 1–4000 ký tự.
-- Tối đa 5 context items, mỗi item tối đa 1000 ký tự.
-- Chỉ chấp nhận bốn `sourceType` trong taxonomy.
-- Field lạ bị từ chối.
-
-## Phân tích theo ngữ cảnh baseline
-
-Engine chuẩn hóa Unicode, chữ hoa/thường, một số teencode và cách chèn dấu để né bộ
-lọc. Một tín hiệu chỉ tăng điểm khi xuất hiện trong mẫu câu có chủ thể/hành động, thay
-vì chặn mọi văn bản chứa một từ riêng lẻ.
-
-Điểm được điều chỉnh bởi:
-
-- Ngôi thứ nhất kết hợp ý định tự hại.
-- Mệnh lệnh hoặc đe dọa nhắm vào ngôi thứ hai.
-- Tin nhắn trẻ nhận hoặc soạn.
-- Tín hiệu lặp lại trong các câu context.
-- Ngữ cảnh báo chí, giáo dục, phòng chống hoặc trích dẫn.
-- Cụm bảo vệ rõ ràng như phủ nhận ý định tự hại.
-
-Luật khẩn cấp không được dùng để tự động kết luận hoặc xử phạt trẻ. Nó chỉ là mạng
-an toàn tăng recall trong lúc chưa có model đã được đánh giá.
-
-## Quyền riêng tư và bảo mật
-
-- Service xử lý hoàn toàn trong bộ nhớ, không có database và không ghi raw text.
-- Lỗi validation không phản hồi lại raw input.
-- Chạy mặc định trên `127.0.0.1`, không expose trực tiếp ra Internet.
-- `TEXT_SAFETY_API_KEY` bảo vệ endpoint; production từ chối khởi động nếu thiếu key.
-- Log chỉ được chứa request ID, số lượng item, thời gian và mã lỗi.
-- Backend tiếp tục chỉ lưu metadata theo migration v21.
-- Dataset huấn luyện phải ẩn danh và tuân theo
-  `text_safety_record.schema.json`; không đưa chat thật vào Git.
-
-## Dataset và chia tập
-
-- Mỗi record phải có provenance và quyền sử dụng rõ ràng.
-- Tối thiểu hai người duyệt cho mọi record; với self-harm/đe dọa nghiêm trọng,
-  reviewer phải có hướng dẫn escalation riêng.
-- Tách train/validation/test theo nhóm liên thông bởi `conversation_id`,
-  `subject_id` và văn bản trùng sau chuẩn hóa; không tách cùng hội thoại/người dùng
-  hoặc câu trùng sang nhiều tập.
-- Dataset research-only không được đưa vào artifact thương mại khi chưa có quyền.
-- Không dùng dữ liệu cảnh báo của người dùng để train tự động.
-
-## Acceptance criteria giai đoạn 2
-
-- Service chạy khi không có `OPENAI_API_KEY`.
-- `/health` và `/model-info` không tiết lộ nội dung người dùng.
-- Batch giữ nguyên thứ tự và ID của input.
-- Câu trực tiếp nguy hiểm được phát hiện; câu báo chí/phòng chống không bị đánh đồng
-  với ý định trực tiếp trong các test baseline.
-- Input vượt giới hạn hoặc field lạ bị trả 422 mà không echo raw text.
-- Unit test không cần tải model hoặc truy cập Internet.
-
-## Giai đoạn 4: encoder huấn luyện và đánh giá
-
-- Default model là `FacebookAI/xlm-roberta-base` ở revision bất biến, cấu hình tại
-  `text_safety_training_config.json`; PhoBERT chỉ được thay vào sau khi license
-  review được ghi nhận trong config mới.
-- Input là JSONL canonical từ ViHSD, UIT-ViCTSD, ViHOS, dữ liệu nội bộ đã ẩn danh
-  và tập self-harm được kiểm duyệt riêng. Mỗi record giữ provenance, hai reviewer,
-  target, direction, severity và quyết định alert.
-- Normalizer xử lý Unicode, teencode, ký tự tách rời, lặp ký tự, emoji và ngữ cảnh
-  Việt–Anh. Tập review phải có các mẫu phủ định và trích dẫn để model không suy luận
-  sai ý định của người nói.
-- Chỉ validation được dùng chọn threshold; test chỉ dùng một lần sau cùng. Báo cáo
-  có precision/recall/F1 từng nhãn, confusion matrix nhị phân, FP/FN theo record ID
-  và recall riêng cho self-harm intent/đe dọa nghiêm trọng.
-- `training_manifest.json` lưu version model/dataset/config, hash dataset/config,
-  revision model, split và phân bố nguồn. Không có raw text trong report.
-- Preflight kiểm tra train/validation có mẫu dương và âm cho từng nhãn trước khi
-  tải model; `--validate-only` chạy kiểm tra này không cần dependency deep learning.
-
-## Ngoài phạm vi hiện tại
-
-- Tích hợp artifact encoder đạt gate vào Local Moderation Service/ONNX runtime.
-- Thay đổi provider Backend hoặc tự động gửi cảnh báo dựa riêng vào model mới.
-- Realtime blocking hoặc tự động can thiệp khẩn cấp.
+Privacy: raw text không được lưu vào PostgreSQL, không in trong lỗi kiểm tra
+request; tập train/model được lưu local và Git bỏ qua. Dữ liệu mới phải được
+ẩn danh, có quyền sử dụng và chia theo người dùng/hội thoại nếu có ID trước
+khi xem xét triển khai.
