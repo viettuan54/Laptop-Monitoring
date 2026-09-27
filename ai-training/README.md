@@ -24,9 +24,11 @@ buộc chạy `content_classification/validate_dataset.py`; chỉ dataset có ex
 Phân loại văn bản tiếng Việt dùng hợp đồng ba nhãn ở
 `school_violence/labels.json` và `datasets/schema/text_safety_record.schema.json`.
 `text_safety/training.py` gọi cùng trainer với `school_violence/training.py`:
-loại trùng, chia nhóm văn bản chuẩn hóa, train và báo cáo precision/recall/F1
+kết hợp nhiều CSV, giữ nguyên `group_id`/`split`, kiểm tra rò rỉ trước khi loại
+trùng, train và báo cáo precision/recall/F1
 cùng confusion matrix. Dataset hiện thiếu người dùng/hội thoại nên không thể
-tuyên bố đã chia độc lập theo các ID đó. Xem `datasets/text_safety/README.md`.
+tuyên bố đã chia độc lập theo các ID đó. Trainer mới lưu manifest và cấu hình
+phiên bản; chưa tự thay model v2 đang chạy. Xem `school_violence/README.md`.
 
 Thu thập dữ liệu ngoài bằng `content_classification/collect_external_dataset.py`.
 Công cụ tải các nguồn CC0 đã cho phép, chuẩn hóa domain/tên process, cách ly bản

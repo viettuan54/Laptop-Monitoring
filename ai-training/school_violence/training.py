@@ -24,10 +24,10 @@ from text_safety.normalization import normalize_text
 
 LABELS = ("SAFE", "RISK", "HIGH_RISK")
 SPLITS = ("train", "validation", "test")
-RATIOS = {"train": .7, "validation": .15, "test": .15}
-SEED = "school-violence-three-class-v1"
-MODEL_VERSION = "vi-school-violence-char-nb-v2"
-DATASET_VERSION = "school-violence-synthetic-dedup-v2"
+MODEL_VERSION = "vi-school-violence-char-nb-v3"
+SPLIT_STRATEGY = "preserve_csv_groups_and_splits_v1"
+NGRAM_RANGE = (3, 5)
+ALPHA_CANDIDATES = (0.5, 1.0, 2.0)
 WS = re.compile(r"\s+")
 SENSITIVE_PATTERNS = (
     re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+"),
@@ -46,111 +46,176 @@ def _dedup_key(text: str) -> str:
 
 
 def load_source(path: Path) -> tuple[list[dict], dict]:
-    """Read source CSV; retain one representative of exact/case/space duplicates."""
-    raw = path.read_bytes()
-    try:
-        reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""))
-        required = {"id", "text", "label", "split", "source", "review_status"}
-        if not required.issubset(reader.fieldnames or []):
-            raise ValueError(f"Missing columns: {sorted(required - set(reader.fieldnames or []))}")
-        rows = list(reader)
-    except UnicodeDecodeError as error:
-        raise ValueError("Source must be UTF-8 CSV") from error
-    if not rows:
-        raise ValueError("Empty corpus")
+    """Compatibility API for one CSV; follows the same strict split contract."""
+    return load_sources([path])
+
+
+def load_sources(paths: list[Path]) -> tuple[list[dict], dict]:
+    """Validate the combined corpus BEFORE deduplication; never resplit rows.
+
+    Metadata is allowed only for leakage checks and provenance, not features.
+    A supplied group may contain different labels (e.g. different contextual
+    versions), but the group must remain wholly in one split.
+    """
+    paths = [Path(path) for path in paths]
+    if not paths or len({path.resolve() for path in paths}) != len(paths):
+        raise ValueError("Provide distinct non-empty input paths")
+    required = {"id", "text", "label", "group_id", "split", "source", "review_status", "dataset_version"}
     by_key: dict[str, dict] = {}
-    original_split_by_group: dict[str, set[str]] = defaultdict(set)
-    sources = Counter()
-    statuses = Counter()
-    for row_number, row in enumerate(rows, start=2):
-        label = row["label"].strip()
-        text = row["text"].strip()
-        if label not in LABELS or not text or not row["id"].strip():
-            raise ValueError(f"Invalid label, text or ID at source row {row_number}")
-        if row["split"] not in SPLITS:
-            raise ValueError(f"Invalid source split for ID {row['id']}")
-        if row["source"].strip() != "synthetic" or row["review_status"].strip() not in ("", "unreviewed", "reviewed"):
-            raise ValueError("This experimental trainer only accepts synthetic source rows")
-        if any(pattern.search(text) for pattern in SENSITIVE_PATTERNS):
-            raise ValueError(f"Potential private identifier in source row {row_number}")
-        sources[row["source"].strip()] += 1
-        statuses[row["review_status"].strip() or "unreviewed"] += 1
-        key = _dedup_key(text)
-        group = normalize_text(text).folded
-        original_split_by_group[group].add(row["split"])
-        if key in by_key:
-            if by_key[key]["label"] != label:
-                raise ValueError(f"Conflicting labels for normalized duplicate at ID {row['id']}")
-            by_key[key]["source_ids"].append(row["id"].strip())
-            if row["review_status"].strip() != "reviewed":
-                by_key[key]["review_status"] = "unreviewed"
-            continue
-        by_key[key] = {
-            "id": row["id"].strip(),
-            "text": unicodedata.normalize("NFC", text),
-            "label": label,
-            "source_ids": [row["id"].strip()],
-            "source": row["source"].strip(),
-            "review_status": row["review_status"].strip() or "unreviewed",
-            "group_hash": _hash(group),
-        }
+    seen_ids = set()
+    key_splits: dict[tuple[str, str], set[str]] = defaultdict(set)
+    text_labels: dict[tuple[str, str], set[str]] = defaultdict(set)
+    key_counts = Counter()
+    manifests = []
+    source_values, statuses, versions = Counter(), Counter(), Counter()
+    total_rows = 0
+
+    for path in paths:
+        raw = path.read_bytes()
+        try:
+            reader = csv.DictReader(io.StringIO(raw.decode("utf-8-sig"), newline=""))
+            columns = reader.fieldnames or []
+            if len(columns) != len(set(columns)) or not required.issubset(columns):
+                raise ValueError(f"Missing or duplicate CSV columns in {path.name}: {sorted(required - set(columns))}")
+            rows = list(reader)
+        except UnicodeDecodeError as error:
+            raise ValueError("Source must be UTF-8 CSV") from error
+        if not rows:
+            raise ValueError(f"Empty corpus: {path.name}")
+        file_versions, file_labels, file_splits = Counter(), Counter(), Counter()
+        for row_number, row in enumerate(rows, start=2):
+            if None in row or any(value is None for value in row.values()):
+                raise ValueError(f"Malformed CSV record in {path.name} at record {row_number}")
+            label, text = row["label"].strip(), row["text"].strip()
+            identifier, group_id = row["id"].strip(), row["group_id"].strip()
+            split, version = row["split"].strip(), row["dataset_version"].strip()
+            if label not in LABELS or not text or not identifier or not group_id or not version:
+                raise ValueError(f"Invalid label, text, ID, group_id or dataset_version in {path.name} at record {row_number}")
+            if split not in SPLITS:
+                raise ValueError(f"Invalid source split in {path.name} at record {row_number}")
+            if identifier in seen_ids:
+                raise ValueError(f"Duplicate ID in combined corpus at {path.name} record {row_number}")
+            seen_ids.add(identifier)
+            if row["source"].strip() != "synthetic" or row["review_status"].strip() not in ("", "unreviewed", "reviewed"):
+                raise ValueError("This experimental trainer only accepts synthetic source rows")
+            if any(pattern.search(text) for pattern in SENSITIVE_PATTERNS):
+                raise ValueError(f"Potential private identifier in {path.name} at record {row_number}")
+            normalized = normalize_text(text)
+            if not normalized.unicode:
+                raise ValueError(f"Empty runtime-normalized text in {path.name} at record {row_number}")
+            if row.get("text_runtime_normalized") and row["text_runtime_normalized"] != normalized.unicode:
+                raise ValueError(f"Stale runtime-normalization metadata in {path.name} at record {row_number}")
+            keys = [("csv_group", group_id), ("exact_text", _dedup_key(text)),
+                    ("runtime_text", normalized.folded), ("equivalent_text", normalized.folded)]
+            canonical = row.get("text_normalized", "").strip()
+            if canonical:
+                # Share a namespace with raw runtime text to catch canonical vs
+                # raw duplicate forms across query/webpage files as well.
+                keys.append(("equivalent_text", normalize_text(canonical).folded))
+            if row.get("page_id", "").strip():
+                keys.append(("page_id", row["page_id"].strip()))
+            if "content" in row or "title" in row:
+                if "content" not in row or "title" not in row or text != row["title"] + "\n" + row["content"]:
+                    raise ValueError(f"Page text must contain title and full content in {path.name} at record {row_number}")
+                if not row["content"].strip():
+                    raise ValueError(f"Empty page content in {path.name} at record {row_number}")
+                keys.append(("page_body", normalize_text(row["content"]).folded))
+                keys.append(("equivalent_text", normalize_text(row["content"]).folded))
+            for key in set(keys):
+                if not key[1]:
+                    raise ValueError(f"Empty leakage key in {path.name} at record {row_number}")
+                key_splits[key].add(split)
+                key_counts[key] += 1
+                if key[0] in ("exact_text", "runtime_text", "equivalent_text", "page_body"):
+                    text_labels[key].add(label)
+            status = row["review_status"].strip() or "unreviewed"
+            source_values["synthetic"] += 1
+            statuses[status] += 1
+            versions[version] += 1
+            file_versions[version] += 1
+            file_labels[label] += 1
+            file_splits[split] += 1
+            total_rows += 1
+            reference = {"file": path.name, "record_number": row_number, "id": identifier,
+                         "group_id": group_id, "split": split, "dataset_version": version}
+            dedup = _dedup_key(text)
+            if dedup in by_key:
+                existing = by_key[dedup]
+                # Do not hide conflicting labels/splits by keeping the first row.
+                if existing["label"] != label or existing["split"] != split:
+                    raise ValueError(f"Conflicting labels or cross-split exact duplicate in {path.name} at record {row_number}")
+                existing["source_ids"].append(identifier)
+                existing["source_refs"].append(reference)
+                existing["group_ids"] = sorted(set(existing["group_ids"]) | {group_id})
+                if status != "reviewed":
+                    existing["review_status"] = "unreviewed"
+            else:
+                by_key[dedup] = {
+                    "id": identifier, "text": unicodedata.normalize("NFC", text), "label": label,
+                    "group_id": group_id, "group_ids": [group_id], "split": split,
+                    "source_ids": [identifier], "source_refs": [reference],
+                    "source": "synthetic", "review_status": status,
+                    "dataset_version": version, "group_hash": _hash(normalized.folded),
+                }
+        manifests.append({"file": path.name, "sha256": hashlib.sha256(raw).hexdigest(),
+                          "rows": len(rows), "columns": columns,
+                          "dataset_versions": dict(file_versions), "label_counts": dict(file_labels),
+                          "split_counts": dict(file_splits)})
+
+    conflicts = Counter(kind for (kind, _), labels in text_labels.items() if len(labels) > 1)
+    if conflicts:
+        raise ValueError(f"Conflicting labels for equivalent text in combined corpus: {dict(conflicts)}")
+    leakage = Counter(kind for (kind, _), splits in key_splits.items() if len(splits) > 1)
+    if leakage:
+        raise ValueError(f"Cross-split leakage in combined corpus: {dict(leakage)}; fix CSVs, no automatic resplit")
     records = list(by_key.values())
-    groups: dict[str, str] = {}
-    for record in records:
-        key = record["group_hash"]
-        if key in groups and groups[key] != record["label"]:
-            raise ValueError("Conflicting labels within a normalized-text group")
-        groups[key] = record["label"]
+    checks = {
+        kind: {"unique_keys": sum(k == kind for k, _ in key_splits),
+               "duplicate_keys": sum(k == kind and count > 1 for (k, _), count in key_counts.items()),
+               "cross_split_keys": 0}
+        for kind in sorted({kind for kind, _ in key_splits})
+    }
+    fingerprint = _hash(json.dumps(manifests, sort_keys=True, separators=(",", ":")))
     audit = {
-        "source_sha256": hashlib.sha256(raw).hexdigest(),
-        "source_rows": len(rows),
-        "deduplicated_rows": len(records),
-        "removed_duplicate_rows": len(rows) - len(records),
-        "normalized_groups": len(groups),
-        "original_cross_split_groups": sum(len(v) > 1 for v in original_split_by_group.values()),
-        "source_values": dict(sources),
-        "review_status_values": dict(statuses),
+        "inputs": manifests, "combined_dataset_sha256": fingerprint,
+        "source_rows": total_rows, "deduplicated_rows": len(records),
+        "removed_duplicate_rows": total_rows - len(records),
+        "normalized_groups": checks["runtime_text"]["unique_keys"],
+        "csv_groups": checks["csv_group"]["unique_keys"], "original_cross_split_groups": 0,
+        "leakage_checks": checks, "source_values": dict(source_values),
+        "review_status_values": dict(statuses), "dataset_version_values": dict(versions),
         "has_user_or_conversation_ids": False,
     }
+    if len(manifests) == 1:
+        audit["source_sha256"] = manifests[0]["sha256"]
     return records, audit
 
 
 def split_records(records: list[dict]) -> tuple[dict[str, list[dict]], dict]:
-    grouped: dict[str, list[dict]] = defaultdict(list)
-    for record in records:
-        grouped[record["group_hash"]].append(record)
-    by_label: dict[str, list[tuple[str, list[dict]]]] = defaultdict(list)
-    for group_hash, members in grouped.items():
-        if len({member["label"] for member in members}) != 1:
-            raise ValueError("Conflicting labels within group")
-        by_label[members[0]["label"]].append((group_hash, members))
+    """Preserve the supplied split; validate even direct callers of this API."""
     result: dict[str, list[dict]] = {name: [] for name in SPLITS}
-    for label in LABELS:
-        groups = sorted(by_label[label], key=lambda item: _hash(SEED + item[0]))
-        if len(groups) < 3:
-            raise ValueError(f"At least three independent groups required for {label}")
-        total = sum(len(members) for _, members in groups)
-        assigned = Counter()
-        for index, (_, members) in enumerate(groups):
-            remaining = len(groups) - index
-            empty = [name for name in SPLITS if assigned[name] == 0]
-            if remaining == len(empty) and empty:
-                chosen = empty[0]
-            else:
-                chosen = max(SPLITS, key=lambda name: (RATIOS[name] * total - assigned[name], -SPLITS.index(name)))
-            result[chosen].extend(members)
-            assigned[chosen] += len(members)
-    seen: set[str] = set()
+    key_splits: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for record in records:
+        split = record.get("split")
+        if split not in SPLITS or not record.get("group_id"):
+            raise ValueError("Every record requires a CSV split and group_id")
+        for group in record.get("group_ids", [record["group_id"]]):
+            key_splits[("csv_group", group)].add(split)
+        key_splits[("runtime_text", normalize_text(record["text"]).folded)].add(split)
+        result[split].append(record)
+    if any(len(values) > 1 for values in key_splits.values()):
+        raise ValueError("Cross-split leakage; fix CSVs, no automatic resplit")
     for split in SPLITS:
-        hashes = {record["group_hash"] for record in result[split]}
-        if seen.intersection(hashes):
-            raise AssertionError("Normalized-text leakage between splits")
-        seen.update(hashes)
+        missing = set(LABELS) - {row["label"] for row in result[split]}
+        if missing:
+            raise ValueError(f"CSV split {split} must contain every label; missing {sorted(missing)}")
         result[split].sort(key=lambda item: item["id"])
     report = {
-        "strategy": "label_stratified_normalized_text_groups_deterministic_v1",
-        "seed": SEED,
+        "strategy": SPLIT_STRATEGY,
+        "csv_split_preserved": True,
         "counts": {name: dict(Counter(row["label"] for row in result[name])) for name in SPLITS},
+        "group_counts": {name: len({g for row in result[name] for g in row.get("group_ids", [row["group_id"]])}) for name in SPLITS},
+        "cross_split_csv_groups": 0,
         "cross_split_normalized_groups": 0,
     }
     return result, report
@@ -159,12 +224,14 @@ def split_records(records: list[dict]) -> tuple[dict[str, list[dict]], dict]:
 def features(text: str) -> Counter[str]:
     cleaned = normalize_text(text).unicode
     counts: Counter[str] = Counter()
-    for n in (3, 4, 5):
+    for n in range(NGRAM_RANGE[0], NGRAM_RANGE[1] + 1):
         counts.update(cleaned[i:i + n] for i in range(max(0, len(cleaned) - n + 1)))
     return counts
 
 
-def fit(records: list[dict], alpha: float) -> dict:
+def fit(records: list[dict], alpha: float, *, model_version: str = MODEL_VERSION) -> dict:
+    if not math.isfinite(alpha) or alpha <= 0:
+        raise ValueError("Alpha must be finite and positive")
     class_docs = Counter()
     class_features: dict[str, Counter[str]] = {label: Counter() for label in LABELS}
     for record in records:
@@ -175,7 +242,7 @@ def fit(records: list[dict], alpha: float) -> dict:
     if any(class_docs[label] == 0 for label in LABELS):
         raise ValueError("Every class must appear in training")
     return {
-        "model_version": MODEL_VERSION,
+        "model_version": model_version,
         "labels": LABELS,
         "alpha": alpha,
         "class_docs": dict(class_docs),
@@ -242,19 +309,55 @@ def _write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
-def run(source: Path, output: Path, *, validate_only: bool = False) -> dict:
-    records, audit = load_source(source)
+def run(source: Path | list[Path], output: Path, *, validate_only: bool = False,
+        model_version: str = MODEL_VERSION, dataset_version: str | None = None,
+        alpha_candidates: tuple[float, ...] = ALPHA_CANDIDATES) -> dict:
+    if not model_version.strip() or (dataset_version is not None and not dataset_version.strip()):
+        raise ValueError("Model and dataset versions must be non-empty")
+    if not alpha_candidates or any(not math.isfinite(value) or value <= 0 for value in alpha_candidates):
+        raise ValueError("Alpha candidates must be finite and positive")
+    records, audit = load_sources(source if isinstance(source, (list, tuple)) else [source])
     splits, split_report = split_records(records)
+    source_versions = sorted(audit["dataset_version_values"])
+    dataset_version = dataset_version or (
+        "school-violence-combined-" + (source_versions[0] if len(source_versions) == 1
+                                      else _hash(json.dumps(source_versions))[:12])
+    )
+    # Bind the exact preprocessing implementation and input files to this run.
+    normalization_path = Path(__file__).resolve().parents[1] / "text_safety" / "normalization.py"
+    configuration = {
+        "algorithm": "multinomial_character_ngram_naive_bayes",
+        "input_columns": ["text"], "ngram_range": list(NGRAM_RANGE),
+        "alpha_candidates": list(alpha_candidates), "selected_alpha": None,
+        "selection_metric": "validation.macro_f1", "test_used_for_selection": False,
+        "split_strategy": SPLIT_STRATEGY, "resplit": False,
+        "model_version": model_version, "dataset_version": dataset_version,
+        "source_dataset_versions": source_versions,
+        "combined_dataset_sha256": audit["combined_dataset_sha256"],
+        "preprocessing": {"function": "text_safety.normalization.normalize_text",
+                          "sha256": hashlib.sha256(normalization_path.read_bytes()).hexdigest()},
+        "trainer_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    }
+    manifest = {
+        "dataset_version": dataset_version, "combined_dataset_sha256": audit["combined_dataset_sha256"],
+        "inputs": audit["inputs"], "source_audit": audit, "split": split_report,
+        "human_review_complete": audit["review_status_values"].get("unreviewed", 0) == 0,
+        "deployment_eligible": False,
+    }
     report = {
-        "dataset_version": DATASET_VERSION,
-        "model_version": MODEL_VERSION,
+        "dataset_version": dataset_version,
+        "model_version": model_version,
         "source_audit": audit,
         "split": split_report,
+        "configuration": configuration,
+        "dataset_manifest": manifest,
+        "training_performed": False,
         "training_scope": "experimental_synthetic_only",
         "deployment_eligible": False,
         "limitations": [
-            "The supplied synthetic corpus has no completed human review.",
-            "No user or conversation IDs; split is grouped only by normalized text.",
+            "Human review status is recorded, not inferred from automated policy alignment.",
+            "CSV groups are synthetic provenance groups, not verified user or conversation IDs.",
+            "Exact/runtime/canonical/body checks do not detect every semantic near-duplicate.",
             "No independently collected real-world test set.",
             "Perfect scores on repetitive synthetic templates do not establish real-world performance.",
             "The three severity tiers do not detect self-harm or other legacy safety categories.",
@@ -270,36 +373,48 @@ def run(source: Path, output: Path, *, validate_only: bool = False) -> dict:
             for record in splits[split]:
                 payload = {"id": record["id"], "text": record["text"], "label": record["label"],
                            "split": split, "source_ids": record["source_ids"],
+                           "group_id": record["group_id"], "group_ids": record["group_ids"],
+                           "source_refs": record["source_refs"], "dataset_version": record["dataset_version"],
                            "review_status": record["review_status"], "source": record["source"]}
                 handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-    candidates = (0.5, 1.0, 2.0)
     best = None
-    for alpha in candidates:
-        model = fit(splits["train"], alpha)
+    for alpha in alpha_candidates:
+        model = fit(splits["train"], alpha, model_version=model_version)
         validation = evaluate(model, splits["validation"])
         if best is None or validation["macro_f1"] > best[1]["macro_f1"]:
             best = (model, validation)
     model, validation = best
     test = evaluate(model, splits["test"])
     report["trained_at_utc"] = datetime.now(timezone.utc).isoformat()
-    report["configuration"] = {"algorithm": "multinomial_character_ngram_naive_bayes",
-                               "ngram_range": [3, 5], "alpha_candidates": candidates,
-                               "selected_alpha": model["alpha"], "split_ratios": RATIOS}
+    report["training_performed"] = True
+    configuration["selected_alpha"] = model["alpha"]
+    model.update(dataset_version=dataset_version,
+                 combined_dataset_sha256=audit["combined_dataset_sha256"],
+                 training_configuration=configuration, deployment_eligible=False)
     report["validation"] = validation
     report["test"] = test
     with gzip.open(output / "model.json.gz", "wt", encoding="utf-8") as handle:
         json.dump(model, handle, ensure_ascii=False, separators=(",", ":"))
     _write_json(output / "evaluation_report.json", report)
+    _write_json(output / "dataset_manifest.json", manifest)
+    _write_json(output / "training_config.json", configuration)
     return report
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--input", type=Path, required=True)
+    parser.add_argument("--input", type=Path, nargs="+", action="extend", required=True,
+                        help="One or more CSVs; --input may also be repeated")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--validate-only", action="store_true")
+    parser.add_argument("--model-version", default=MODEL_VERSION)
+    parser.add_argument("--dataset-version", default=None,
+                        help="Optional combined-corpus version; source versions remain in manifest")
+    parser.add_argument("--alpha-candidates", type=float, nargs="+", default=ALPHA_CANDIDATES)
     arguments = parser.parse_args()
-    report = run(arguments.input, arguments.output_dir, validate_only=arguments.validate_only)
+    report = run(arguments.input, arguments.output_dir, validate_only=arguments.validate_only,
+                 model_version=arguments.model_version, dataset_version=arguments.dataset_version,
+                 alpha_candidates=tuple(arguments.alpha_candidates))
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 
