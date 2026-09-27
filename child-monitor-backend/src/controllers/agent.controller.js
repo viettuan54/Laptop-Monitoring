@@ -11,13 +11,12 @@ const {
 } = require('../services/contentClassification.service');
 const { getAgentPolicySnapshot } = require('../services/agentPolicy.service');
 const { moderateRecords } = require('../services/textModeration.service');
+const { cleanText } = require('../services/textPrivacy.service');
 
 const TEXT_MODERATION_BATCH_MAX = 20;
 const TEXT_MODERATION_SOURCES = new Set([
   'search_query',
   'page_content',
-  'chat_received',
-  'chat_authored',
 ]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -44,7 +43,7 @@ function normalizeTextModerationRecords(body) {
     if (typeof record.text !== 'string') {
       throw new TypeError(`records[${index}].text must be a string`);
     }
-    const text = record.text.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+    const text = cleanText(record.text);
     if (!text || text.length > 1000 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(text)) {
       throw new TypeError(`records[${index}].text length or characters are invalid`);
     }
@@ -91,6 +90,12 @@ function textAlertPresentation(result, sourceType, domain) {
     title: 'Cảnh báo nguy cơ bạo lực học đường cao',
     message: `Phát hiện nội dung có nguy cơ bạo lực học đường cao trong ${source}${origin}. Vui lòng kiểm tra trực tiếp.`,
   };
+}
+
+function textRecordWithinPolicy(record, settings) {
+  const occurredAt = Date.parse(record.occurredAt);
+  const revision = settings?.updated_at == null ? 0 : new Date(settings.updated_at).getTime();
+  return Number.isFinite(revision) && occurredAt >= revision && occurredAt <= Date.now() + 30_000;
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -522,7 +527,7 @@ exports.moderateTextBatch = async (req, res) => {
   const acceptedIds = records.map((record) => record.clientRecordId);
   try {
     const settingsResult = await adminPool.query(
-      'SELECT enable_text_moderation FROM settings WHERE child_id = $1',
+      'SELECT enable_text_moderation, updated_at FROM settings WHERE child_id = $1',
       [req.device.child_id]
     );
     if (settingsResult.rows[0]?.enable_text_moderation !== true) {
@@ -540,7 +545,8 @@ exports.moderateTextBatch = async (req, res) => {
       [req.device.device_id, acceptedIds]
     );
     const existingIds = new Set(existingResult.rows.map((row) => row.client_record_id));
-    const pendingRecords = records.filter((record) => !existingIds.has(record.clientRecordId));
+    const pendingRecords = records.filter((record) => !existingIds.has(record.clientRecordId)
+      && textRecordWithinPolicy(record, settingsResult.rows[0]));
     if (pendingRecords.length === 0) {
       return res.status(201).json({
         enabled: true,
@@ -549,12 +555,33 @@ exports.moderateTextBatch = async (req, res) => {
       });
     }
 
-    const moderation = await moderateRecords(pendingRecords);
+    // Recheck before every dispatch, including provider retries.
+    const beforeSend = async () => {
+      const current = await adminPool.query(
+        'SELECT enable_text_moderation, updated_at FROM settings WHERE child_id = $1',
+        [req.device.child_id]
+      );
+      return current.rows[0]?.enable_text_moderation === true
+        && pendingRecords.every((record) => textRecordWithinPolicy(record, current.rows[0]));
+    };
+    const moderation = await moderateRecords(pendingRecords, { beforeSend });
     const client = await adminPool.connect();
     const alertsToPush = [];
     let flaggedCount = 0;
     try {
       await client.query('BEGIN');
+      // A setting update cannot race with event/alert persistence. Do not hold
+      // this row lock while waiting for inference over the network.
+      const lockedSettings = await client.query(
+        'SELECT enable_text_moderation, updated_at FROM settings WHERE child_id = $1 FOR SHARE',
+        [req.device.child_id]
+      );
+      if (lockedSettings.rows[0]?.enable_text_moderation !== true
+          || !pendingRecords.every((record) => textRecordWithinPolicy(record, lockedSettings.rows[0]))) {
+        await client.query('COMMIT');
+        return res.status(201).json({ enabled: false,
+          accepted_client_record_ids: acceptedIds, flagged_count: 0 });
+      }
       for (let index = 0; index < pendingRecords.length; index += 1) {
         const record = pendingRecords[index];
         const result = moderation.results[index];
@@ -612,7 +639,7 @@ exports.moderateTextBatch = async (req, res) => {
       client.release();
     }
 
-    if (alertsToPush.length > 0) {
+    if (alertsToPush.length > 0 && await beforeSend()) {
       const childResult = await adminPool.query(
         'SELECT user_id FROM children WHERE child_id = $1',
         [req.device.child_id]
@@ -626,7 +653,7 @@ exports.moderateTextBatch = async (req, res) => {
             alert_id: alert.alertId,
             device_id: req.device.device_id,
             alert_type: alert.alertType,
-          }).catch((error) => console.error('Failed to send text safety push:', error.message));
+          }).catch((error) => console.error('Failed to send text safety push:', error.name));
         }
       }
     }
@@ -637,13 +664,17 @@ exports.moderateTextBatch = async (req, res) => {
       flagged_count: flaggedCount,
     });
   } catch (error) {
+    if (error.code === 'TEXT_MODERATION_DISABLED') {
+      return res.status(201).json({ enabled: false,
+        accepted_client_record_ids: acceptedIds, flagged_count: 0 });
+    }
     if (error.code === 'TEXT_MODERATION_INVALID_CONFIG') {
       return res.status(503).json({ message: 'Text moderation is not configured' });
     }
     if (error.code === 'TEXT_MODERATION_PROVIDER_FAILED') {
       return res.status(502).json({ message: 'Text moderation provider failed' });
     }
-    console.error('Text moderation batch error:', error.message);
+    console.error('Text moderation batch error:', error.name);
     return res.status(500).json({ message: 'Internal server error' });
   }
 };

@@ -3,6 +3,9 @@
 import os
 import sys
 
+if not getattr(sys, "frozen", False):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def component_dir():
     """Return the directory containing the current Companion executable/module."""

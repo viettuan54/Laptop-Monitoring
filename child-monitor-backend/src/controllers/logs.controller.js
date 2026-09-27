@@ -1,4 +1,5 @@
 const { adminPool } = require('../config/db');
+const { safeWebMetadata } = require('../services/textPrivacy.service');
 const {
   validateDurationSeconds,
   MAX_LOG_DURATION_SECONDS,
@@ -253,6 +254,7 @@ exports.logWebsite = async (req, res) => {
   }
 
   try {
+    const safeMetadata = safeWebMetadata(url);
     await adminPool.query(
       `INSERT INTO website_logs(
          device_id, url, domain, category, classification_source,
@@ -260,19 +262,20 @@ exports.logWebsite = async (req, res) => {
        ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [
         device_id,
-        url,
-        domain || null,
+        safeMetadata.url,
+        safeMetadata.domain,
         category || 'unknown',
         defaultWebClassificationSource(category, classification_source),
         classification_confidence ?? null,
         visit_time,
         duration_seconds ?? null,
-        page_title || null,
+        safeMetadata.page_title,
       ]
     );
     res.status(201).json({ message: 'Website log saved' });
   } catch (error) {
-    console.error('Log website error:', error);
+    if (error instanceof TypeError) return res.status(400).json({ message: 'Invalid web URL' });
+    console.error('Log website error:', error.name);
     res.status(500).json({ message: 'Internal server error' });
   }
 };
@@ -660,10 +663,15 @@ exports.logWebBatch = async (req, res) => {
       continue;
     }
 
+    let safeMetadata;
+    try { safeMetadata = safeWebMetadata(r.url); } catch {
+      skippedReasons.push(`${idx} invalid web URL`);
+      continue;
+    }
     validRecords.push({
       client_record_id: r.client_record_id.trim().substring(0, 64),
-      url:              r.url.trim().substring(0, 500),
-      domain:           r.domain      ? r.domain.trim().substring(0, 200)    : null,
+      url:              safeMetadata.url,
+      domain:           safeMetadata.domain,
       category:         r.category    || 'unknown',
       classification_source: defaultWebClassificationSource(
         r.category,
@@ -672,7 +680,7 @@ exports.logWebBatch = async (req, res) => {
       classification_confidence: r.classification_confidence ?? null,
       visit_time:       r.visit_time,
       duration_seconds: r.duration_seconds ?? null,
-      page_title:       r.page_title  ? r.page_title.trim().substring(0, 500) : null,
+      page_title:       safeMetadata.page_title,
     });
   }
 

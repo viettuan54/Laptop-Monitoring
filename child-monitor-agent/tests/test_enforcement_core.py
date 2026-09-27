@@ -30,6 +30,53 @@ class EnforcementCoreTest(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
+    def test_text_policy_default_and_partial_config_are_disabled(self):
+        self.assertEqual(self.core.get_text_moderation_policy(), {"enabled": False})
+        self.core.save_settings_cache({"enable_text_moderation": True})
+        self.assertTrue(self.core.get_text_moderation_policy()["enabled"])
+        self.core.save_settings_cache({"daily_limit_minutes": 60})
+        self.assertEqual(self.core.get_text_moderation_policy(), {"enabled": False})
+
+    def test_text_policy_refresh_preserves_window_and_off_on_starts_new_window(self):
+        with patch.object(enforcement_core.time, "time", return_value=1000):
+            self.core.save_settings_cache({"enable_text_moderation": True})
+        with patch.object(enforcement_core.time, "time", return_value=1060):
+            self.core.save_settings_cache({"enable_text_moderation": True})
+            policy = self.core.get_text_moderation_policy()
+            self.assertEqual(policy["enabled_since"], 1000)
+            self.assertEqual(policy["expires_at"], 1240)
+            self.core.save_settings_cache({"enable_text_moderation": False})
+            self.assertEqual(self.core.get_text_moderation_policy(), {"enabled": False})
+        with patch.object(enforcement_core.time, "time", return_value=1061):
+            self.core.save_settings_cache({"enable_text_moderation": True})
+            self.assertEqual(self.core.get_text_moderation_policy()["enabled_since"], 1061)
+        with patch.object(enforcement_core.time, "time", return_value=1241):
+            self.assertEqual(self.core.get_text_moderation_policy(), {"enabled": False})
+
+    def test_saving_text_off_purges_queue_and_acl_failure_disables_policy(self):
+        queue = Mock()
+        core = EnforcementCore(queue, config_dir=self.temp_dir.name)
+        core.update_hosts_file = Mock()
+        core.save_settings_cache({"enable_text_moderation": False})
+        queue.refresh_text_policy.assert_called_once()
+        queue._text_storage_allowed = False
+        core.save_settings_cache({"enable_text_moderation": True})
+        self.assertEqual(core.get_text_moderation_policy(), {"enabled": False})
+
+    def test_old_config_reply_cannot_reenable_or_renew_newer_off_policy(self):
+        self.core.save_settings_cache({"enable_text_moderation": False, "updated_at": "2026-09-26T08:02:00Z"})
+        before = self.core.load_cached_settings()
+        self.core.save_settings_cache({"enable_text_moderation": True, "updated_at": "2026-09-26T08:01:00Z"})
+        self.assertEqual(self.core.load_cached_settings(), before)
+        self.assertEqual(self.core.get_text_moderation_policy(), {"enabled": False})
+
+    def test_new_settings_revision_starts_a_conservative_new_consent_window(self):
+        with patch.object(enforcement_core.time, "time", return_value=1000):
+            self.core.save_settings_cache({"enable_text_moderation": True, "updated_at": "2026-09-26T08:01:00Z"})
+        with patch.object(enforcement_core.time, "time", return_value=1060):
+            self.core.save_settings_cache({"enable_text_moderation": True, "updated_at": "2026-09-26T08:02:00Z"})
+            self.assertEqual(self.core.get_text_moderation_policy()["enabled_since"], 1060)
+
     def _save_overnight_settings(self):
         self.core.save_settings_cache({
             "allowed_start_time": "22:00:00",

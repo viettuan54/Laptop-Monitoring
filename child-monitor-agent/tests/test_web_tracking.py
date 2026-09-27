@@ -2,6 +2,8 @@ import importlib.util
 import json
 import os
 import sqlite3
+import sys
+import time
 import tempfile
 import unittest
 import uuid
@@ -11,6 +13,14 @@ from unittest.mock import Mock, patch
 
 
 AGENT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(AGENT_ROOT / "service"))
+sys.path.insert(0, str(AGENT_ROOT))
+
+
+def enabled_policy():
+    now = time.time()
+    return {"enabled": True, "issued_at": now, "expires_at": now + 180,
+            "enabled_since": now - 60}
 
 
 def load_module(name, path):
@@ -35,15 +45,19 @@ PipeServer = service_pipe_server.PipeServer
 
 
 class FakePipeClient:
-    def __init__(self, acknowledge=True):
+    def __init__(self, acknowledge=True, policy=None):
         self.acknowledge = acknowledge
         self.calls = []
+        self.policy = policy or {"enabled": False}
+
+    def send_ping(self):
+        return {"text_moderation_config": self.policy}
 
     def send_web_tracking(self, **record):
         self.calls.append(record)
         if not self.acknowledge:
             return None
-        return {"tracking_ack": record["client_record_id"]}
+        return {"tracking_ack": record["client_record_id"], "text_moderation_config": self.policy}
 
 
 class FakeQueue:
@@ -55,12 +69,19 @@ class FakeQueue:
         self.web_calls.append(record)
         return record["client_record_id"], True
 
+    def refresh_text_policy(self):
+        pass
+
     def enqueue_text_moderation(self, **record):
         self.text_calls.append(record)
         return record["client_record_id"], True
 
 
 class FakeEnforcementCore:
+    @staticmethod
+    def get_text_moderation_policy():
+        return {"enabled": False}
+
     @staticmethod
     def check_policy_status():
         return False, "OK", 3600
@@ -148,7 +169,8 @@ class WebTrackingTest(unittest.TestCase):
         self.assertEqual(len(pipe_client.calls), 1)
         record = pipe_client.calls[0]
         self.assertEqual(record["domain"], "www.youtube.com")
-        self.assertEqual(record["page_title"], "YouTube")
+        self.assertEqual(record["page_title"], "www.youtube.com")
+        self.assertEqual(record["url"], "https://www.youtube.com/")
         self.assertEqual(record["duration_seconds"], 12)
         self.assertEqual(
             tracker.checkpoints["edge:Default"],
@@ -176,6 +198,42 @@ class WebTrackingTest(unittest.TestCase):
         self.assertIsNone(extract_search_query("https://example.com/?q=private"))
         self.assertIsNone(extract_search_query("https://evil.google.example/search?q=private"))
         self.assertIsNone(extract_search_query("https://www.google.com/search?q="))
+
+    def test_disabled_policy_does_not_extract_or_leak_query_through_web_metadata(self):
+        self._insert_visit("https://www.google.com/search?q=private-query")
+        pipe = FakePipeClient()
+        with patch.object(companion_web_tracker, "extract_search_query") as extract:
+            self._tracker(pipe).poll(force=True)
+        extract.assert_not_called()
+        self.assertIsNone(pipe.calls[0]["text_record"])
+        self.assertNotIn("private-query", json.dumps(pipe.calls))
+
+    def test_enabled_policy_extracts_new_query_with_stable_record_id(self):
+        self._insert_visit("https://www.google.com/search?q=c%E1%BA%A7n+gi%C3%BAp+%C4%91%E1%BB%A1")
+        pipe = FakePipeClient(policy=enabled_policy())
+        self._tracker(pipe).poll(force=True)
+        record = pipe.calls[0]
+        self.assertEqual(record["text_record"]["text"], "cần giúp đỡ")
+        self.assertEqual(record["text_record"]["client_record_id"], str(uuid.uuid5(
+            uuid.UUID(record["client_record_id"]), "text-moderation:search_query")))
+        self.assertEqual(record["url"], "https://www.google.com/")
+
+    def test_enable_does_not_backfill_pre_consent_search_history(self):
+        self._insert_visit("https://www.google.com/search?q=old-query")
+        policy = enabled_policy()
+        policy["enabled_since"] = policy["issued_at"]
+        pipe = FakePipeClient(policy=policy)
+        with patch.object(companion_web_tracker, "extract_search_query") as extract:
+            self._tracker(pipe).poll(force=True)
+        extract.assert_not_called()
+        self.assertIsNone(pipe.calls[0]["text_record"])
+
+    def test_missing_service_reply_revokes_companion_policy(self):
+        tracker = self._tracker(FakePipeClient())
+        tracker.update_text_config({"text_moderation_config": enabled_policy()})
+        self.assertTrue(tracker._text_policy["enabled"])
+        tracker.update_text_config(None)
+        self.assertEqual(tracker._text_policy, {})
 
     def test_discovers_coccoc_history_profiles(self):
         coccoc_history = (
@@ -277,9 +335,7 @@ class WebTrackingTest(unittest.TestCase):
     def test_service_queues_search_text_only_when_parent_enabled_policy(self):
         queue = FakeQueue()
         enforcement = FakeEnforcementCore()
-        enforcement.load_cached_settings = Mock(return_value={
-            "enable_text_moderation": True,
-        })
+        enforcement.get_text_moderation_policy = Mock(return_value=enabled_policy())
         server = PipeServer(queue, enforcement)
         web_record_id = str(uuid.uuid4())
         text_record_id = str(uuid.uuid5(

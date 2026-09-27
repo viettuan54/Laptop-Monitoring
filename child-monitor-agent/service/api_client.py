@@ -142,7 +142,7 @@ class APIClient:
             "X-Device-Secret": self.device_secret or ""
         }
 
-    def request(self, method, endpoint, payload=None, timeout=10, max_retries=3):
+    def request(self, method, endpoint, payload=None, timeout=10, max_retries=3, before_send=None):
         """Gửi HTTP request có hỗ trợ retry (exponential backoff) và xử lý 401."""
         self.check_config_reload()
 
@@ -154,6 +154,8 @@ class APIClient:
         headers = self._get_headers()
 
         for attempt in range(1, max_retries + 1):
+            if before_send is not None and not before_send():
+                return None
             try:
                 response = requests.request(
                     method=method,
@@ -178,7 +180,8 @@ class APIClient:
                 logging.warning(f"Server error {response.status_code} (Attempt {attempt}/{max_retries})")
 
             except requests.RequestException as e:
-                logging.warning(f"Network error on {endpoint}: {e} (Attempt {attempt}/{max_retries})")
+                logging.warning("Network error on %s: %s (Attempt %s/%s)",
+                                endpoint, type(e).__name__, attempt, max_retries)
 
             # Delay exponential backoff nếu cần retry
             if attempt < max_retries:
@@ -191,6 +194,10 @@ class APIClient:
 
     def post(self, endpoint, data=None, timeout=10):
         return self.request("POST", endpoint, payload=data, timeout=timeout)
+
+    def post_text_moderation(self, records, should_send):
+        return self.request("POST", "/api/agent/text-moderation/batch",
+                            payload={"records": records}, before_send=should_send)
 
     def get_config(self, timeout=10):
         """Lấy thông tin cấu hình và danh sách tên miền bị chặn từ /api/agent/config."""

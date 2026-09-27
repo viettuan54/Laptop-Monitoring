@@ -4,9 +4,11 @@ import json
 import logging
 import threading
 import re
+import time
 from datetime import datetime
 
 from runtime_paths import agent_root
+from text_privacy import POLICY_LEASE_SECONDS, policy_enabled
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -38,6 +40,8 @@ class EnforcementCore:
         self.hosts_path = r"C:\Windows\System32\drivers\etc\hosts"
         self.lock = threading.Lock()
         self.cache_lock = threading.RLock()
+        if hasattr(self.offline_queue, "set_text_policy_provider"):
+            self.offline_queue.set_text_policy_provider(self.get_text_moderation_policy)
 
     def load_cached_settings(self):
         """Đọc cài đặt settings và blacklist đã được cache từ file JSON."""
@@ -59,6 +63,7 @@ class EnforcementCore:
             "allowed_end_time": "21:00:00",
             "is_locked": False,
             "enable_webcam_monitoring": False,
+            "enable_text_moderation": False,
             "enable_app_classification": False,
             "enable_web_classification": False,
             "blocked_app_categories": [],
@@ -66,6 +71,20 @@ class EnforcementCore:
             "policy_blocked_domains": [],
             "blacklisted_domains": []
         }
+
+    def get_text_moderation_policy(self):
+        if getattr(self.offline_queue, "_text_storage_allowed", True) is False:
+            return {"enabled": False}
+        settings = self.load_cached_settings()
+        policy = {
+            "enabled": settings.get("enable_text_moderation") is True,
+            "issued_at": settings.get("text_policy_issued_at"),
+            "expires_at": settings.get("text_policy_expires_at"),
+            "enabled_since": settings.get("text_policy_enabled_since"),
+        }
+        if not policy_enabled(policy):
+            return {"enabled": False}
+        return policy
 
     def load_web_classification_cache(self):
         """Đọc ánh xạ domain -> nhãn AI đã xác nhận trên thiết bị này."""
@@ -141,6 +160,18 @@ class EnforcementCore:
         try:
             with self.cache_lock:
                 existing = self.load_cached_settings()
+                old_revision = existing.get("updated_at")
+                new_revision = config_data.get("updated_at") if isinstance(config_data, dict) else None
+                if old_revision:
+                    try:
+                        old_time = datetime.fromisoformat(old_revision.replace("Z", "+00:00"))
+                        new_time = datetime.fromisoformat(new_revision.replace("Z", "+00:00"))
+                        if new_time < old_time:
+                            return  # Ignore an out-of-order heartbeat/config reply.
+                    except (ValueError, TypeError, AttributeError):
+                        # Do not renew a versioned text policy from an unversioned reply.
+                        if isinstance(config_data, dict):
+                            config_data = {**config_data, "enable_text_moderation": False}
                 classifications = self.load_web_classification_cache()
                 previous_domains = self._effective_blocked_domains(
                     existing,
@@ -149,6 +180,23 @@ class EnforcementCore:
                 cache_data = existing.copy()
                 if isinstance(config_data, dict):
                     cache_data.update(config_data)
+                now = time.time()
+                old_policy = {
+                    "enabled": existing.get("enable_text_moderation") is True,
+                    "issued_at": existing.get("text_policy_issued_at"),
+                    "expires_at": existing.get("text_policy_expires_at"),
+                    "enabled_since": existing.get("text_policy_enabled_since"),
+                }
+                # A successful backend config refresh is the only issuer. Do
+                # not trust persisted True from an old or partial configuration.
+                enabled = isinstance(config_data, dict) and config_data.get("enable_text_moderation") is True
+                cache_data["enable_text_moderation"] = enabled
+                cache_data["text_policy_issued_at"] = now
+                cache_data["text_policy_expires_at"] = now + POLICY_LEASE_SECONDS
+                cache_data["text_policy_enabled_since"] = (
+                    old_policy["enabled_since"] if enabled and policy_enabled(old_policy, now) and old_revision == new_revision
+                    else now if enabled else None
+                )
                 if blacklisted_domains is not None:
                     cache_data["blacklisted_domains"] = blacklisted_domains
                 if policy_blocked_domains is not None:
@@ -158,6 +206,10 @@ class EnforcementCore:
                     cache_data,
                     classifications,
                 )
+
+            # Outside cache_lock: queue validation reads policy back from cache.
+            if hasattr(self.offline_queue, "refresh_text_policy"):
+                self.offline_queue.refresh_text_policy()
 
             # Heartbeat chứa policy category. Vì vậy chỉ cần policy đổi là hosts
             # được cập nhật trong chu kỳ 60 giây, không phải chờ config 10 phút.

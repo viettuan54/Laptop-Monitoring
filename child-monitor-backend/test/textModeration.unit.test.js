@@ -99,3 +99,15 @@ test('retries temporary local failures once and not credential errors', async ()
   }), (error) => error.code === 'TEXT_MODERATION_INVALID_CONFIG');
   assert.equal(attempts, 1);
 });
+
+test('provider checks consent again before retrying a temporary failure', async () => {
+  let attempts = 0;
+  let checks = 0;
+  await assert.rejects(moderateTexts(['tôi cần giúp đỡ'], {
+    environment: { TEXT_MODERATION_PROVIDER: 'local' },
+    beforeSend: async () => { checks += 1; return checks === 1; },
+    fetchImpl: async () => { attempts += 1; return { ok: false, status: 503 }; },
+  }), (error) => error.code === 'TEXT_MODERATION_DISABLED');
+  assert.equal(attempts, 1);
+  assert.equal(checks, 2);
+});

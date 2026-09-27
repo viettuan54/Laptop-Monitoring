@@ -3,10 +3,11 @@ import sqlite3
 import uuid
 import time
 import logging
-import subprocess
+import threading
 from datetime import datetime, timedelta, time as datetime_time
 
 from runtime_paths import agent_root
+from text_privacy import SUPPORTED_TEXT_SOURCES, clean_text, eligible_timestamp, policy_enabled, safe_web_metadata, protect_text, unprotect_text
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -35,12 +36,47 @@ class OfflineQueue:
             
         self.db_path = db_path
         self.api_client = api_client
+        self._text_lock = threading.RLock()
+        self._text_policy_provider = None
+        self._text_storage_allowed = not secure_file
         self.init_db()
+        self.refresh_text_policy()
+        self.sanitize_web_metadata()
         if secure_file:
-            self.secure_db_file()
+            self._text_storage_allowed = self.secure_db_file()
 
     def get_connection(self):
-        return sqlite3.connect(self.db_path, factory=ClosingSQLiteConnection)
+        connection = sqlite3.connect(self.db_path, factory=ClosingSQLiteConnection)
+        connection.execute("PRAGMA secure_delete = ON")
+        return connection
+
+    def set_text_policy_provider(self, provider):
+        self._text_policy_provider = provider
+        self.refresh_text_policy()
+
+    def _text_policy(self):
+        try:
+            if not self._text_storage_allowed:
+                return {"enabled": False}
+            policy = self._text_policy_provider() if self._text_policy_provider else {}
+            return policy if policy_enabled(policy) else {"enabled": False}
+        except Exception:
+            return {"enabled": False}
+
+    def refresh_text_policy(self):
+        """Discard revoked/expired/old-consent text, independently of network sync."""
+        with self._text_lock, self.get_connection() as conn:
+            policy = self._text_policy()
+            if not policy_enabled(policy):
+                conn.execute("DELETE FROM text_moderation_queue")
+            else:
+                conn.execute("DELETE FROM text_moderation_queue WHERE datetime(created_at) < datetime('now','-7 days')")
+                for record_id, occurred_at, source in conn.execute(
+                    "SELECT client_record_id, occurred_at, source_type FROM text_moderation_queue"
+                ).fetchall():
+                    if source not in SUPPORTED_TEXT_SOURCES or not eligible_timestamp(occurred_at, policy):
+                        conn.execute("DELETE FROM text_moderation_queue WHERE client_record_id = ?", (record_id,))
+            conn.commit()
 
     def init_db(self):
         """Khởi tạo các bảng SQLite local nếu chưa tồn tại."""
@@ -183,29 +219,42 @@ class OfflineQueue:
             conn.commit()
 
     def secure_db_file(self):
-        """Thiết lập quyền truy cập NTFS (ACL) thông qua lệnh icacls để chỉ SYSTEM và Administrators có quyền đọc/ghi."""
-        if os.name == 'nt':
-            try:
-                # Gỡ bỏ kế thừa quyền (inheritance) và cấp quyền full cho SYSTEM / Administrators
-                # Quyền đọc/ghi cho người dùng thường (Standard User) sẽ bị từ chối
-                result = subprocess.run(
-                    [
-                        "icacls", self.db_path, "/inheritance:r",
-                        "/grant:r", "*S-1-5-18:(F)",
-                        "/grant:r", "*S-1-5-32-544:(F)",
-                    ],
-                    capture_output=True,
-                    text=True,
-                    check=False,
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        """Replace (not merge) DACL on the dedicated Agent db directory/files."""
+        try:
+            import win32security
+            import ntsecuritycon
+            dedicated_dir = os.path.abspath(os.path.join(agent_root(), "db"))
+            # Never change permissions on an arbitrary caller's shared directory.
+            if (os.name != "nt"
+                    or os.path.normcase(os.path.dirname(os.path.abspath(self.db_path))) != os.path.normcase(dedicated_dir)
+                    or os.path.normcase(os.path.realpath(dedicated_dir)) != os.path.normcase(dedicated_dir)):
+                raise RuntimeError("Text storage requires the dedicated Agent db directory")
+
+            system_sid = win32security.ConvertStringSidToSid("S-1-5-18")
+            admin_sid = win32security.ConvertStringSidToSid("S-1-5-32-544")
+
+            def restrict(path, inherited_flags=0):
+                dacl = win32security.ACL()
+                for sid in (system_sid, admin_sid):
+                    dacl.AddAccessAllowedAceEx(win32security.ACL_REVISION, inherited_flags,
+                                              ntsecuritycon.FILE_ALL_ACCESS, sid)
+                win32security.SetNamedSecurityInfo(
+                    path, win32security.SE_FILE_OBJECT,
+                    win32security.DACL_SECURITY_INFORMATION | win32security.PROTECTED_DACL_SECURITY_INFORMATION,
+                    None, None, dacl, None,
                 )
-                if result.returncode != 0:
-                    raise RuntimeError(
-                        result.stderr.strip() or result.stdout.strip() or "icacls failed"
-                    )
-                logging.info(f"Secured SQLite database file permission: {self.db_path}")
-            except Exception as e:
-                logging.error(f"Failed to secure SQLite file permissions: {e}")
+
+            restrict(dedicated_dir, win32security.OBJECT_INHERIT_ACE | win32security.CONTAINER_INHERIT_ACE)
+            for suffix in ("", "-wal", "-shm", "-journal"):
+                path = self.db_path + suffix
+                if os.path.isfile(path):
+                    if os.path.normcase(os.path.realpath(path)) != os.path.normcase(os.path.abspath(path)):
+                        raise RuntimeError("Database files must not be links")
+                    restrict(path)
+            return True
+        except Exception as error:
+            logging.error("SQLite ACL failed; text collection disabled: %s", type(error).__name__)
+            return False
 
     @staticmethod
     def _parse_usage_timestamp(value):
@@ -514,6 +563,7 @@ class OfflineQueue:
                 "pending" if category == "unknown" else "legacy_agent"
             )
         try:
+            url, page_title = safe_web_metadata(url, page_title)
             with self.get_connection() as conn:
                 cursor = conn.cursor()
                 cursor.execute("""
@@ -558,6 +608,19 @@ class OfflineQueue:
         except Exception as e:
             logging.error(f"Failed to read unknown web domains: {e}")
             return []
+
+    def sanitize_web_metadata(self):
+        """Strip content from legacy local web rows before any upload."""
+        with self.get_connection() as conn:
+            rows = conn.execute("SELECT client_record_id, url, page_title FROM web_logs").fetchall()
+            for row_id, url, title in rows:
+                try:
+                    safe_url, safe_title = safe_web_metadata(url, title)
+                except (ValueError, TypeError):
+                    safe_url, safe_title = "", ""
+                if (url, title) != (safe_url, safe_title):
+                    conn.execute("UPDATE web_logs SET url = ?, page_title = ? WHERE client_record_id = ?",
+                                 (safe_url, safe_title, row_id))
 
     def update_unknown_web_category(
         self, domain, category, classification_source, classification_confidence=None
@@ -631,9 +694,22 @@ class OfflineQueue:
         occurred_at,
         domain=None,
     ):
-        """Temporarily hold raw text locally; successful sync deletes it immediately."""
+        """Hold DPAPI-protected text locally; successful sync deletes it."""
         try:
-            with self.get_connection() as conn:
+            with self._text_lock, self.get_connection() as conn:
+                policy = self._text_policy()
+                if source_type not in SUPPORTED_TEXT_SOURCES or not eligible_timestamp(occurred_at, policy):
+                    return None, False
+                content_text = clean_text(content_text)
+                try:
+                    content_text = protect_text(content_text)
+                except Exception:
+                    self._text_storage_allowed = False
+                    raise ValueError("Protected text storage unavailable") from None
+                if str(uuid.UUID(str(client_record_id))) != client_record_id:
+                    return None, False
+                # A bounded queue cannot accumulate unlimited child text while
+                # the model is unavailable. Keep at most 1,000 protected records.
                 cursor = conn.execute(
                     """INSERT OR IGNORE INTO text_moderation_queue(
                            client_record_id, source_type, content_text,
@@ -649,10 +725,14 @@ class OfflineQueue:
                     ),
                 )
                 inserted = cursor.rowcount == 1
+                conn.execute("""DELETE FROM text_moderation_queue WHERE client_record_id IN (
+                    SELECT client_record_id FROM text_moderation_queue
+                    ORDER BY created_at DESC, client_record_id DESC LIMIT -1 OFFSET 1000
+                )""")
                 conn.commit()
             return client_record_id, inserted
         except Exception as e:
-            logging.error(f"Failed to enqueue text moderation record: {e}")
+            logging.warning("Text moderation record rejected (%s)", type(e).__name__)
             return None, False
 
     def add_daily_usage(self, seconds, usage_date=None):
@@ -699,6 +779,7 @@ class OfflineQueue:
 
     def sync_offline_data(self, api_client):
         """Đồng bộ hóa logs chưa gửi lên backend theo batch 100 bản ghi, có delay 200ms."""
+        self.refresh_text_policy()
         if api_client.suspended:
             logging.warning("Offline sync aborted because API client is suspended.")
             return
@@ -882,6 +963,7 @@ class OfflineQueue:
         """Send a small text batch and erase raw text as soon as it is acknowledged."""
         while True:
             try:
+                self.refresh_text_policy()
                 with self.get_connection() as conn:
                     conn.row_factory = sqlite3.Row
                     rows = conn.execute(
@@ -891,6 +973,19 @@ class OfflineQueue:
                 if not rows:
                     break
 
+                safe_rows = []
+                for row in rows:
+                    try:
+                        row = dict(row)
+                        row["content_text"] = clean_text(unprotect_text(row["content_text"]))
+                        safe_rows.append(row)
+                    except Exception:
+                        with self.get_connection() as conn:
+                            conn.execute("DELETE FROM text_moderation_queue WHERE client_record_id = ?", (row["client_record_id"],))
+                rows = safe_rows
+                if not rows:
+                    continue
+
                 records = [{
                     "client_record_id": row["client_record_id"],
                     "source_type": row["source_type"],
@@ -899,10 +994,21 @@ class OfflineQueue:
                     "domain": row["domain"],
                 } for row in rows]
                 record_ids = [record["client_record_id"] for record in records]
-                response = api_client.post(
-                    "/api/agent/text-moderation/batch",
-                    data={"records": records},
-                )
+                policy = self._text_policy()
+                if not all(eligible_timestamp(record["occurred_at"], policy) for record in records):
+                    self.refresh_text_policy()
+                    return
+                def should_send():
+                    current = self._text_policy()
+                    allowed = all(eligible_timestamp(record["occurred_at"], current) for record in records)
+                    if not allowed:
+                        self.refresh_text_policy()
+                    return allowed
+
+                if hasattr(api_client, "post_text_moderation"):
+                    response = api_client.post_text_moderation(records, should_send)
+                else:
+                    response = api_client.post("/api/agent/text-moderation/batch", data={"records": records}) if should_send() else None
                 if response is None:
                     return
                 if response.status_code == 201:
@@ -912,7 +1018,7 @@ class OfflineQueue:
                         )
                     except (ValueError, AttributeError) as error:
                         logging.error(
-                            f"Invalid text moderation acknowledgement: {error}"
+                            "Invalid text moderation acknowledgement"
                         )
                         return
                     accepted_ids = [
@@ -950,7 +1056,7 @@ class OfflineQueue:
                     return
                 time.sleep(0.200)
             except Exception as e:
-                logging.error(f"Error during text moderation sync: {e}")
+                logging.error("Text moderation sync failed (%s)", type(e).__name__)
                 return
 
     def cleanup_synced_logs(self, days=7):

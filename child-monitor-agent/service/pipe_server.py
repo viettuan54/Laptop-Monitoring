@@ -5,7 +5,6 @@ import logging
 import queue
 import re
 import threading
-import unicodedata
 import uuid
 import ctypes
 from ctypes import wintypes
@@ -16,6 +15,9 @@ import win32pipe
 import win32file
 import win32security
 import win32con
+
+from runtime_paths import agent_root
+from text_privacy import clean_text, eligible_timestamp, policy_enabled, safe_web_metadata
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -47,9 +49,7 @@ class PipeServer:
         content_text = record.get("text")
         if not isinstance(content_text, str):
             raise ValueError("Text moderation content must be text")
-        content_text = " ".join(
-            unicodedata.normalize("NFKC", content_text).split()
-        ).strip()
+        content_text = clean_text(content_text)
         if (
             not content_text
             or len(content_text) > 1000
@@ -675,7 +675,7 @@ class PipeServer:
                     message_str = data.decode('utf-8')
                     self._process_client_message(message_str, pipe_handle)
         except Exception as e:
-            logging.info(f"Companion client disconnected from Pipe: {e}")
+            logging.info("Companion client disconnected from Pipe: %s", type(e).__name__)
         finally:
             with self.lock:
                 if self.client_handle == pipe_handle:
@@ -760,6 +760,7 @@ class PipeServer:
                     domain,
                     allow_remote_fallback=False,
                 )
+                url, page_title = safe_web_metadata(url, page_title)
                 persisted_id, _ = self.offline_queue.enqueue_web_log(
                     url=url,
                     domain=domain.lower(),
@@ -774,21 +775,23 @@ class PipeServer:
                 if not persisted_id:
                     raise RuntimeError("Failed to persist browser visit")
                 tracking_ack = persisted_id
-                settings = self.enforcement_core.load_cached_settings()
-                if settings.get("enable_text_moderation") is True:
+                policy = self.enforcement_core.get_text_moderation_policy()
+                if eligible_timestamp(visit_time, policy):
                     text_record = msg.get("text_record")
                     if text_record is not None:
-                        text_payload = self.validate_text_moderation_record(
-                            text_record,
-                            client_record_id,
-                            visit_time,
-                            domain,
-                        )
-                        text_id, _ = self.offline_queue.enqueue_text_moderation(
-                            **text_payload
-                        )
-                        if not text_id:
-                            raise RuntimeError("Failed to persist text moderation record")
+                        try:
+                            text_payload = self.validate_text_moderation_record(
+                                text_record, client_record_id, visit_time, domain,
+                            )
+                        except ValueError:
+                            # Drop optional private/invalid text, without retrying it.
+                            text_payload = None
+                        if text_payload:
+                            text_id, _ = self.offline_queue.enqueue_text_moderation(**text_payload)
+                            if not text_id and eligible_timestamp(visit_time, self.enforcement_core.get_text_moderation_policy()):
+                                # A transient database failure should retry with
+                                # the same IDs; revoked/unavailable storage drops text.
+                                raise RuntimeError("Failed to persist text moderation record")
                 self.enforcement_core.remember_web_classification(
                     domain,
                     classification["category"],
@@ -845,7 +848,7 @@ class PipeServer:
             # Never leave both ends blocked (server waiting for another message
             # while Companion waits forever for this response). Return a generic
             # retryable error, then let _handle_client close this pipe instance.
-            logging.error("Error processing pipe message: %s", e, exc_info=True)
+            logging.error("Error processing pipe message: %s", type(e).__name__)
             try:
                 error_payload = json.dumps({
                     "error": "processing_failed",
@@ -876,8 +879,9 @@ class PipeServer:
         }
 
     def _get_text_moderation_config(self):
-        settings = self.enforcement_core.load_cached_settings()
-        return {"enabled": settings.get("enable_text_moderation") is True}
+        self.offline_queue.refresh_text_policy()
+        policy = self.enforcement_core.get_text_moderation_policy()
+        return policy if policy_enabled(policy) else {"enabled": False}
 
     def send_command_to_companion(self, command_dict):
         """Chủ động gửi lệnh (LOCK_NOW, WARNING...) tới Companion."""

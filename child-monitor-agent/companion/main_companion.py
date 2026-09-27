@@ -131,10 +131,14 @@ def main():
     vision_monitor.start()
     start_web_tracker(web_tracker)
 
+    def update_monitor_configs(response):
+        vision_monitor.update_config(response)
+        web_tracker.update_text_config(response)
+
     # Khởi chạy luồng timer 30s PING kiểm tra policy
     start_ping_timer(
         pipe_client,
-        response_callback=vision_monitor.update_config,
+        response_callback=update_monitor_configs,
         interval=30,
     )
 
@@ -142,7 +146,7 @@ def main():
         while True:
             try:
                 policy_response = tracker.poll()
-                vision_monitor.update_config(policy_response)
+                update_monitor_configs(policy_response)
                 handle_policy_response(policy_response)
 
             except Exception as e:

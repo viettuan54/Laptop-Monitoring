@@ -6,7 +6,7 @@ service_root = agent_root / "service"
 
 a = Analysis(
     [str(service_root / "main_service.py")],
-    pathex=[str(service_root)],
+    pathex=[str(service_root), str(agent_root)],
     binaries=[],
     datas=[],
     hiddenimports=["win32timezone"],

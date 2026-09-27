@@ -4,28 +4,18 @@ import os
 import shutil
 import sqlite3
 import time
-import unicodedata
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from runtime_paths import agent_root  # makes shared modules available in source builds
+from text_privacy import clean_text, eligible_timestamp, safe_web_metadata, search_parameter
+
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
 AGENT_VERSION = "1.0.14"
-GOOGLE_SEARCH_HOSTS = frozenset({
-    "google.com",
-    "google.com.vn",
-    "google.co.uk",
-    "google.co.jp",
-    "google.co.in",
-    "google.com.au",
-    "google.ca",
-    "google.de",
-    "google.fr",
-    "google.sg",
-})
 
 
 def extract_search_query(raw_url):
@@ -36,24 +26,7 @@ def extract_search_query(raw_url):
         parsed = urlparse(raw_url)
     except ValueError:
         return None
-    host = (parsed.hostname or "").lower().rstrip(".")
-    normalized_host = host[4:] if host.startswith("www.") else host
-    path = parsed.path.rstrip("/") or "/"
-    parameter = None
-    if normalized_host in GOOGLE_SEARCH_HOSTS and path == "/search":
-        parameter = "q"
-    elif (host == "bing.com" or host.endswith(".bing.com")) and path == "/search":
-        parameter = "q"
-    elif (host == "search.yahoo.com" or host.endswith(".search.yahoo.com")) and path == "/search":
-        parameter = "p"
-    elif (host == "duckduckgo.com" or host.endswith(".duckduckgo.com")) and path == "/":
-        parameter = "q"
-    elif (host == "coccoc.com" or host.endswith(".coccoc.com")) and path == "/search":
-        parameter = "query"
-    elif host in {"youtube.com", "www.youtube.com", "m.youtube.com"} and path == "/results":
-        parameter = "search_query"
-    elif host == "search.brave.com" and path == "/search":
-        parameter = "q"
+    parameter = search_parameter(raw_url)
     if not parameter:
         return None
     try:
@@ -66,13 +39,9 @@ def extract_search_query(raw_url):
         return None
     if not values or not isinstance(values[0], str):
         return None
-    query = unicodedata.normalize("NFKC", values[0])
-    query = " ".join(query.split()).strip()
-    if (
-        not query
-        or len(query) > 1000
-        or any(ord(character) < 32 or ord(character) == 127 for character in query)
-    ):
+    try:
+        query = clean_text(values[0])
+    except ValueError:
         return None
     return query
 
@@ -115,6 +84,12 @@ class WebTracker:
         self.checkpoints = self.load_checkpoints()
         self.tracker_instance_id = self._load_or_create_instance_id()
         self._current_scan_profiles = {}
+        self._text_policy = {}
+
+    def update_text_config(self, response):
+        config = response.get("text_moderation_config") if isinstance(response, dict) else None
+        # Missing/failed response revokes collection until a valid service reply.
+        self._text_policy = dict(config) if isinstance(config, dict) else {}
 
     def load_checkpoints(self):
         if os.path.isfile(self.checkpoint_path):
@@ -401,7 +376,9 @@ class WebTracker:
                     visit_time,
                     raw_url,
                 )
-                search_query = extract_search_query(raw_url)
+                search_query = None
+                if eligible_timestamp(visit_iso, self._text_policy):
+                    search_query = extract_search_query(raw_url)
                 text_record = None
                 if search_query:
                     text_record = {
@@ -414,15 +391,17 @@ class WebTracker:
                         "occurred_at": visit_iso,
                         "domain": parsed.hostname.lower()[:200],
                     }
+                safe_url, safe_title = safe_web_metadata(raw_url, title)
                 response = self.pipe_client.send_web_tracking(
-                    url=raw_url[:500],
+                    url=safe_url[:500],
                     domain=parsed.hostname.lower()[:200],
                     visit_time=visit_iso,
                     duration_seconds=duration_seconds,
-                    page_title=(title or parsed.hostname)[:500],
+                    page_title=safe_title[:500],
                     client_record_id=client_record_id,
                     text_record=text_record,
                 )
+                self.update_text_config(response)
                 if not isinstance(response, dict) or response.get("tracking_ack") != client_record_id:
                     profile_status["error"] = "service_did_not_acknowledge"
                     break
@@ -437,8 +416,8 @@ class WebTracker:
                 )
             return last_response
         except Exception as error:
-            logging.error("Error reading browser history for %s: %s", checkpoint_key, error)
-            profile_status["error"] = str(error)[:300]
+            logging.error("Error reading browser history (%s)", type(error).__name__)
+            profile_status["error"] = "history_read_failed"
             return None
         finally:
             self._remove_snapshot(snapshot_path)
@@ -448,6 +427,10 @@ class WebTracker:
         if not force and now - self.last_scan_monotonic < self.scan_interval_seconds:
             return None
         self.last_scan_monotonic = now
+
+        # Acquire fresh consent before reading text from any history rows. Other
+        # telemetry remains independent of the text feature.
+        self.update_text_config(self.pipe_client.send_ping())
 
         last_response = None
         browser_roots = self.get_browser_user_data_paths()

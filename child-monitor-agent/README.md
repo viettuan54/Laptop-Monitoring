@@ -158,16 +158,32 @@ kết quả tìm kiếm của Google, Bing, Yahoo, DuckDuckGo, Cốc Cốc, YouT
 Bộ phân tích văn bản không dùng page title/window title, không đọc nội dung trang
 và không giải mã HTTPS.
 
-Truy vấn được chuyển qua Named Pipe tới Service, ghi tạm trong SQLite đã giới hạn
-ACL cho SYSTEM/Administrators, rồi gửi theo lô tối đa 20 bản ghi tới
+Trước mỗi lần trích xuất, Companion phải có cấu hình bật còn hiệu lực từ Service.
+Lease dài 180 giây, gia hạn khi nhận cấu hình backend qua heartbeat/config;
+thiếu/hết hạn thì dừng trích xuất. Lịch sử trước phiên bật hiện tại không được
+đưa vào phân tích. Heartbeat thường mỗi 60 giây, Companion kiểm tra mỗi 15 giây;
+đây không phải công tắc đồng bộ tức thì khi thiết bị mất kết nối.
+
+Truy vấn được lọc email/điện thoại/secret/URL, chuyển qua Named Pipe tới Service,
+mã hoá Windows DPAPI trước khi ghi vào SQLite, giới hạn ACL chỉ
+SYSTEM/Administrators, rồi gửi theo lô tối đa 20 bản ghi tới
 `POST /api/agent/text-moderation/batch`. Bản ghi dùng UUID ổn định để retry không
 tạo kết quả trùng. Khi Backend xác nhận — kể cả khi tính năng vừa bị tắt — Service
-xóa ngay văn bản gốc khỏi hàng đợi; bản ghi chưa gửi quá 7 ngày cũng tự bị xóa.
+xóa hàng đợi văn bản. Khi nhận cấu hình tắt/hết lease, hàng đợi cũng được xóa,
+kể cả API đang suspended. Hàng đợi tối đa 1.000 bản ghi, TTL tối đa 7 ngày khi
+lease vẫn được gia hạn; khởi động lại Service sẽ bỏ hàng đợi văn bản cũ. Nếu
+không thiết lập được ACL hoặc không mã hoá được, không lưu văn bản.
+
+Log duyệt web thông thường chỉ giữ origin/tên miền, không giữ path, query,
+fragment hay tiêu đề trang. Đây là thay đổi có chủ ý để công tắc văn bản không
+bị vượt qua bằng metadata. Khi Service khởi động, metadata web cũ trong hàng
+đợi local cũng được làm sạch; lịch sử gốc của trình duyệt không bị xóa.
 
 Model ba nhãn chạy qua service local phía Backend, không dùng OpenAI Moderation.
-Phiên bản hiện tại mới thu thập nguồn `search_query`; schema Backend đã dành sẵn `page_content`,
-`chat_received` và `chat_authored` cho các bộ thu thập được người dùng cấp quyền
-trong giai đoạn sau.
+Phiên bản hiện tại mới thu thập nguồn `search_query`; endpoint backend nhận
+`search_query`/`page_content`, từ chối hai nguồn chat. Nội dung trang chưa có
+bộ thu thập/hàng đợi. Xem chi tiết nghiệm thu và giới hạn tại
+[bật/tắt và bảo vệ dữ liệu](docs/text_privacy_controls.md).
 
 ## Edge AI: khoảng cách mắt và tư thế
 

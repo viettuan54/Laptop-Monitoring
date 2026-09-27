@@ -79,6 +79,11 @@ async function moderateWithLocal(records, options) {
 
   let lastError;
   for (let attempt = 1; attempt <= 2; attempt += 1) {
+    if (options.beforeSend && !(await options.beforeSend())) {
+      const error = new Error('Text moderation disabled');
+      error.code = 'TEXT_MODERATION_DISABLED';
+      throw error;
+    }
     try {
       const headers = { 'Content-Type': 'application/json' };
       if (config.apiKey) headers['X-Local-Moderation-Key'] = config.apiKey;

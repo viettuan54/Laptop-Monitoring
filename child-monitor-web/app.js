@@ -1505,7 +1505,7 @@ async function renderPolicies(content) {
             <section class="setting-section"><h3>Phân loại AI & truy cập</h3><p>Chỉ phân loại và áp dụng chính sách Cho phép/Chặn khi công tắc tương ứng được bật. Khi tắt, nội dung đó được truy cập bình thường.</p>
               ${switchRow('enable_app_classification', 'Phân loại ứng dụng', 'Gán một trong 4 nhãn ứng dụng rồi áp dụng chính sách truy cập.', settings.enable_app_classification)}
               ${switchRow('enable_web_classification', 'Phân loại website', 'Gán một trong 5 nhãn website rồi áp dụng chính sách truy cập.', settings.enable_web_classification)}
-              ${switchRow('enable_text_moderation', 'Phân tích an toàn văn bản', 'Phân tích truy vấn tìm kiếm theo ngữ cảnh để cảnh báo dấu hiệu tự hại, bắt nạt hoặc bạo lực. Không lưu nguyên văn trên máy chủ.', settings.enable_text_moderation)}
+              ${switchRow('enable_text_moderation', 'Phân tích an toàn văn bản', 'Khi bật, Agent gửi truy vấn tìm kiếm mới tới backend để phân loại SAFE / RISK / HIGH_RISK. Chưa thu thập nội dung trang hoặc chat. Không lưu nguyên văn trên máy chủ; Agent xoá hàng đợi văn bản khi nhận cấu hình tắt hoặc cấu hình hết hạn. Thay đổi cần thời gian đồng bộ tới thiết bị.', settings.enable_text_moderation)}
             </section>
             <section class="setting-section"><h3>Quyền truy cập theo danh mục</h3><p>Chọn Cho phép hoặc Chặn cho từng nhóm. Với website, Agent ghi nhớ tên miền đã được AI phân loại và chặn các lần truy cập tiếp theo khi nhóm tương ứng đang chọn Chặn.</p>
               <div class="policy-groups">

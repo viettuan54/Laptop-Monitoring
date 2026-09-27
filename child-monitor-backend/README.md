@@ -59,7 +59,7 @@ API phân loại dành cho Agent (xác thực bằng `X-Device-Secret`):
 - `POST /api/agent/classification/web/fallback`: nhận body chỉ có `{ "domain": "example.com" }`; chỉ gọi Gemini khi công tắc website đang bật.
 - `GET /api/agent/classification/web/unknown-domains`: lấy domain `unknown` cũ của đúng thiết bị để backfill.
 - `POST /api/agent/classification/web/backfill`: lưu nhãn cuối cùng cùng `classification_source` và confidence.
-- `POST /api/agent/text-moderation/batch`: nhận tối đa 20 đoạn văn bản để phân tích ngay; chỉ lưu kết quả rủi ro và không lưu văn bản gốc trong PostgreSQL.
+- `POST /api/agent/text-moderation/batch`: nhận tối đa 20 đoạn `search_query`/`page_content` (không nhận chat); lọc định danh/secret, kiểm tra bật/tắt trước gọi model và trước lưu. Chỉ lưu nhãn/score/metadata, không lưu văn bản gốc trong PostgreSQL.
 
 `POST /api/agent/heartbeat` và `GET /api/agent/config` đều trả
 `enable_app_classification`, `enable_web_classification`, `enable_text_moderation`,
@@ -87,6 +87,12 @@ Cảnh báo
 không chứa lại câu tìm kiếm/chat gốc. Metadata kết quả được giữ 30 ngày, còn văn
 bản đầu vào chỉ tồn tại trong request xử lý và hàng đợi retry tối đa 7 ngày trên
 Agent. Xem hướng dẫn chạy service tại `../ai-training/text_safety/README.md`.
+
+Phần bật/tắt và bảo vệ dữ liệu đã triển khai cho query; chi tiết, độ trễ lease,
+thay đổi log web chỉ giữ domain và điều kiện nghiệm thu tại
+[text_privacy_controls.md](../child-monitor-agent/docs/text_privacy_controls.md).
+Không có migration SQL mới cho phần này; DB vẫn cần migration v22 của bước
+model ba nhãn. Không tự chạy migration/live deployment từ thay đổi code này.
 
 Production bắt buộc cấu hình:
 

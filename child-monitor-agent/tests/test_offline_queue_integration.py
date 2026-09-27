@@ -2,8 +2,10 @@ import os
 import sqlite3
 import sys
 import tempfile
+import time
 import unittest
 import uuid
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
 AGENT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -55,6 +57,10 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.db_path = os.path.join(self.temp_dir.name, "queue.db")
         self.queue = OfflineQueue(db_path=self.db_path, secure_file=False)
+        now = time.time()
+        self.text_policy = {"enabled": True, "issued_at": now, "expires_at": now + 180,
+                            "enabled_since": now - 60}
+        self.queue.set_text_policy_provider(lambda: self.text_policy)
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -460,11 +466,15 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
             client_record_id=record_id,
             source_type="search_query",
             content_text="mình cần được giúp đỡ",
-            occurred_at="2026-08-25T12:00:00+07:00",
+            occurred_at=datetime.now(timezone.utc).isoformat(),
             domain="www.google.com",
         )
         self.assertTrue(inserted)
         self.assertEqual(persisted_id, record_id)
+        with self.queue.get_connection() as conn:
+            stored = conn.execute("SELECT content_text FROM text_moderation_queue").fetchone()[0]
+        self.assertTrue(stored.startswith("dpapi:v1:"))
+        self.assertNotIn("mình cần được giúp đỡ", stored)
 
         api = FakeApiClient([record_id])
         self.queue._sync_text_moderation(api)
@@ -486,7 +496,7 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
             client_record_id=record_id,
             source_type="search_query",
             content_text="retry me",
-            occurred_at="2026-08-25T12:00:00+07:00",
+            occurred_at=datetime.now(timezone.utc).isoformat(),
             domain="www.google.com",
         )
 
@@ -497,6 +507,118 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
                 "SELECT COUNT(*) FROM text_moderation_queue"
             ).fetchone()[0]
         self.assertEqual(count, 1)
+
+    def _enqueue_current_text(self, text="mình cần giúp đỡ", source="search_query", occurred_at=None):
+        return self.queue.enqueue_text_moderation(
+            client_record_id=str(uuid.uuid4()), source_type=source, content_text=text,
+            occurred_at=occurred_at or datetime.now(timezone.utc).isoformat(), domain="www.google.com")
+
+    def _text_count(self):
+        with self.queue.get_connection() as conn:
+            return conn.execute("SELECT COUNT(*) FROM text_moderation_queue").fetchone()[0]
+
+    def test_disabled_expired_and_unknown_policy_delete_pending_text_even_when_api_suspended(self):
+        for policy in ({"enabled": False}, {}, {**self.text_policy, "expires_at": time.time() - 1}):
+            current = self.text_policy
+            self.assertTrue(self._enqueue_current_text()[1])
+            self.text_policy = policy
+            api = FakeApiClient([])
+            api.suspended = True
+            self.queue.sync_offline_data(api)
+            self.assertEqual(self._text_count(), 0)
+            self.assertEqual(api.calls, [])
+            self.assertEqual(self._enqueue_current_text(), (None, False))
+            self.text_policy = current
+
+    def test_sensitive_unsupported_and_pre_consent_text_is_not_persisted(self):
+        for text in ("email abc@example.com", "mật khẩu=private", "0901234567"):
+            self.assertEqual(self._enqueue_current_text(text), (None, False))
+        for source in ("chat_received", "chat_authored", "page_content"):
+            self.assertEqual(self._enqueue_current_text(source=source), (None, False))
+        old = datetime.fromtimestamp(self.text_policy["enabled_since"] - 1, timezone.utc).isoformat()
+        self.assertEqual(self._enqueue_current_text(occurred_at=old), (None, False))
+        self.assertEqual(self._text_count(), 0)
+
+    def test_restart_discards_pending_text_and_scrubs_legacy_web_metadata(self):
+        self._enqueue_current_text()
+        record_id = str(uuid.uuid4())
+        with self.queue.get_connection() as conn:
+            conn.execute("INSERT INTO web_logs(client_record_id,url,domain,page_title,visit_time) VALUES(?,?,?,?,?)",
+                         (record_id, "https://www.google.com/search?q=private", "www.google.com", "private title", "2026-09-26T08:00:00Z"))
+        restarted = OfflineQueue(db_path=self.db_path, secure_file=False)
+        self.assertEqual(self._text_count(), 0)
+        with restarted.get_connection() as conn:
+            row = conn.execute("SELECT url,page_title FROM web_logs WHERE client_record_id=?", (record_id,)).fetchone()
+        self.assertEqual(row, ("https://www.google.com/", "www.google.com"))
+
+    def test_queue_expiry_capacity_and_secure_delete(self):
+        self._enqueue_current_text()
+        with self.queue.get_connection() as conn:
+            self.assertEqual(conn.execute("PRAGMA secure_delete").fetchone()[0], 1)
+            conn.execute("UPDATE text_moderation_queue SET created_at=datetime('now','-8 days')")
+        self.queue.refresh_text_policy()
+        self.assertEqual(self._text_count(), 0)
+        now = datetime.now(timezone.utc).isoformat()
+        with self.queue.get_connection() as conn:
+            conn.executemany("INSERT INTO text_moderation_queue(client_record_id,source_type,content_text,occurred_at,created_at) VALUES(?,?,?,?,?)",
+                             [(str(uuid.uuid4()), "search_query", "old-protected", now, "2026-01-01T00:00:00Z") for _ in range(1000)])
+        self.assertTrue(self._enqueue_current_text()[1])
+        self.assertEqual(self._text_count(), 1000)
+
+    def test_revocation_before_api_retry_clears_text_and_prevents_dispatch(self):
+        self._enqueue_current_text()
+        test_case = self
+        class GuardedApi:
+            @staticmethod
+            def post_text_moderation(records, should_send):
+                test_case.text_policy = {"enabled": False}
+                test_case.assertFalse(should_send())
+                return None
+        self.queue._sync_text_moderation(GuardedApi())
+        self.assertEqual(self._text_count(), 0)
+
+    def test_corrupt_or_plaintext_rows_are_dropped_without_upload(self):
+        self._enqueue_current_text()
+        with self.queue.get_connection() as conn:
+            conn.execute("UPDATE text_moderation_queue SET content_text='private plaintext'")
+        api = FakeApiClient([])
+        self.queue._sync_text_moderation(api)
+        self.assertEqual(api.calls, [])
+        self.assertEqual(self._text_count(), 0)
+
+    def test_acl_replaces_permissions_with_only_system_and_admin_on_directory_and_database(self):
+        import offline_queue
+        import win32security
+        path = os.path.join(self.temp_dir.name, "db", "local.db")
+        with patch.object(offline_queue, "agent_root", return_value=self.temp_dir.name), \
+             patch.object(win32security, "SetNamedSecurityInfo") as set_security:
+            protected = OfflineQueue(db_path=path)
+        self.assertTrue(protected._text_storage_allowed)
+        self.assertEqual(set_security.call_count, 2)
+        for call in set_security.call_args_list:
+            self.assertTrue(call.args[2] & win32security.PROTECTED_DACL_SECURITY_INFORMATION)
+            dacl = call.args[5]
+            self.assertEqual(dacl.GetAceCount(), 2)
+            sids = {win32security.ConvertSidToStringSid(dacl.GetAce(index)[2]) for index in range(2)}
+            self.assertEqual(sids, {"S-1-5-18", "S-1-5-32-544"})
+
+    def test_acl_failure_disables_text_storage(self):
+        import offline_queue
+        import win32security
+        with patch.object(offline_queue, "agent_root", return_value=self.temp_dir.name), \
+             patch.object(win32security, "SetNamedSecurityInfo", side_effect=OSError("denied")):
+            failed = OfflineQueue(db_path=os.path.join(self.temp_dir.name, "db", "local.db"))
+        failed.set_text_policy_provider(lambda: self.text_policy)
+        self.assertFalse(failed._text_storage_allowed)
+        self.assertEqual(failed._text_policy(), {"enabled": False})
+
+    def test_encryption_failure_revokes_storage_without_plaintext_fallback(self):
+        with patch("offline_queue.protect_text", side_effect=OSError("private payload")), \
+             self.assertLogs(level="WARNING") as logs:
+            self.assertEqual(self._enqueue_current_text(), (None, False))
+        self.assertFalse(self.queue._text_storage_allowed)
+        self.assertEqual(self._text_count(), 0)
+        self.assertNotIn("private payload", " ".join(logs.output))
 
 
 if __name__ == "__main__":

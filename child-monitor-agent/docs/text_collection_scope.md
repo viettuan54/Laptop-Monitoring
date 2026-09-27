@@ -13,7 +13,7 @@ dưới đây phải được thực thi trước thử nghiệm với dữ li�
 
 | Nguồn | Được thu thập | Không được thu thập | Trạng thái code |
 | --- | --- | --- | --- |
-| `search_query` | Truy vấn trong URL kết quả tìm kiếm thuộc công cụ/path đã được hỗ trợ | Toàn bộ URL, mọi tham số URL, chuỗi nhập chưa gửi, lịch sử trước khi bật | Đã có bộ trích xuất; cần kiểm thử bật/tắt và loại dữ liệu nhạy cảm |
+| `search_query` | Truy vấn trong URL kết quả tìm kiếm thuộc công cụ/path đã được hỗ trợ | Toàn bộ URL, mọi tham số URL, chuỗi nhập chưa gửi, lịch sử trước khi bật | Đã có bộ trích xuất, lease bật/tắt, lọc nhạy cảm, hàng đợi mã hoá và test tự động |
 | `page_content` | Tiêu đề bài viết và các đoạn văn bản chính đang hiển thị trên trang công khai được cho phép | Toàn bộ HTML/DOM, biểu mẫu, chat, email, tài khoản, nội dung ẩn, trang nền | Chưa có bộ thu thập |
 | Chat | Không | Tin nhắn nhận/gửi, kể cả widget chat trên trang | Ngoài phạm vi |
 
@@ -146,6 +146,10 @@ Thứ tự công việc:
 Không triển khai bộ thu thập chat, không thêm nhãn hoặc tự bật production ở
 bước chốt phạm vi này. Không cần sửa thêm SQL chỉ để ghi nhận phạm vi; thay
 đổi contract nhiều đoạn có thể cần migration riêng ở bước sau.
+
+Phần 2 (bật/tắt và bảo vệ dữ liệu) đã triển khai cho nguồn tìm kiếm hiện có;
+xem [chi tiết và giới hạn nghiệm thu](text_privacy_controls.md). Các yêu cầu
+trang/extension/TTL 24 giờ vẫn là công việc chưa triển khai.
 
 ## 7. Tiêu chí nghiệm thu phạm vi và kiểm thử bộ thu thập
 

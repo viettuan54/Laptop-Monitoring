@@ -225,6 +225,8 @@ test('policy UI exposes and submits all AI analysis toggles', () => {
   assert.match(source, /switchRow\('enable_app_classification', 'Phân loại ứng dụng'/);
   assert.match(source, /switchRow\('enable_web_classification', 'Phân loại website'/);
   assert.match(source, /switchRow\('enable_text_moderation', 'Phân tích an toàn văn bản'/);
+  assert.match(source, /Chưa thu thập nội dung trang hoặc chat/);
+  assert.match(source, /Thay đổi cần thời gian đồng bộ tới thiết bị/);
   assert.match(source, /'enable_app_classification',[\s\S]*'enable_web_classification'/);
 });
 

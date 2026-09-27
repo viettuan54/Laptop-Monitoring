@@ -7,6 +7,7 @@ const {
   moderateWithLocal,
 } = require('./textModeration/local.provider');
 const DEFAULT_TEXT_MODERATION_PROVIDER = 'local';
+const { cleanText } = require('./textPrivacy.service');
 const VALID_SOURCE_TYPES = new Set([
   'search_query',
   'page_content',
@@ -63,7 +64,7 @@ function normalizeRecords(records) {
           || !value.trim() || value.length > 1000)) {
       throw new TypeError(`Moderation record ${index} has invalid context`);
     }
-    return { id, text: record.text, sourceType, direction, context };
+    return { id, text: cleanText(record.text), sourceType, direction, context: context.map(cleanText) };
   });
 }
 
@@ -76,7 +77,7 @@ async function moderateRecords(records, options = {}) {
     error.code = 'TEXT_MODERATION_PROVIDER_FAILED';
     throw error;
   }
-  const providerOptions = { config, fetchImpl };
+  const providerOptions = { config, fetchImpl, beforeSend: options.beforeSend };
   return moderateWithLocal(normalizedRecords, providerOptions);
 }
 

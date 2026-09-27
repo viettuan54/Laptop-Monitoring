@@ -10,7 +10,7 @@ mediapipe_binaries = collect_dynamic_libs("mediapipe")
 
 a = Analysis(
     [str(companion_root / "main_companion.py")],
-    pathex=[str(companion_root)],
+    pathex=[str(companion_root), str(agent_root)],
     binaries=mediapipe_binaries,
     datas=mediapipe_datas,
     hiddenimports=["mediapipe"],

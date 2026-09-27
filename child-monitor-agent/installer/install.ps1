@@ -117,6 +117,7 @@ Copy-Item -Force "$AgentRoot\installer\*.py" "$resolvedInstallDir\installer\"
 Copy-Item -Force "$AgentRoot\installer\uninstall.ps1" "$resolvedInstallDir\installer\"
 Copy-Item -Force "$AgentRoot\installer\provision.ps1" "$resolvedInstallDir\installer\"
 Copy-Item -Force "$AgentRoot\requirements.txt" "$resolvedInstallDir\requirements.txt"
+Copy-Item -Force -LiteralPath "$AgentRoot\text_privacy.py" -Destination "$resolvedInstallDir\text_privacy.py"
 
 $requiredModels = @(
     @{
