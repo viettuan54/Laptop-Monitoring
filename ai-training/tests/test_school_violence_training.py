@@ -107,6 +107,16 @@ class SchoolViolenceTrainingTests(unittest.TestCase):
             self.assertEqual(configuration["input_columns"], ["text"])
             self.assertFalse(configuration["resplit"])
             self.assertEqual(configuration["selected_alpha"], model["alpha"])
+            candidates = report["validation_candidates"]
+            self.assertEqual([item["alpha"] for item in candidates], list(configuration["alpha_candidates"]))
+            self.assertEqual(configuration["selected_alpha"],
+                             max(candidates, key=lambda item: item["metrics"]["macro_f1"])["alpha"])
+            self.assertFalse(configuration["test_used_for_selection"])
+            for split in ("validation", "test"):
+                by_file = report[f"{split}_by_input_file"]
+                self.assertEqual(set(by_file), {query.name, page.name})
+                self.assertEqual(sum(item["rows"] for item in by_file.values()),
+                                 sum(report["split"]["counts"][split].values()))
             self.assertEqual(model["training_configuration"], configuration)
             self.assertEqual(model["model_version"], "test-model-v3")
             self.assertEqual(model["dataset_version"], "combined-test-v2.2")

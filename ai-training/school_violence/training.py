@@ -304,6 +304,16 @@ def evaluate(model: dict, records: list[dict]) -> dict:
     }
 
 
+def evaluate_by_input_file(model: dict, records: list[dict]) -> dict[str, dict]:
+    """Report query/page performance separately without using provenance as a feature."""
+    subsets: dict[str, list[dict]] = defaultdict(list)
+    for record in records:
+        for file_name in {reference["file"] for reference in record["source_refs"]}:
+            subsets[file_name].append(record)
+    return {file_name: {"rows": len(rows), **evaluate(model, rows)}
+            for file_name, rows in sorted(subsets.items())}
+
+
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
@@ -329,7 +339,8 @@ def run(source: Path | list[Path], output: Path, *, validate_only: bool = False,
         "algorithm": "multinomial_character_ngram_naive_bayes",
         "input_columns": ["text"], "ngram_range": list(NGRAM_RANGE),
         "alpha_candidates": list(alpha_candidates), "selected_alpha": None,
-        "selection_metric": "validation.macro_f1", "test_used_for_selection": False,
+        "selection_metric": "validation.macro_f1", "selection_tie_break": "first_candidate_order",
+        "test_used_for_selection": False,
         "split_strategy": SPLIT_STRATEGY, "resplit": False,
         "model_version": model_version, "dataset_version": dataset_version,
         "source_dataset_versions": source_versions,
@@ -378,20 +389,26 @@ def run(source: Path | list[Path], output: Path, *, validate_only: bool = False,
                            "review_status": record["review_status"], "source": record["source"]}
                 handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
     best = None
+    validation_candidates = []
     for alpha in alpha_candidates:
         model = fit(splits["train"], alpha, model_version=model_version)
         validation = evaluate(model, splits["validation"])
+        validation_candidates.append({"alpha": alpha, "metrics": validation})
         if best is None or validation["macro_f1"] > best[1]["macro_f1"]:
             best = (model, validation)
     model, validation = best
+    report["validation_candidates"] = validation_candidates
+    report["validation"] = validation
+    report["validation_by_input_file"] = evaluate_by_input_file(model, splits["validation"])
+    # The held-out test is touched only after the alpha has been selected.
     test = evaluate(model, splits["test"])
+    report["test_by_input_file"] = evaluate_by_input_file(model, splits["test"])
     report["trained_at_utc"] = datetime.now(timezone.utc).isoformat()
     report["training_performed"] = True
     configuration["selected_alpha"] = model["alpha"]
     model.update(dataset_version=dataset_version,
                  combined_dataset_sha256=audit["combined_dataset_sha256"],
                  training_configuration=configuration, deployment_eligible=False)
-    report["validation"] = validation
     report["test"] = test
     with gzip.open(output / "model.json.gz", "wt", encoding="utf-8") as handle:
         json.dump(model, handle, ensure_ascii=False, separators=(",", ":"))

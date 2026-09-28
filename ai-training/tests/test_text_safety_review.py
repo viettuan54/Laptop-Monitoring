@@ -34,6 +34,75 @@ class ThreeLabelReviewTest(unittest.TestCase):
             with source.open("r", encoding="utf-8", newline="") as handle:
                 self.assertEqual(next(csv.DictReader(handle))["label"], "RISK")
 
+    def test_partial_decisions_only_mark_submitted_rows_reviewed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source, decisions, output = base / "source.csv", base / "decisions.jsonl", base / "reviewed.csv"
+            with source.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["id", "text", "label", "group_id", "split", "source", "review_status", "dataset_version", "annotation_status"])
+                writer.writerow(["item-1", "Em bị đánh", "RISK", "g1", "train", "synthetic", "unreviewed", "v2.2", "needs_human_context_review"])
+                writer.writerow(["item-2", "Học toán", "SAFE", "g2", "test", "synthetic", "unreviewed", "v2.2", "automated_policy_alignment_unreviewed"])
+            original = source.read_bytes()
+            decisions.write_text(json.dumps({"id": "item-1", "label": "HIGH_RISK", "annotator_id": "reviewer-1"}) + "\n", encoding="utf-8")
+            result = apply_reviews(source, decisions, output, dataset_version="v2.3")
+            self.assertEqual(result["decisions_applied"], 1)
+            self.assertEqual(result["reviewed_rows"], 1)
+            self.assertEqual(result["changed_labels"], 1)
+            self.assertEqual(result["dataset_version"], "v2.3")
+            with output.open("r", encoding="utf-8-sig", newline="") as handle:
+                rows = {row["id"]: row for row in csv.DictReader(handle)}
+            self.assertEqual(rows["item-1"]["label"], "HIGH_RISK")
+            self.assertEqual(rows["item-1"]["label_before_human_review"], "RISK")
+            self.assertEqual(rows["item-1"]["annotator_id"], "reviewer-1")
+            self.assertEqual(rows["item-1"]["review_status"], "reviewed")
+            self.assertEqual(rows["item-1"]["annotation_status"], "human_reviewed")
+            self.assertEqual(rows["item-2"]["label"], "SAFE")
+            self.assertEqual(rows["item-2"]["review_status"], "unreviewed")
+            self.assertEqual(rows["item-2"]["annotation_status"], "automated_policy_alignment_unreviewed")
+            self.assertEqual(rows["item-2"]["annotator_id"], "")
+            self.assertEqual(rows["item-2"]["label_before_human_review"], "")
+            self.assertEqual({row["dataset_version"] for row in rows.values()}, {"v2.3"})
+            self.assertEqual(source.read_bytes(), original)
+
+    def test_rejects_missing_decision_version_and_equivalent_label_conflict(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source, decisions, output = base / "source.csv", base / "decisions.jsonl", base / "reviewed.csv"
+            with source.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["id", "text", "text_normalized", "label", "split", "source", "review_status", "dataset_version"])
+                writer.writerow(["one", "bi bat nat", "bị bắt nạt", "RISK", "train", "synthetic", "unreviewed", "v2.2"])
+                writer.writerow(["two", "bị bắt nạt", "bị bắt nạt", "RISK", "train", "synthetic", "unreviewed", "v2.2"])
+            decisions.write_text(json.dumps({"id": "one", "label": "HIGH_RISK", "annotator_id": "reviewer-1"}) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "dataset_version"):
+                apply_reviews(source, decisions, output)
+            with self.assertRaisesRegex(ValueError, "dataset_version"):
+                apply_reviews(source, decisions, output, dataset_version="v2.2")
+            with self.assertRaisesRegex(ValueError, "Conflicting labels for equivalent"):
+                apply_reviews(source, decisions, output, dataset_version="v2.3")
+            self.assertFalse(output.exists())
+            decisions.write_text("", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "at least one decision"):
+                apply_reviews(source, decisions, output, dataset_version="v2.3")
+            decisions.write_text(json.dumps({"id": "missing", "label": "RISK", "annotator_id": "reviewer-1"}) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "known unique source IDs"):
+                apply_reviews(source, decisions, output, dataset_version="v2.3")
+
+    def test_partial_relabel_cannot_split_an_originally_consistent_group(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            source, decisions, output = base / "source.csv", base / "decisions.jsonl", base / "reviewed.csv"
+            with source.open("w", encoding="utf-8", newline="") as handle:
+                writer = csv.writer(handle)
+                writer.writerow(["id", "text", "label", "group_id", "split", "source", "review_status", "dataset_version"])
+                writer.writerow(["one", "Bị bắt nạt thì làm sao", "RISK", "linked", "train", "synthetic", "unreviewed", "v2.2"])
+                writer.writerow(["two", "Bị bắt nạt xử lý thế nào", "RISK", "linked", "train", "synthetic", "unreviewed", "v2.2"])
+            decisions.write_text(json.dumps({"id": "one", "label": "HIGH_RISK", "annotator_id": "reviewer-1"}) + "\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "single-label group"):
+                apply_reviews(source, decisions, output, dataset_version="v2.3")
+            self.assertFalse(output.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

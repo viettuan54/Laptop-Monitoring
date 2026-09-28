@@ -9,9 +9,23 @@ báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa tr
 `HIGH_RISK`. Không thêm nhãn mới. Model v2 chưa được huấn luyện lại theo các
 đối chứng trong hướng dẫn này.
 
-Trainer mới mặc định tạo model version `vi-school-violence-char-nb-v3` khi được
-chạy huấn luyện. Việc sửa trainer không tự train hoặc thay artifact v2 mà service
-đang nạp. Chạy từ `ai-training` với Python 3.11; không cần tải package/model từ Internet.
+Tiền kiểm nhãn v2.2, **không** tự ghi `reviewed`:
+
+```powershell
+.\.venv\Scripts\python.exe -B -m school_violence.audit_labels_v2_2
+```
+
+Kết quả `Mô tả/label_review_v2_2/audit_report.json` và `review_queue.jsonl`
+ưu tiên 100 query ngắn, sau đó 393 câu phủ định và 51 mẫu đối chứng.
+Đây chỉ là hàng đợi/quan sát tự động. Người đánh giá xem từng câu cùng ngữ cảnh,
+ghi quyết định trong JSONL riêng theo hướng dẫn ở `datasets/text_safety/README.md`.
+Không đưa hàng đợi hay cột metadata vào đặc trưng model và không tuyên bố dữ
+liệu đã kiểm duyệt khi chưa có quyết định thực tế của người đánh giá.
+
+Trainer mặc định tạo model version `vi-school-violence-char-nb-v3`. Bản thử nghiệm
+v3 đã được train trên hai CSV v2.2; service vẫn nạp artifact v2 theo cấu hình hiện
+tại, không tự chuyển sang v3. Chạy từ `ai-training` với Python 3.11; không cần tải
+package/model từ Internet.
 
 Kiểm tra hai nguồn kết hợp, không train và không ghi artifact:
 
@@ -50,8 +64,8 @@ cơ bản; dữ liệu nội bộ/real-world cần quy trình nhập liệu và 
 Chương trình không sửa CSV gốc. Giữ đúng trạng thái duyệt, không tự nhận đã được
 con người duyệt; mẫu gộp chỉ là `reviewed` nếu mọi bản nguồn đều đã được duyệt.
 
-Sau khi rà soát nhãn và quyết định train thử nghiệm, bỏ `--validate-only`.
-Thư mục output phải trống. Lệnh train sẽ tạo:
+Để lặp lại thí nghiệm, bỏ `--validate-only` và dùng thư mục output mới, trống.
+Lệnh train tạo:
 
 - `train.jsonl`, `validation.jsonl`, `test.jsonl`: đúng tập trong CSV, giữ nhóm
   và nguồn gốc (file, số bản ghi, ID, phiên bản nguồn).
@@ -61,8 +75,9 @@ Thư mục output phải trống. Lệnh train sẽ tạo:
   thống kê nhóm, loại trùng và kiểm tra rò rỉ.
 - `training_config.json`: chỉ đầu vào `text`, n-gram, các alpha thử nghiệm,
   alpha được chọn, cách giữ split và SHA-256 code trainer/bộ chuẩn hóa.
-- `evaluation_report.json`: cấu hình, provenance và precision/recall/F1 từng
-  nhãn, FP/FN, confusion matrix và recall `HIGH_RISK`.
+- `evaluation_report.json`: kết quả từng alpha trên validation, cấu hình được
+  chọn, precision/recall/F1 từng nhãn, FP/FN, confusion matrix, recall
+  `HIGH_RISK` và kết quả riêng query/webpage trên test.
 
 `--model-version` đổi version model; `--dataset-version` đặt tên phiên bản bộ
 kết hợp (không thay phiên bản nguồn trong manifest). Mặc định hai CSV v2.2
@@ -79,6 +94,25 @@ chưa có kiểm duyệt nhãn hoặc bộ kiểm thử thực tế độc lập
 Service local có thể dùng artifact này trong môi trường phát triển, nhưng
 production từ chối nạp khi `deployment_eligible` còn là `false`.
 
+Kết quả lần train v3 trên 11.986 mẫu v2.2: train 8.390, validation 1.799, test
+1.797. Trong ba alpha `0.5`, `1.0`, `2.0`, validation macro-F1 chọn `0.5`
+(0,98897). Test macro-F1 là 0,98791; recall `HIGH_RISK` là 600/600, nhưng
+22 mẫu khác bị dự đoán nhầm thành `HIGH_RISK` (7 `SAFE`, 15 `RISK`); precision
+`HIGH_RISK` là 0,96463. Riêng query test macro-F1 0,97607, webpage test 1,0.
+Điểm hoàn hảo ở webpage tổng hợp là dấu hiệu dễ khớp mẫu, không phải chứng cứ
+hoạt động tốt trên web thực tế. Tất cả 11.986 mẫu vẫn `unreviewed`.
+
+Đối chiếu thêm 12 câu tổng hợp trong `policy_examples.example.jsonl` (không
+phải test độc lập) cho 10/12 câu đúng. Model dự đoán `HIGH_RISK` sai ở câu
+`SAFE` "Bạn bè cùng nhau ôn bài và giúp đỡ nhau trong lớp." và câu phủ định
+`RISK` "Tôi không bị bạn đánh". Không dùng điểm test tổng hợp để bỏ qua hai
+lỗi này hoặc bật cảnh báo production.
+
+Ma trận nhầm lẫn, FP/FN từng nhãn và quy trình kiểm thử trên tập thực tế độc
+lập được ghi ở `REAL_WORLD_EVALUATION.md`. Công cụ
+`python -m school_violence.evaluate_real_world` chỉ nhận tập đã ẩn danh,
+được phép dùng và thực sự gán nhãn; không tự tạo hoặc giả định tập này đã có.
+
 Thử suy luận cục bộ (PowerShell):
 
 ```powershell
@@ -86,8 +120,7 @@ Thử suy luận cục bộ (PowerShell):
   --model .\artifacts\school_violence\vi-school-violence-char-nb-v3\model.json.gz
 ```
 
-Lệnh inference v3 chỉ dùng được sau khi thực sự tạo artifact v3; không đổi
-đường dẫn mặc định của service trong bước sửa trainer.
+Artifact v3 đã được tạo; đường dẫn mặc định của service vẫn trỏ đến v2.
 
 Trước tích hợp sản phẩm cần tập câu thực tế đã ẩn danh, có quyền sử dụng và
 được gán nhãn; chia theo người dùng/hội thoại; đánh giá sai sót `HIGH_RISK`
