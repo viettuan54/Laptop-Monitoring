@@ -22,6 +22,9 @@ from . import training
 
 
 SOURCE_TYPES = ("search_query", "page_content")
+PLACEHOLDER_PERMISSION_REFERENCES = {
+    "unknown", "n/a", "na", "none", "not_applicable_synthetic",
+}
 REQUIRED = {
     "id", "text", "label", "source_type", "group_id", "split",
     "source", "review_status", "annotator_id", "pii_removed",
@@ -74,7 +77,9 @@ def load_holdout(path: Path) -> tuple[list[dict], dict]:
         text = _nonempty_string(row, "text", line_number)
         _nonempty_string(row, "group_id", line_number)
         _nonempty_string(row, "annotator_id", line_number)
-        _nonempty_string(row, "permission_reference", line_number)
+        permission_reference = _nonempty_string(row, "permission_reference", line_number)
+        if permission_reference.lower() in PLACEHOLDER_PERMISSION_REFERENCES:
+            raise ValueError(f"Line {line_number}: permission_reference is a placeholder")
         versions.add(_nonempty_string(row, "dataset_version", line_number))
         if identifier in seen_ids:
             raise ValueError(f"Line {line_number}: duplicate holdout ID")

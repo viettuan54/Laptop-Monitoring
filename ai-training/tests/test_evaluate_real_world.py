@@ -90,6 +90,7 @@ class RealWorldEvaluatorTests(unittest.TestCase):
             ({"source": "synthetic"}, "real_world/test"),
             ({"pii_removed": False}, "de-identification"),
             ({"permission_reference": ""}, "permission_reference"),
+            ({"permission_reference": "not_applicable_synthetic"}, "placeholder"),
             ({"text": "example@example.com"}, "private identifier"),
             ({"text": "https://example.org/page"}, "private identifier"),
             ({"text": "a" * 1001}, "1000-character limit"),
