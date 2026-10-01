@@ -22,7 +22,7 @@ def holdout_row(identifier, label, source_type, text):
         "id": identifier, "text": text, "label": label, "source_type": source_type,
         "group_id": f"holdout-group-{identifier}", "split": "test",
         "source": "real_world", "review_status": "reviewed",
-        "annotator_id": "fixture-reviewer", "pii_removed": True,
+        "pii_removed": True,
         "permission_reference": "fixture-permission", "dataset_version": "fixture-v1",
     }
 
@@ -102,6 +102,20 @@ class RealWorldEvaluatorTests(unittest.TestCase):
                     load_holdout(self.holdout)
                 self.rows[0] = holdout_row("search_query-SAFE", "SAFE", "search_query",
                                            "holdout search_query SAFE")
+
+    def test_query_only_holdout_needs_no_page_samples_or_reviewer_code(self):
+        self.rows = [row for row in self.rows if row["source_type"] == "search_query"]
+        self._write_rows()
+        report = evaluate_holdout(self.holdout, self.artifacts)
+        self.assertEqual(report["holdout"]["rows"], 3)
+        self.assertEqual(set(report["by_source_type"]), {"search_query"})
+        self.assertFalse(report["deployment_eligible"])
+
+    def test_pages_alone_cannot_validate_search_query_scope(self):
+        self.rows = [row for row in self.rows if row["source_type"] == "page_content"]
+        self._write_rows()
+        with self.assertRaisesRegex(ValueError, "search_query needs all three labels"):
+            load_holdout(self.holdout)
 
     def test_rejects_reference_overlap_and_missing_source_label(self):
         self.rows[0]["text"] = "reference train SAFE"

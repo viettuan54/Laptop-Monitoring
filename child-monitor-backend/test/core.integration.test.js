@@ -654,8 +654,13 @@ test('Agent config exposes switches and web backfill becomes visible to parent a
   assert.equal(noFallback.status, 409);
 });
 
-test('Agent text moderation reaches the local provider, stores metadata and creates one alert', async () => {
-  const rawText = 'Cách tự tử - integration private text';
+for (const [label, action, severity, alertType, expectedMessage] of [
+  ['RISK', 'review', 'medium', 'text_risk', 'quan sát, trò chuyện và quan tâm bé trong thời gian này'],
+  ['HIGH_RISK', 'alert', 'high', 'text_violence', 'Bé có dấu hiệu bị bạo lực'],
+  ['SAFE', 'allow', 'low', null, null],
+]) {
+test(`Agent search query ${label} reaches the provider and applies the parent alert policy`, async () => {
+  const rawText = 'Truy vấn thử nghiệm bạo lực học đường - integration private text';
   const clientRecordId = crypto.randomUUID();
   let providerCalls = 0;
   let capturedProviderRequest;
@@ -678,11 +683,11 @@ test('Agent text moderation reaches the local provider, stores metadata and crea
         deploymentEligible: false,
         results: [{
           id: item.id,
-          flagged: true,
-          action: 'alert',
-          label: 'HIGH_RISK',
+          flagged: label !== 'SAFE',
+          action,
+          label,
           confidence: 0.94,
-          scores: { SAFE: 0.02, RISK: 0.04, HIGH_RISK: 0.94 },
+          scores: Object.fromEntries(['SAFE', 'RISK', 'HIGH_RISK'].map((key) => [key, key === label ? 0.94 : 0.03])),
         }],
       }));
     });
@@ -725,12 +730,15 @@ test('Agent text moderation reaches the local provider, stores metadata and crea
       },
       body: JSON.stringify(payload),
     });
+    const alertCountBefore = await adminPool.query(
+      'SELECT COUNT(*)::int AS count FROM alerts WHERE device_id = $1', [deviceOne]
+    );
     const first = await sendBatch();
     const retry = await sendBatch();
 
     assert.equal(first.status, 201);
     assert.deepEqual(first.body.accepted_client_record_ids, [clientRecordId]);
-    assert.equal(first.body.flagged_count, 1);
+    assert.equal(first.body.flagged_count, label === 'SAFE' ? 0 : 1);
     assert.equal(retry.status, 201);
     assert.equal(retry.body.flagged_count, 0);
     assert.equal(providerCalls, 1);
@@ -747,24 +755,34 @@ test('Agent text moderation reaches the local provider, stores metadata and crea
       [deviceOne, clientRecordId]
     );
     assert.equal(event.rows.length, 1);
-    assert.equal(event.rows[0].status, 'flagged');
+    assert.equal(event.rows[0].status, label === 'SAFE' ? 'safe' : 'flagged');
     assert.equal(event.rows[0].risk_type, null);
-    assert.equal(event.rows[0].severity, 'high');
-    assert.equal(event.rows[0].classification_label, 'HIGH_RISK');
+    assert.equal(event.rows[0].severity, severity);
+    assert.equal(event.rows[0].classification_label, label);
     assert.equal(event.rows[0].confidence, 0.94);
     assert.equal(event.rows[0].moderation_model, 'vi-school-violence-integration');
-    assert.equal(event.rows[0].label_scores.HIGH_RISK, 0.94);
+    assert.equal(event.rows[0].label_scores[label], 0.94);
     assert.equal(JSON.stringify(event.rows[0]).includes(rawText), false);
 
-    const alerts = await adminPool.query(
-      `SELECT alert_type::text AS alert_type, message
-       FROM alerts
-       WHERE device_id = $1 AND alert_type = 'text_violence'`,
-      [deviceOne]
+    const alertCountAfter = await adminPool.query(
+      'SELECT COUNT(*)::int AS count FROM alerts WHERE device_id = $1', [deviceOne]
     );
-    assert.equal(alerts.rows.length, 1);
-    assert.equal(alerts.rows[0].alert_type, 'text_violence');
-    assert.equal(alerts.rows[0].message.includes(rawText), false);
+    assert.equal(alertCountAfter.rows[0].count - alertCountBefore.rows[0].count, alertType ? 1 : 0);
+    if (alertType) {
+      const login = await request('/api/auth/login', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: emails[0], password: 'Integration1!' }),
+      });
+      assert.equal(login.status, 200);
+      const alerts = await request(`/api/alerts?device_id=${deviceOne}`, {
+        headers: { authorization: `Bearer ${login.body.accessToken}` },
+      });
+      assert.equal(alerts.status, 200);
+      const matching = alerts.body.data.filter((row) => row.alert_type === alertType);
+      assert.equal(matching.length, 1);
+      assert.ok(matching[0].message.includes(expectedMessage));
+      assert.equal(matching[0].message.includes(rawText), false);
+    }
 
     const columns = await adminPool.query(
       `SELECT column_name
@@ -784,3 +802,4 @@ test('Agent text moderation reaches the local provider, stores metadata and crea
     await new Promise((resolve) => providerServer.close(resolve));
   }
 });
+}

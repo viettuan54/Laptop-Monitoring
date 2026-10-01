@@ -42,7 +42,7 @@ BEGIN
         CREATE TYPE risk_level AS ENUM ('low', 'medium', 'high');
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'alert_type') THEN
-        CREATE TYPE alert_type AS ENUM ('time_exceeded', 'unsafe_website', 'app_overuse', 'night_usage', 'posture_warning', 'stranger_detected', 'eye_distance_warning', 'text_self_harm', 'text_harassment', 'text_violence');
+        CREATE TYPE alert_type AS ENUM ('time_exceeded', 'unsafe_website', 'app_overuse', 'night_usage', 'posture_warning', 'stranger_detected', 'eye_distance_warning', 'text_self_harm', 'text_harassment', 'text_violence', 'text_risk');
     END IF;
 END $$;
 

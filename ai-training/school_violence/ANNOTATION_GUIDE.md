@@ -1,8 +1,24 @@
 # Quy tắc gán nhãn bạo lực học đường
 
 Giữ đúng ba nhãn `SAFE`, `RISK`, `HIGH_RISK`, một nhãn cho mỗi mẫu.
-Áp dụng cho `search_query` và `page_content`; chưa triển khai thu thập chat.
-Nhãn phản ánh tín hiệu trong văn bản, không xác nhận tình trạng của người đọc.
+Giai đoạn hiện tại chỉ áp dụng cảnh báo cho `search_query` trẻ gửi từ máy Agent.
+Phân tích `page_content` làm sau; ví dụ trang ở đây chỉ dùng cho nghiên cứu tiếp theo.
+Nhãn phản ánh dấu hiệu trong câu tìm kiếm, không xác nhận trẻ đã bị bạo lực.
+
+## Kết quả gửi đến phụ huynh
+
+- `SAFE`: không tạo cảnh báo.
+- `RISK`: tạo cảnh báo “Cần quan sát bé trong thời gian này”.
+- `HIGH_RISK`: tạo cảnh báo “Bé có dấu hiệu bị bạo lực”.
+
+Agent gửi câu tìm kiếm mới khi tính năng được bật; service local phân loại,
+backend lưu nhãn và tạo cảnh báo trên trang quản lý phụ huynh. Hai mức cảnh
+báo có thời gian chống lặp riêng để `RISK` không che mất `HIGH_RISK`.
+Quyết định duyệt nhãn chỉ cần `id` và `label`, không cần mã người duyệt.
+Theo quyết định dữ liệu v2.3, 393 câu query phủ định tổng hợp đã được loại
+khỏi tập train/validation/test mới. Các quy tắc bên dưới vẫn giúp hiểu kết
+quả trên câu thực tế; chỉ riêng sự xuất hiện của từ “không” không làm Agent
+bỏ qua câu tìm kiếm.
 
 | Nội dung | Nhãn | Ví dụ |
 | --- | --- | --- |

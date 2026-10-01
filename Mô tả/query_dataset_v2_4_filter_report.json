@@ -1,0 +1,48 @@
+{
+  "dataset_version": "v2.4",
+  "source_file": "laptopmonitoring_query_dataset_v2_3.csv",
+  "source_sha256": "b0b95d6d8b9e26f37c4c4384ae5b432fcfc2cf6752ddeeb57bfdb067ad8dd8b0",
+  "selection_basis": "13 test-only ambiguous rows labeled RISK; user confirmed v4-query HIGH_RISK predictions were correct",
+  "filter_scope": "test_only",
+  "excluded_rows_original_test_label": "RISK",
+  "excluded_rows_user_confirmed_model_label": "HIGH_RISK",
+  "baseline_model_sha256": "a7ecf2eeb0191bb6c0c626000b2302f5a465542cded77d0c95780b5cbd4bac85",
+  "test_score_independent": false,
+  "source_rows": 5607,
+  "retained_rows": 5594,
+  "excluded_rows": 13,
+  "excluded_ids": [
+    "Q_002005",
+    "Q_002010",
+    "Q_002013",
+    "Q_002029",
+    "Q_002036",
+    "Q_002044",
+    "Q_002053",
+    "Q_002057",
+    "Q_002058",
+    "Q_003402",
+    "Q_003706",
+    "Q_003708",
+    "Q_003709"
+  ],
+  "excluded_by_split": {
+    "test": 13
+  },
+  "excluded_by_label": {
+    "RISK": 13
+  },
+  "retained_by_split": {
+    "test": 823,
+    "validation": 839,
+    "train": 3932
+  },
+  "retained_by_label": {
+    "SAFE": 1607,
+    "RISK": 1987,
+    "HIGH_RISK": 2000
+  },
+  "source_unchanged": true,
+  "retained_rows_human_review_claimed": false,
+  "output_sha256": "80ed4986c35eadf9e7e6e4c8ed2be0864be75c8d081b2cd218451af19bd75ff1"
+}

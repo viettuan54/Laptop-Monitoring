@@ -13,7 +13,9 @@ $env:TEXT_SAFETY_API_KEY = "replace-with-a-long-random-secret"
 ```
 
 Mặc định service nạp
-`ai-training/artifacts/school_violence/vi-school-violence-char-nb-v2/model.json.gz`.
+`ai-training/artifacts/school_violence/vi-school-violence-char-nb-v5-query/model.json.gz`.
+Artifact này tạo từ 5.594 câu tìm kiếm v2.4 sau khi loại 393 câu phủ định
+và 13 câu ngắn mơ hồ; xem `Mô tả/DATASET_QUERY_V2_4_README.md` để tái lập.
 Có thể đặt `TEXT_SAFETY_MODEL_PATH` tới artifact khác. `GET /health` trả phiên
 bản model và label; `POST /v1/moderate` nhận batch tối đa 20 câu với
 `X-Local-Moderation-Key` và trả mỗi câu:
@@ -26,6 +28,14 @@ bản model và label; `POST /v1/moderate` nhận batch tối đa 20 câu với
 không lỗi, nhưng model ba nhãn hiện chỉ học từ `text`; không dùng các trường
 đó làm đặc trưng. Không gọi OpenAI Moderation vì kết quả của dịch vụ đó
 không có hợp đồng ba nhãn này.
+
+Luồng sản phẩm hiện chỉ nhận `search_query` từ Agent, chưa đọc nội dung trang.
+Backend ánh xạ `SAFE` thành không cảnh báo; `RISK` (`action=review`) thành
+“Cần quan sát bé trong thời gian này”; `HIGH_RISK` (`action=alert`) thành
+“Bé có dấu hiệu bị bạo lực”. Cần migration backend v23 cho loại cảnh báo `text_risk`.
+V5-query vẫn là baseline tổng hợp; 13 câu được loại khỏi test sau khi người dùng
+xác nhận dự đoán `HIGH_RISK` đúng, khác nhãn `RISK` cũ. Trọng số model không
+đổi và điểm test v5 không độc lập. File quyết định nhãn chỉ cần `id,label`.
 
 Response và `/health` đều có `deploymentEligible`; backend production từ chối
 response của artifact chưa được phê duyệt, kể cả khi service được khởi động

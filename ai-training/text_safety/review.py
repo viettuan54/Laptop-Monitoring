@@ -43,12 +43,12 @@ def apply_reviews(source: Path, decisions: Path, output: Path,
             if not line.strip():
                 continue
             decision = json.loads(line)
-            if set(decision) != {"id", "label", "annotator_id"}:
+            # Old decision files may include annotator_id; it is ignored.
+            if (not isinstance(decision, dict) or not {"id", "label"}.issubset(decision)
+                    or set(decision) - {"id", "label", "annotator_id"}):
                 raise ValueError(f"Review line {number} has missing or extra fields")
             identifier = decision["id"]
             if (not isinstance(identifier, str) or not ID_PATTERN.fullmatch(identifier)
-                    or not isinstance(decision["annotator_id"], str)
-                    or not ID_PATTERN.fullmatch(decision["annotator_id"])
                     or decision["label"] not in LABELS or identifier in reviews):
                 raise ValueError(f"Invalid or duplicate review at line {number}")
             reviews[identifier] = decision
@@ -62,21 +62,16 @@ def apply_reviews(source: Path, decisions: Path, output: Path,
     output_rows = []
     for row in rows:
         row = dict(row)
+        row.pop("annotator_id", None)
         if row["label"] not in LABELS or row["review_status"] not in ("", "unreviewed", "reviewed"):
             raise ValueError("Invalid source label or review_status")
         if row["id"] in reviews:
             row["label_before_human_review"] = row["label"]
             row["label"] = reviews[row["id"]]["label"]
             row["review_status"] = "reviewed"
-            row["annotator_id"] = reviews[row["id"]]["annotator_id"]
             if "annotation_status" in fields:
                 row["annotation_status"] = "human_reviewed"
-        elif row["review_status"] == "reviewed" and not row.get("annotator_id"):
-            raise ValueError("Existing reviewed row has no annotator_id")
         else:
-            if row["review_status"] != "reviewed" and row.get("annotator_id"):
-                raise ValueError("Unreviewed source row has an annotator_id")
-            row.setdefault("annotator_id", "")
             row.setdefault("label_before_human_review", "")
             if not row["review_status"]:
                 row["review_status"] = "unreviewed"
@@ -102,7 +97,8 @@ def apply_reviews(source: Path, decisions: Path, output: Path,
         if len(original_group_labels[group_id]) == 1 and len(labels) > 1:
             raise ValueError("Conflicting labels in an originally single-label group; review linked variants")
     output.parent.mkdir(parents=True, exist_ok=True)
-    extra_fields = [field for field in ("annotator_id", "label_before_human_review") if field not in fields]
+    fields = [field for field in fields if field != "annotator_id"]
+    extra_fields = [field for field in ("label_before_human_review",) if field not in fields]
     with output.open("x", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=fields + extra_fields)
         writer.writeheader()

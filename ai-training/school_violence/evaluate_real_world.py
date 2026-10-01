@@ -27,7 +27,7 @@ PLACEHOLDER_PERMISSION_REFERENCES = {
 }
 REQUIRED = {
     "id", "text", "label", "source_type", "group_id", "split",
-    "source", "review_status", "annotator_id", "pii_removed",
+    "source", "review_status", "pii_removed",
     "permission_reference", "dataset_version",
 }
 BACKEND_REJECTED_TEXT = (
@@ -76,7 +76,6 @@ def load_holdout(path: Path) -> tuple[list[dict], dict]:
         identifier = _nonempty_string(row, "id", line_number)
         text = _nonempty_string(row, "text", line_number)
         _nonempty_string(row, "group_id", line_number)
-        _nonempty_string(row, "annotator_id", line_number)
         permission_reference = _nonempty_string(row, "permission_reference", line_number)
         if permission_reference.lower() in PLACEHOLDER_PERMISSION_REFERENCES:
             raise ValueError(f"Line {line_number}: permission_reference is a placeholder")
@@ -112,7 +111,9 @@ def load_holdout(path: Path) -> tuple[list[dict], dict]:
     by_source = defaultdict(set)
     for row in records:
         by_source[row["source_type"]].add(row["label"])
-    for source_type in SOURCE_TYPES:
+    # Search queries are the current product scope. Evaluate pages only when
+    # supplied; their absence must not block a search-query release.
+    for source_type in set(by_source) | {"search_query"}:
         if by_source[source_type] != set(training.LABELS):
             raise ValueError(f"Holdout {source_type} needs all three labels")
     return records, {
@@ -170,7 +171,7 @@ def evaluate_holdout(holdout_path: Path, artifact_dir: Path) -> dict:
     overall = training.evaluate(model, records)
     by_source = {
         source_type: training.evaluate(model, [row for row in records if row["source_type"] == source_type])
-        for source_type in SOURCE_TYPES
+        for source_type in sorted({row["source_type"] for row in records})
     }
     high_risk_misses = [
         {"id": row["id"], "source_type": row["source_type"], "predicted": predicted}

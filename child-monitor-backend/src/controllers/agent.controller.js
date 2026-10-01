@@ -16,7 +16,6 @@ const { cleanText } = require('../services/textPrivacy.service');
 const TEXT_MODERATION_BATCH_MAX = 20;
 const TEXT_MODERATION_SOURCES = new Set([
   'search_query',
-  'page_content',
 ]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -76,20 +75,23 @@ function normalizeTextModerationRecords(body) {
 }
 
 function textAlertPresentation(result, sourceType, domain) {
-  if (result.label !== 'HIGH_RISK') return null;
-  const sourceLabels = {
-    search_query: 'truy vấn tìm kiếm',
-    page_content: 'nội dung trang',
-    chat_received: 'tin nhắn trẻ nhận được',
-    chat_authored: 'tin nhắn trẻ soạn',
-  };
+  if (sourceType !== 'search_query') return null;
   const origin = domain ? ` trên ${domain}` : '';
-  const source = sourceLabels[sourceType] || 'nội dung văn bản';
-  return {
-    alertType: 'text_violence',
-    title: 'Cảnh báo nguy cơ bạo lực học đường cao',
-    message: `Phát hiện nội dung có nguy cơ bạo lực học đường cao trong ${source}${origin}. Vui lòng kiểm tra trực tiếp.`,
-  };
+  if (result.label === 'HIGH_RISK') {
+    return {
+      alertType: 'text_violence',
+      title: 'Bé có dấu hiệu bị bạo lực',
+      message: `Bé có dấu hiệu bị bạo lực qua truy vấn tìm kiếm${origin}. Phụ huynh nên sớm trò chuyện và kiểm tra tình hình của bé.`,
+    };
+  }
+  if (result.label === 'RISK') {
+    return {
+      alertType: 'text_risk',
+      title: 'Cần quan sát bé trong thời gian này',
+      message: `Truy vấn tìm kiếm của bé${origin} có nội dung cần lưu ý về bạo lực hoặc bắt nạt. Phụ huynh nên quan sát, trò chuyện và quan tâm bé trong thời gian này.`,
+    };
+  }
+  return null;
 }
 
 function textRecordWithinPolicy(record, settings) {

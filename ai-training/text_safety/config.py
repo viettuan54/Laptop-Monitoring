@@ -9,7 +9,7 @@ from pathlib import Path
 
 DEFAULT_MODEL_PATH = (
     Path(__file__).resolve().parent.parent
-    / "artifacts" / "school_violence" / "vi-school-violence-char-nb-v2" / "model.json.gz"
+    / "artifacts" / "school_violence" / "vi-school-violence-char-nb-v5-query" / "model.json.gz"
 )
 
 

@@ -1,13 +1,17 @@
 # Đối chiếu hàng đợi duyệt với CSV nguồn
 
+Cập nhật quy trình 2026-09-30: quyết định duyệt chỉ cần `id,label`, không cần
+`annotator_id`. Các số liệu đối chiếu bên dưới vẫn giữ nguyên; việc bỏ mã
+người duyệt không tự chuyển thay đổi trong hàng đợi thành quyết định cuối.
+
 Kiểm tra ngày 2026-09-29. `review_queue.jsonl` có 536 dòng: 100 ưu tiên 1,
 385 ưu tiên 2, 51 ưu tiên 3. Tất cả vẫn ghi `review_status=unreviewed`.
 
 So với hai CSV v2.2, có 68 dòng khác nhãn (`current_label` so với `label`):
 66 dòng ưu tiên 1 và hai dòng `Q_001710`, `Q_001765` ở ưu tiên 2.
 Có thêm 18 dòng khác cả `text`. Những thay đổi trong hàng đợi không phải là
-quyết định duyệt hợp lệ theo schema hiện có: không có `annotator_id`, và
-`current_label` vốn mô tả nhãn trong CSV chứ không phải `approved_label`.
+quyết định duyệt cuối: `current_label` vốn mô tả nhãn trong CSV. Cần ghi
+nhãn đã chọn vào trường `label` của file quyết định riêng.
 
 Hai ID `Q_001710` và `Q_001765` được người dùng nêu rõ là dự đoán
 `HIGH_RISK` đúng. Tuy nhiên câu trong CSV chứa phủ định “em không bị bạn đánh”,
@@ -27,7 +31,7 @@ Các ID đó là `Q_000056`, `Q_000087`, `Q_000151`, `Q_000375`, `Q_000429`,
 12 ID sau vẫn ở đó. Tất cả 20 ID vẫn có trong CSV query v2.2.
 
 Để phát hành CSV mới, cần file quyết định riêng cho các câu đã duyệt, theo
-schema ở `README.md`: `id`, `label`, `annotator_id`; đồng thời cần danh sách ID
+schema ở `README.md`: `id`, `label`; đồng thời cần danh sách ID
 loại khỏi dữ liệu model được xác nhận rõ. Chỉ mẫu thực sự được duyệt mới có
 `review_status=reviewed`. Giữ nguyên hai CSV v2.2 và model v3 hiện có để
 truy vết; xuất phiên bản mới sau khi xác nhận, rồi chạy `--validate-only` để

@@ -3,6 +3,9 @@
 `review_queue.jsonl` là hàng đợi để **một người** đọc và quyết định nhãn.
 Nó không phải tập nhãn được phê duyệt; `audit_report.json` lưu số liệu kiểm tra,
 SHA-256 hai CSV nguồn và giới hạn của phép kiểm tự động. Không sửa CSV v2.2.
+Hàng đợi này thuộc bản lịch sử v2.2. Bản query v2.3 đã loại 393 dòng
+`negation_hard_negative`; không cần duyệt các ID đã loại để train v4-query.
+Danh sách ID nằm trong `../query_dataset_v2_3_filter_report.json`.
 
 | Ưu tiên | Mẫu | Việc cần làm |
 | --- | ---: | --- |
@@ -30,13 +33,14 @@ hoặc loại khỏi lần train/đánh giá tiếp theo sau khi thống nhất 
 Đừng lấy `review_queue.jsonl` làm file quyết định: những dòng đó chứa câu hỏi
 cho người đánh giá, không chứa nhãn đã được con người xác nhận.
 
-Tạo file JSONL quyết định riêng, **chỉ** chứa các ID đã xem và đúng ba trường:
+Tạo file JSONL quyết định riêng, **chỉ** chứa các ID đã xem và hai trường:
 
 ```json
-{"id":"Q_002005","label":"RISK","annotator_id":"reviewer-001"}
+{"id":"Q_002005","label":"RISK"}
 ```
 
-Ví dụ này chỉ minh họa cú pháp; nhãn ví dụ không phải quyết định cho ID đó.
+Không cần mã người duyệt. Ví dụ này chỉ minh họa cú pháp; nhãn ví dụ không
+phải quyết định cho ID đó.
 Sau khi thực sự có quyết định, chạy từ `ai-training`:
 
 ```powershell

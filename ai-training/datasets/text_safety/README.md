@@ -19,18 +19,19 @@ và `evaluation_report.json`. Không ghi đè output đã tồn tại. Xem thêm
 
 Với dữ liệu mới, **một người** có thể đánh giá từng mẫu; không bắt buộc hai
 người. Chỉ gửi quyết định cho ID thực sự đã được người đó xem, JSONL dạng
-`{"id":"...","label":"RISK","annotator_id":"reviewer-001"}`. Hàng đợi
+`{"id":"...","label":"RISK"}`. Không cần mã người duyệt. Hàng đợi
 `Mô tả/label_review_v2_2/review_queue.jsonl` là báo cáo tiền kiểm tự động,
 **không** phải file quyết định và không được nạp thẳng vào lệnh review.
 
 Lệnh `python -m text_safety.review --input <csv> --decisions <quyết_định.jsonl>
 --output <csv_mới> --dataset-version v2.3` tạo CSV riêng, không sửa file nguồn.
-Chỉ các ID có quyết định mới được ghi `review_status=reviewed` và `annotator_id`;
+Chỉ các ID có quyết định mới được ghi `review_status=reviewed`;
 cột `annotation_status` (nếu có) chỉ đổi thành `human_reviewed` cho các ID đó;
 các mẫu còn lại vẫn `unreviewed`. Nếu nguồn có `dataset_version`, phải đặt
 version mới khác version nguồn. Công cụ từ chối ID lạ, quyết định lặp và nhãn
-xung đột giữa các câu tương đương; không thể xác thực danh tính reviewer bên
-ngoài file quyết định. Sau khi áp dụng, chạy `school_violence.training
+xung đột giữa các câu tương đương. File quyết định cũ có `annotator_id` vẫn
+được đọc nhưng trường này bị bỏ qua; CSV mới không xuất mã người duyệt.
+Sau khi áp dụng, chạy `school_violence.training
 --validate-only` trên cả hai nguồn để kiểm tra rò rỉ và nhãn lại.
 
 Dữ liệu tổng hợp hiện tại có `review_status` trống/chưa duyệt. Điểm đánh giá

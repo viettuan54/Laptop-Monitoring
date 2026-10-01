@@ -1,6 +1,13 @@
 # Đánh giá model v3 và điều kiện trước cảnh báo
 
-## Kết quả hiện có: chỉ trên dữ liệu tổng hợp
+Model service mặc định là `vi-school-violence-char-nb-v5-query`, từ query v2.4
+với 5.594 câu sau khi loại 393 câu phủ định và 13 câu khỏi test. Cả 13 câu có
+nhãn test cũ `RISK`, nhưng model dự đoán `HIGH_RISK` và người dùng xác nhận dự
+đoán đúng. Test v5 còn 823 câu, macro-F1 1,0; điểm này không độc lập vì đã
+chọn câu loại sau khi xem bất đồng nhãn. Train/validation và trọng số không đổi.
+Artifact vẫn `deployment_eligible=false`; số liệu v3 bên dưới là lịch sử.
+
+## Kết quả v3 lịch sử: chỉ trên dữ liệu tổng hợp
 
 Model `vi-school-violence-char-nb-v3` được chọn `alpha=0.5` trên validation
 (macro-F1 `0.9889705`). Test giữ riêng gồm 1.797 câu tổng hợp, macro-F1
@@ -26,31 +33,33 @@ hợp đạt 898/898, dấu hiệu cần kiểm tra độ khái quát trên tran
 Vì nhãn nguồn còn `unreviewed`, các bất đồng này cần được người đánh giá xem
 lại trước khi kết luận nguyên nhân là model hay nhãn.
 
-Ngoài test, 12 câu đối chứng chính sách tổng hợp đạt 10/12; hai lỗi đều là dự
+Ngoài test, 12 câu đối chứng chính sách tổng hợp khi đó đạt 10/12; hai lỗi đều là dự
 đoán `HIGH_RISK` quá mức ở câu an toàn về học nhóm và câu phủ định "Tôi không bị
-bạn đánh". Các đối chứng này **không** phải một tập thực tế độc lập.
+bạn đánh". Ví dụ phủ định đã được bỏ khỏi file đối chứng hiện tại.
+Các đối chứng này **không** phải một tập thực tế độc lập.
 
 ## Tập thực tế độc lập còn thiếu
 
-Trong workspace hiện chưa có tập query và `page_content` thực tế đã ẩn danh,
+Trong workspace hiện chưa có tập query thực tế độc lập đã ẩn danh,
 được phép sử dụng và được người đánh giá gán nhãn. CSV 6.000 câu ban đầu và hai
 CSV v2.2 đều ghi nguồn `synthetic`; không đổi tên nguồn để giả làm tập thực.
-Agent hiện chưa thu thập nội dung trang, vì vậy nhánh `page_content` cũng cần
-hoàn thiện việc thu thập đúng chính sách trước khi có holdout thực tế.
+Phạm vi hiện tại chỉ là câu tìm kiếm. Không cần chờ dữ liệu `page_content`
+để đánh giá nhánh này; việc đọc và đánh giá nội dung trang làm sau.
 
 Khi có dữ liệu, lưu file JSONL **ngoài Git** tại
 `ai-training/datasets/school_violence/real_world_holdout_v1.jsonl` (thư mục
 đã bị `.gitignore` bỏ qua). Mỗi dòng cần đúng một JSON object với các trường:
 
 `id`, `text`, `label`, `source_type`, `group_id`, `split`, `source`,
-`review_status`, `annotator_id`, `pii_removed`, `permission_reference`,
+`review_status`, `pii_removed`, `permission_reference`,
 `dataset_version`.
 
-- `label`: một trong `SAFE`, `RISK`, `HIGH_RISK`; `source_type`: `search_query`
-  hoặc `page_content`; mỗi loại nguồn phải có đủ ba nhãn.
+- `label`: một trong `SAFE`, `RISK`, `HIGH_RISK`; `source_type="search_query"`,
+  đủ cả ba nhãn. Công cụ vẫn có thể đánh giá thêm `page_content` khi có dữ
+  liệu sau này; nếu đưa vào thì nguồn bổ sung cũng phải có đủ ba nhãn.
 - `source="real_world"`, `split="test"`, `review_status="reviewed"`,
   `pii_removed=true`. Chỉ ghi `reviewed` cho câu đã được một người thực sự xem;
-  không yêu cầu hai người. `permission_reference` là mã hồ sơ quyền sử dụng,
+  không yêu cầu hai người hoặc mã người duyệt. `permission_reference` là mã hồ sơ quyền sử dụng,
   không lưu dữ liệu định danh trong trường này.
 - `group_id` phải là mã ẩn danh ổn định để nhận biết các câu cùng người/hội
   thoại hoặc cùng nguồn trang; không dùng ID thật. Giữ toàn bộ nhóm khỏi
@@ -65,7 +74,7 @@ Chạy từ `ai-training` (PowerShell):
 ```powershell
 .\.venv\Scripts\python.exe -B -m school_violence.evaluate_real_world `
   --holdout .\datasets\school_violence\real_world_holdout_v1.jsonl `
-  --artifact-dir .\artifacts\school_violence\vi-school-violence-char-nb-v3 `
+  --artifact-dir .\artifacts\school_violence\vi-school-violence-char-nb-v5-query `
   --output .\artifacts\school_violence\real_world_holdout_v1_report.json
 ```
 

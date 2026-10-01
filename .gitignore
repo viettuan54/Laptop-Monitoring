@@ -61,3 +61,11 @@ child-monitor-agent/build/dist/
 child-monitor-agent/build/work/
 child-monitor-agent/build/release/
 child-monitor-agent/build/output/
+
+# Temporary document previews
+.docx_review/
+
+# Archived generated reports (keep the original local-only status)
+/Mô tả/bao-cao-ai/calibration/
+/Mô tả/bao-cao-ai/content_classification/
+/Mô tả/bao-cao-ai/pilot/

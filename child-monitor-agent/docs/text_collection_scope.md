@@ -1,8 +1,14 @@
 # Phạm vi thu thập văn bản — phiên bản 1
 
-Ngày chốt: 2026-09-26. Phương án: phân loại phía backend.
-Phạm vi được người dùng chọn: `search_query` và `page_content`; không triển
-khai chat trong phiên bản này. Chỉ dùng ba nhãn `SAFE`, `RISK`, `HIGH_RISK`.
+Ngày cập nhật: 2026-09-30. Phương án: phân loại phía backend.
+Phạm vi hiện tại được người dùng chốt: chỉ `search_query`. `page_content`
+làm sau; các yêu cầu về trang bên dưới là bản thiết kế cho giai đoạn tiếp theo.
+Không triển khai chat. Chỉ dùng ba nhãn `SAFE`, `RISK`, `HIGH_RISK`.
+
+Luồng hiện tại: Agent gửi câu tìm kiếm → service local trả nhãn → backend
+lưu kết quả và cập nhật trang phụ huynh. `SAFE` không cảnh báo; `RISK` nhắc
+“Cần quan sát bé trong thời gian này”; `HIGH_RISK` báo “Bé có dấu hiệu bị bạo lực”.
+Hai mức dùng loại cảnh báo riêng và chống lặp năm phút riêng. Cần migration v23.
 
 Đây là đặc tả cho bước xây bộ thu thập và kiểm thử, không phải thông báo rằng
 Agent đã đọc được nội dung trang. Chrome/Edge trên Windows được chọn làm mặc
@@ -120,7 +126,7 @@ hàng đợi truy vấn. Metadata kết quả giữ theo chính sách hiện hà
 
 Không dùng duy nhất `max(label)` của những đoạn mất ngữ cảnh để tự nâng cả
 bài phòng chống lên `HIGH_RISK`. Bước tổng hợp trang phải giữ được đoạn gốc,
-ngữ cảnh trích dẫn/mục đích bài và kiểm định riêng. Model v2 chỉ nhận một câu,
+ngữ cảnh trích dẫn/mục đích bài và kiểm định riêng. Model v3 chỉ nhận một câu,
 chưa xử lý ngữ cảnh trang hoặc tổng hợp nhiều đoạn; chưa được huấn luyện lại
 theo các đối chứng này. Chạy thử chỉ ghi nhận, chưa gửi cảnh báo thật cho đến
 khi có kiểm định và cơ chế chạy thử không cảnh báo.

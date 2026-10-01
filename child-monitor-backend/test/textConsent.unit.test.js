@@ -2,6 +2,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { adminPool } = require('../src/config/db');
 const service = require('../src/services/textModeration.service');
+const notifications = require('../src/services/notification.service');
+const originalPush = notifications.sendPushNotification;
+let pushes = [];
+notifications.sendPushNotification = async (...args) => { pushes.push(args); };
 let inference;
 const originalModerate = service.moderateRecords;
 service.moderateRecords = async (records, options) => {
@@ -12,6 +16,7 @@ service.moderateRecords = async (records, options) => {
 };
 const controller = require('../src/controllers/agent.controller');
 service.moderateRecords = originalModerate;
+notifications.sendPushNotification = originalPush;
 
 function response() {
   return { statusCode: 200, status(code) { this.statusCode = code; return this; },
@@ -32,13 +37,16 @@ async function scenario(options = {}) {
   let inferenceCount = 0;
   let released = false;
   const writes = [];
+  const alertWrites = [];
   const queries = [];
+  pushes = [];
   adminPool.query = async (sql) => {
     if (sql.includes('FROM settings')) return { rows: [{ enable_text_moderation: enabled, updated_at: revision }] };
     if (sql.includes('FROM text_moderation_events')) {
       if (options.disableBeforeSend) enabled = false;
       return { rows: [] };
     }
+    if (sql.includes('FROM children')) return { rows: [{ user_id: 10 }] };
     return { rows: [] };
   };
   adminPool.connect = async () => ({
@@ -46,9 +54,14 @@ async function scenario(options = {}) {
       queries.push(sql);
       if (sql.includes('FROM settings')) return { rows: [{ enable_text_moderation: enabled, updated_at: revision }] };
       if (sql.includes('INSERT INTO text_moderation_events')) {
-        writes.push(params); return { rows: [{ event_id: 1 }] };
+        writes.push(params); return { rows: options.duplicateEvent ? [] : [{ event_id: 1 }] };
       }
-      if (sql.includes('INSERT INTO alerts')) return { rows: [{ alert_id: 1 }] };
+      if (sql.includes('SELECT alert_id FROM alerts')) {
+        return { rows: options.recentAlertType === params[1] ? [{ alert_id: 2 }] : [] };
+      }
+      if (sql.includes('INSERT INTO alerts')) {
+        alertWrites.push(params); return { rows: [{ alert_id: 1 }] };
+      }
       return { rows: [] };
     }, release() { released = true; },
   });
@@ -57,14 +70,14 @@ async function scenario(options = {}) {
     if (options.disableDuringModel) enabled = false;
     if (options.newWindowDuringModel) revision = '2026-09-26T08:01:00Z';
     const label = options.label || 'HIGH_RISK';
-    return { model: 'vi-school-violence-char-nb-v2', results: [{ label,
+    return { model: 'vi-school-violence-char-nb-v3', results: [{ label,
       flagged: label !== 'SAFE', confidence: 0.9,
-      scores: { SAFE: 0.05, RISK: 0.05, HIGH_RISK: 0.9 } }] };
+      scores: Object.fromEntries(['SAFE', 'RISK', 'HIGH_RISK'].map((key) => [key, key === label ? 0.9 : 0.05])) }] };
   };
   try {
     const res = response();
     await controller.moderateTextBatch(request(options.text, options.source), res);
-    return { res, inferenceCount, writes, queries, released };
+    return { res, inferenceCount, writes, alertWrites, pushes, queries, released };
   } finally { adminPool.query = originalQuery; adminPool.connect = originalConnect; }
 }
 
@@ -95,19 +108,56 @@ test('off while inference runs discards results and alerts under a transaction l
   assert.equal(result.released, true);
 });
 
-test('events store labels and scores but no original text; RISK creates no alert', async () => {
+test('RISK creates an observation alert and parent push without the original query', async () => {
   const text = 'hướng dẫn phòng chống bạo lực học đường';
   const result = await scenario({ text, label: 'RISK' });
   assert.equal(result.res.statusCode, 201);
   assert.equal(result.writes.length, 1);
   assert.equal(result.writes[0][5], 'RISK');
   assert.ok(!JSON.stringify(result.writes).includes(text));
-  assert.ok(!result.queries.some((sql) => sql.includes('INSERT INTO alerts')));
+  assert.equal(result.res.body.flagged_count, 1);
+  assert.equal(result.alertWrites.length, 1);
+  assert.equal(result.alertWrites[0][1], 'text_risk');
+  assert.match(result.alertWrites[0][2], /quan sát, trò chuyện và quan tâm bé trong thời gian này/);
+  assert.equal(result.pushes.length, 1);
+  assert.equal(result.pushes[0][0], 10);
+  assert.equal(result.pushes[0][1], 'Cần quan sát bé trong thời gian này');
+  assert.equal(result.pushes[0][3].route, 'alerts');
+  assert.ok(!JSON.stringify([result.alertWrites, result.pushes]).includes(text));
 });
 
-test('privacy-invalid text and deferred chat sources never reach model or DB', async () => {
+test('HIGH_RISK creates the violence warning even after a recent RISK alert', async () => {
+  const result = await scenario({ label: 'HIGH_RISK', recentAlertType: 'text_risk' });
+  assert.equal(result.res.statusCode, 201);
+  assert.equal(result.alertWrites.length, 1);
+  assert.equal(result.alertWrites[0][1], 'text_violence');
+  assert.match(result.alertWrites[0][2], /^Bé có dấu hiệu bị bạo lực/);
+  assert.equal(result.pushes[0][1], 'Bé có dấu hiệu bị bạo lực');
+  assert.equal(result.pushes[0][3].alert_type, 'text_violence');
+});
+
+test('SAFE stores the classification without an alert or push', async () => {
+  const result = await scenario({ label: 'SAFE' });
+  assert.equal(result.writes[0][5], 'SAFE');
+  assert.equal(result.res.body.flagged_count, 0);
+  assert.equal(result.alertWrites.length, 0);
+  assert.equal(result.pushes.length, 0);
+});
+
+test('duplicate records and cooldown suppress repeated alerts at each level', async () => {
+  for (const [label, alertType] of [['RISK', 'text_risk'], ['HIGH_RISK', 'text_violence']]) {
+    for (const option of [{ duplicateEvent: true }, { recentAlertType: alertType }]) {
+      const result = await scenario({ label, ...option });
+      assert.equal(result.res.statusCode, 201);
+      assert.equal(result.alertWrites.length, 0);
+      assert.equal(result.pushes.length, 0);
+    }
+  }
+});
+
+test('privacy-invalid text and deferred page/chat sources never reach model or DB', async () => {
   for (const options of [{ text: 'token: private-secret' }, { source: 'chat_received' },
-    { source: 'chat_authored' }]) {
+    { source: 'chat_authored' }, { source: 'page_content' }]) {
     const result = await scenario(options);
     assert.equal(result.res.statusCode, 400);
     assert.equal(result.inferenceCount, 0);

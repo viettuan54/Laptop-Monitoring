@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy lần lượt toàn bộ migration đến `migration_v22.sql`. Với database hiện có, tối thiểu phải chạy:
+Chạy lần lượt toàn bộ migration đến `migration_v23.sql`. Với database hiện có, tối thiểu phải chạy:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql
@@ -30,6 +30,7 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v19.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v20.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v21.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v22.sql
+psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v23.sql
 ```
 
 `migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ; `migration_v17.sql` lưu nguồn/độ tin cậy của nhãn website và đánh dấu các dòng cần backfill; `migration_v18.sql` thêm index cho snapshot domain đã phân loại dùng khi Agent đồng bộ policy chặn.
@@ -37,6 +38,8 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v22.sql
 `migration_v20.sql` lưu ProductName/FileDescription không nhạy cảm, nguồn và độ tin cậy của nhãn ứng dụng; đồng thời tạo index cho app backfill.
 `migration_v21.sql` thêm công tắc phân tích văn bản, bảng kết quả đã tối giản dữ liệu và ba loại cảnh báo tự hại/bắt nạt/bạo lực. Bảng này không có cột chứa văn bản gốc.
 `migration_v22.sql` thêm `classification_label` và `label_scores` cho ba nhãn mới; giữ các cột cũ chỉ để đọc lịch sử. Phải chạy migration này trước khi nhận batch phân loại mới.
+`migration_v23.sql` thêm `text_risk` cho cảnh báo quan sát ở nhãn `RISK`.
+Chạy bằng role sở hữu enum (hoặc superuser); quyền BYPASSRLS không đủ để đổi enum.
 
 Hãy dùng role sở hữu schema (thường là `postgres`), vì role chỉ được `GRANT` quyền đọc/ghi không thể chạy `ALTER TABLE`.
 
@@ -59,7 +62,7 @@ API phân loại dành cho Agent (xác thực bằng `X-Device-Secret`):
 - `POST /api/agent/classification/web/fallback`: nhận body chỉ có `{ "domain": "example.com" }`; chỉ gọi Gemini khi công tắc website đang bật.
 - `GET /api/agent/classification/web/unknown-domains`: lấy domain `unknown` cũ của đúng thiết bị để backfill.
 - `POST /api/agent/classification/web/backfill`: lưu nhãn cuối cùng cùng `classification_source` và confidence.
-- `POST /api/agent/text-moderation/batch`: nhận tối đa 20 đoạn `search_query`/`page_content` (không nhận chat); lọc định danh/secret, kiểm tra bật/tắt trước gọi model và trước lưu. Chỉ lưu nhãn/score/metadata, không lưu văn bản gốc trong PostgreSQL.
+- `POST /api/agent/text-moderation/batch`: nhận tối đa 20 câu `search_query`; nội dung trang/chat chưa nhận. Lọc định danh/secret, kiểm tra bật/tắt trước gọi model và trước lưu. Chỉ lưu nhãn/score/metadata, không lưu văn bản gốc trong PostgreSQL.
 
 `POST /api/agent/heartbeat` và `GET /api/agent/config` đều trả
 `enable_app_classification`, `enable_web_classification`, `enable_text_moderation`,
@@ -82,17 +85,24 @@ LOCAL_MODERATION_TIMEOUT_MS=15000
 `LOCAL_MODERATION_API_KEY` phải giống `TEXT_SAFETY_API_KEY` của service Python.
 Chỉ provider local hỗ trợ hợp đồng ba nhãn; cấu hình `openai` sẽ bị từ chối.
 
-Kết quả có một nhãn `SAFE`, `RISK` hoặc `HIGH_RISK`; chỉ `HIGH_RISK` tạo cảnh báo.
-Cảnh báo
-không chứa lại câu tìm kiếm/chat gốc. Metadata kết quả được giữ 30 ngày, còn văn
+Kết quả có một nhãn `SAFE`, `RISK` hoặc `HIGH_RISK`:
+
+- `SAFE`: không tạo cảnh báo.
+- `RISK`: `text_risk`, “Cần quan sát bé trong thời gian này”.
+- `HIGH_RISK`: `text_violence`, “Bé có dấu hiệu bị bạo lực”.
+
+Cả hai mức cảnh báo xuất hiện trên trang phụ huynh và gửi push nếu đã cấu hình.
+Cooldown năm phút tách theo loại, nên `RISK` không chặn cảnh báo `HIGH_RISK`
+đến sau. Cảnh báo không chứa lại câu tìm kiếm gốc. Metadata kết quả được giữ 30 ngày, còn văn
 bản đầu vào chỉ tồn tại trong request xử lý và hàng đợi retry tối đa 7 ngày trên
 Agent. Xem hướng dẫn chạy service tại `../ai-training/text_safety/README.md`.
 
 Phần bật/tắt và bảo vệ dữ liệu đã triển khai cho query; chi tiết, độ trễ lease,
 thay đổi log web chỉ giữ domain và điều kiện nghiệm thu tại
 [text_privacy_controls.md](../child-monitor-agent/docs/text_privacy_controls.md).
-Không có migration SQL mới cho phần này; DB vẫn cần migration v22 của bước
-model ba nhãn. Không tự chạy migration/live deployment từ thay đổi code này.
+DB cần migration v23 trước khi chạy code cảnh báo mới. Service Python mặc
+định dùng artifact v5-query; nếu đặt `TEXT_SAFETY_MODEL_PATH`, kiểm tra biến ghi đè
+và khởi động lại service để nạp model mong muốn.
 
 Production bắt buộc cấu hình:
 

@@ -260,6 +260,10 @@ Các artifact được `.gitignore`. Không chép model vào Agent khi
 train lại. Model confidence dưới `0.70` luôn dành cho nhánh Gemini fallback ở
 giai đoạn tích hợp inference.
 
+Các báo cáo thu thập/kiểm tra và đánh giá model hiện có đã được chuyển vào
+[`Mô tả/bao-cao-ai/content_classification/`](../../Mô%20tả/bao-cao-ai/content_classification/).
+Các lệnh trên vẫn tạo báo cáo mới tại đường dẫn mặc định.
+
 Đối với ứng dụng, thứ tự Hybrid Pipeline là:
 
 1. tên process có trong exact lookup: dùng nhãn catalog với `confidence = 1.0`;

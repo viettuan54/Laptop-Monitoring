@@ -180,8 +180,9 @@ bị vượt qua bằng metadata. Khi Service khởi động, metadata web cũ t
 đợi local cũng được làm sạch; lịch sử gốc của trình duyệt không bị xóa.
 
 Model ba nhãn chạy qua service local phía Backend, không dùng OpenAI Moderation.
-Phiên bản hiện tại mới thu thập nguồn `search_query`; endpoint backend nhận
-`search_query`/`page_content`, từ chối hai nguồn chat. Nội dung trang chưa có
+Phiên bản hiện tại chỉ thu thập nguồn `search_query`; endpoint backend chỉ nhận
+nguồn này, chưa nhận nội dung trang/chat. `SAFE` không cảnh báo; `RISK` nhắc
+phụ huynh quan sát bé; `HIGH_RISK` báo “Bé có dấu hiệu bị bạo lực”. Nội dung trang chưa có
 bộ thu thập/hàng đợi. Xem chi tiết nghiệm thu và giới hạn tại
 [bật/tắt và bảo vệ dữ liệu](docs/text_privacy_controls.md).
 

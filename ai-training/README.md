@@ -28,7 +28,10 @@ kết hợp nhiều CSV, giữ nguyên `group_id`/`split`, kiểm tra rò rỉ t
 trùng, train và báo cáo precision/recall/F1
 cùng confusion matrix. Dataset hiện thiếu người dùng/hội thoại nên không thể
 tuyên bố đã chia độc lập theo các ID đó. Trainer mới lưu manifest và cấu hình
-phiên bản; chưa tự thay model v2 đang chạy. Xem `school_violence/README.md`.
+phiên bản; service mặc định dùng model v5-query từ query v2.4 gồm 5.594 câu
+sau khi loại 393 câu phủ định và 13 câu ngắn mơ hồ. Phạm vi hiện tại chỉ là câu tìm kiếm từ
+Agent: `SAFE` không cảnh báo, `RISK` nhắc quan sát, `HIGH_RISK` báo dấu hiệu
+bị bạo lực. Nội dung trang làm sau. Xem `school_violence/README.md`.
 
 Thu thập dữ liệu ngoài bằng `content_classification/collect_external_dataset.py`.
 Công cụ tải các nguồn CC0 đã cho phép, chuẩn hóa domain/tên process, cách ly bản
@@ -232,6 +235,10 @@ Công cụ kiểm tra checksum, JSON Schema, identity/timestamp, phân bố nhã
 subject/camera/khoảng cách, landmark bị thiếu, visibility của tai/vai/hông và
 xung đột nhãn. Kết quả được ghi vào `datasets/pilot/pilot_dataset_report.json`
 và `datasets/pilot/pilot_dataset_report.md`.
+
+Các báo cáo hiện có đã được chuyển vào
+[`Mô tả/bao-cao-ai/pilot/`](../Mô%20tả/bao-cao-ai/pilot/).
+Các lệnh trên vẫn tạo báo cáo mới tại đường dẫn mặc định.
 
 ## Quy trình ba subject và baseline classifier
 

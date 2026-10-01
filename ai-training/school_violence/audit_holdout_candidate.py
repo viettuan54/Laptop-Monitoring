@@ -57,8 +57,8 @@ def audit_candidate(path: Path) -> dict:
             issues["invalid_source_type"].append(identifier)
         if row.get("source") != "real_world" or row.get("split") != "test":
             issues["not_real_world_test_declaration"].append(identifier)
-        if row.get("review_status") != "reviewed" or not str(row.get("annotator_id") or "").strip():
-            issues["review_not_verifiable"].append(identifier)
+        if row.get("review_status") != "reviewed":
+            issues["review_not_declared"].append(identifier)
         if row.get("pii_removed") is not True:
             issues["pii_removal_not_declared"].append(identifier)
         permission = str(row.get("permission_reference") or "").strip().lower()
@@ -79,7 +79,8 @@ def audit_candidate(path: Path) -> dict:
             by_source[row["source_type"]].add(row["label"])
     missing_strata = {
         source_type: sorted(set(LABELS) - by_source[source_type])
-        for source_type in SOURCE_TYPES if by_source[source_type] != set(LABELS)
+        for source_type in sorted(set(by_source) | {"search_query"})
+        if by_source[source_type] != set(LABELS)
     }
     if missing_strata:
         issues["missing_source_label_strata"].extend(
