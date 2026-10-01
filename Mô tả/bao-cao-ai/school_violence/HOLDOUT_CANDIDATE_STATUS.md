@@ -28,9 +28,9 @@ Chạy kiểm tra lại từ `ai-training` (không ghi đè dữ liệu):
 
 Để hoàn thành holdout cuối, cần cung cấp các câu thực tế thu thập đúng phạm vi
 đã bật/tắt, có quyền sử dụng, được ẩn danh và một người thực sự duyệt nhãn.
-Tập mới cần `search_query` đủ ba nhãn, `group_id` ẩn danh ổn định theo
-người/phiên tìm kiếm, và không trùng nhóm hay
-văn bản với train/validation/test cũ. Đặt tập thực tế ngoài Git tại
+Tập mới cần `search_query` đủ ba nhãn và không trùng ID/văn bản với
+train/validation/test cũ. Không yêu cầu mã nhóm; khi thiếu thông tin
+người/phiên, không thể xác nhận độc lập ở cấp đó. Đặt tập thực tế ngoài Git tại
 `ai-training/datasets/school_violence/real_world_holdout_v1.jsonl` theo schema
 và lệnh đánh giá trong `REAL_WORLD_EVALUATION.md`. Không tự tạo dữ liệu thực
 hoặc mã quyền sử dụng. Không cần mã người duyệt.

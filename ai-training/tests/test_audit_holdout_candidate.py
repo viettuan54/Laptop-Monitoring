@@ -18,7 +18,7 @@ class CandidateAuditTests(unittest.TestCase):
             # Test fixtures only; the audit does not authenticate these claims.
             rows = [{
                 "id": label, "text": f"unique fixture {label}", "label": label,
-                "source_type": "search_query", "group_id": f"g-{label}", "split": "test",
+                "source_type": "search_query", "split": "test",
                 "source": "real_world", "review_status": "reviewed", "pii_removed": True,
                 "permission_reference": "fixture-permission", "dataset_version": "fixture-v1",
             } for label in ("SAFE", "RISK", "HIGH_RISK")]

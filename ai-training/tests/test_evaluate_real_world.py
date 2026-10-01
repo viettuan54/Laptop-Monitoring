@@ -111,6 +111,24 @@ class RealWorldEvaluatorTests(unittest.TestCase):
         self.assertEqual(set(report["by_source_type"]), {"search_query"})
         self.assertFalse(report["deployment_eligible"])
 
+    def test_holdout_without_group_id_is_accepted_with_explicit_limit(self):
+        self.rows = [row for row in self.rows if row["source_type"] == "search_query"]
+        for row in self.rows:
+            del row["group_id"]
+        self._write_rows()
+        report = evaluate_holdout(self.holdout, self.artifacts)
+        self.assertIsNone(report["holdout"]["group_count"])
+        self.assertFalse(report["holdout"]["group_metadata_supplied"])
+        self.assertFalse(report["independence_checks"]["group_overlap_checked"])
+        self.assertIsNone(report["independence_checks"]["group_overlap"])
+        self.assertFalse(report["independence_checks"]["same_child_or_session_independence_verified"])
+
+    def test_rejects_partially_supplied_group_ids(self):
+        del self.rows[0]["group_id"]
+        self._write_rows()
+        with self.assertRaisesRegex(ValueError, "every row or omitted entirely"):
+            load_holdout(self.holdout)
+
     def test_pages_alone_cannot_validate_search_query_scope(self):
         self.rows = [row for row in self.rows if row["source_type"] == "page_content"]
         self._write_rows()

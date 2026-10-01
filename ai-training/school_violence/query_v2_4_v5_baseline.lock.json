@@ -1,0 +1,80 @@
+{
+  "baseline_id": "school-violence-query-v2.4-v5",
+  "scope": "search_query_only",
+  "test_score_independent": false,
+  "dataset": {
+    "source_v2_3_sha256": "b0b95d6d8b9e26f37c4c4384ae5b432fcfc2cf6752ddeeb57bfdb067ad8dd8b0",
+    "query_v2_4_sha256": "80ed4986c35eadf9e7e6e4c8ed2be0864be75c8d081b2cd218451af19bd75ff1",
+    "filter_report_sha256": "34bdb68a5e21a5dde5fe051d6cdfbd787e9c061a26575b2bc37cac291c16114f",
+    "excluded_test_ids": [
+      "Q_002005",
+      "Q_002010",
+      "Q_002013",
+      "Q_002029",
+      "Q_002036",
+      "Q_002044",
+      "Q_002053",
+      "Q_002057",
+      "Q_002058",
+      "Q_003402",
+      "Q_003706",
+      "Q_003708",
+      "Q_003709"
+    ],
+    "split_rows": {
+      "test": 823,
+      "validation": 839,
+      "train": 3932
+    },
+    "total_rows": 5594
+  },
+  "code_sha256": {
+    "ai-training/school_violence/exclude_ambiguous_queries.py": "3b287e25667b0ce415eb7a2a07d68f04d621c64ab8d5b6fac55087f5965d8e81",
+    "ai-training/school_violence/training.py": "070800a847ea5e9642b8cddcad8064b833e30c3afa48a6933cce2ad2b86cb2d1",
+    "ai-training/text_safety/normalization.py": "2ab7453649b8f2dc348c9e7d85b79ccefd41828c60a552a19bc4ed720b6b2bcb",
+    "ai-training/text_safety/config.py": "5ab5be084acaddcc8ba828b049195c955c7a3f357d6ccf23ba5cfe4a0c3f1002",
+    "ai-training/text_safety/engine.py": "a89e9ab94ab6ae66c0595a95c7682d5a2b235decae63b4c6083df113a1841cf6",
+    "ai-training/text_safety/main.py": "2ae8a76d8169c554161ccfda5715a040d1c75ecf9161633f040ae7785bac3917",
+    "ai-training/school_violence/labels.json": "2b775610ebee5a27f2bec20036ab0fc0c055cbf44e8182a577575b8767eeb186"
+  },
+  "artifact": {
+    "model_version": "vi-school-violence-char-nb-v5-query",
+    "dataset_version": "school-violence-query-v2.4",
+    "labels": [
+      "SAFE",
+      "RISK",
+      "HIGH_RISK"
+    ],
+    "selected_alpha": 0.5,
+    "model_parameters_sha256": "530566303eecdb0d50ad21fe4d2ff25138a96d24c618cdc8dc5d15be6bf7b350",
+    "model_semantic_sha256": "26a48a8e326c8aa71023b560918fb66c3d752ba95df64bf75d13056f23633317",
+    "training_config_sha256": "f052643bf15bb8830e61ffa6b5ef2d61ce1e5f25cd24d5559009bad369048f90",
+    "dataset_manifest_sha256": "2f14d530f6e269322e8fe6938b3e7b116eaf561e7e6303b5fd0d604666103502",
+    "evaluation_without_timestamp_sha256": "3528e325a5a7585d29bf96cf4b2ae91f05cb28b7b744078899e5ee7068d76e3e",
+    "split_files_sha256": {
+      "train": "3320ce06d4973589f440fdf4de8f47cf614a64656ffd6899a7fc1b2cb31b9557",
+      "validation": "d6ece7b0c5047c1d71eb2984c4d332acfda2a6265c894a0a4e612f9b03f8e59d",
+      "test": "40a12d23c15a682d7e236b153fb02e146757718f0757f5f68c6d5d3d8b36f88e"
+    },
+    "test_confusion_matrix": {
+      "SAFE": {
+        "SAFE": 238,
+        "RISK": 0,
+        "HIGH_RISK": 0
+      },
+      "RISK": {
+        "SAFE": 0,
+        "RISK": 285,
+        "HIGH_RISK": 0
+      },
+      "HIGH_RISK": {
+        "SAFE": 0,
+        "RISK": 0,
+        "HIGH_RISK": 300
+      }
+    },
+    "test_macro_f1": 1.0,
+    "deployment_eligible": false
+  },
+  "reference_gzip_sha256": "8c9c9642f796a596ce091ee8cf3ebe564be859862f115f22c985faba58f2bc7b"
+}

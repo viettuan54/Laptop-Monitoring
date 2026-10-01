@@ -26,7 +26,7 @@ PLACEHOLDER_PERMISSION_REFERENCES = {
     "unknown", "n/a", "na", "none", "not_applicable_synthetic",
 }
 REQUIRED = {
-    "id", "text", "label", "source_type", "group_id", "split",
+    "id", "text", "label", "source_type", "split",
     "source", "review_status", "pii_removed",
     "permission_reference", "dataset_version",
 }
@@ -75,7 +75,6 @@ def load_holdout(path: Path) -> tuple[list[dict], dict]:
             raise ValueError(f"Line {line_number}: missing required holdout fields")
         identifier = _nonempty_string(row, "id", line_number)
         text = _nonempty_string(row, "text", line_number)
-        _nonempty_string(row, "group_id", line_number)
         permission_reference = _nonempty_string(row, "permission_reference", line_number)
         if permission_reference.lower() in PLACEHOLDER_PERMISSION_REFERENCES:
             raise ValueError(f"Line {line_number}: permission_reference is a placeholder")
@@ -106,6 +105,12 @@ def load_holdout(path: Path) -> tuple[list[dict], dict]:
             raise ValueError(f"Line {line_number}: empty or duplicate holdout text")
         seen_text.update(keys)
         records.append(row)
+    group_presence = ["group_id" in row for row in records]
+    if any(group_presence):
+        if not all(group_presence):
+            raise ValueError("group_id must be supplied for every row or omitted entirely")
+        for line_number, row in enumerate(records, start=1):
+            _nonempty_string(row, "group_id", line_number)
     if len(versions) != 1 or not records:
         raise ValueError("Holdout must contain records from exactly one dataset version")
     by_source = defaultdict(set)
@@ -122,7 +127,8 @@ def load_holdout(path: Path) -> tuple[list[dict], dict]:
         "rows": len(records),
         "label_counts": dict(Counter(row["label"] for row in records)),
         "source_counts": dict(Counter(row["source_type"] for row in records)),
-        "group_count": len({row["group_id"] for row in records}),
+        "group_count": len({row["group_id"] for row in records}) if any(group_presence) else None,
+        "group_metadata_supplied": any(group_presence),
     }
 
 
@@ -145,16 +151,19 @@ def check_independence(records: list[dict], artifact_dir: Path) -> dict:
     for row in records:
         if row["id"] in known_ids:
             raise ValueError(f"Holdout ID overlaps model reference splits: {row['id']}")
-        if row["group_id"] in known_groups:
+        if row.get("group_id") in known_groups:
             raise ValueError(f"Holdout group overlaps model reference splits: {row['id']}")
         if _text_keys(row["text"]) & known_text:
             raise ValueError(f"Holdout text overlaps model reference splits: {row['id']}")
     return {
         "reference_rows": reference_rows,
         "reference_splits_checked": list(training.SPLITS),
-        "id_group_exact_and_runtime_text_overlap": 0,
+        "id_and_runtime_text_overlap": 0,
+        "group_overlap_checked": "group_id" in records[0],
+        "group_overlap": 0 if "group_id" in records[0] else None,
         "provenance_authenticity_verified_by_code": False,
         "semantic_near_duplicate_detection_complete": False,
+        "same_child_or_session_independence_verified": False,
     }
 
 
@@ -193,7 +202,10 @@ def evaluate_holdout(holdout_path: Path, artifact_dir: Path) -> dict:
         "deployment_eligible": False,
         "limitations": [
             "Source, permission, de-identification and human review are metadata claims requiring manual verification.",
-            "Exact/runtime text and group checks cannot rule out all semantic near-duplicates.",
+            "Exact/runtime text checks cannot rule out all semantic near-duplicates.",
+            "Without group metadata, overlap by child or search session cannot be checked."
+            if not holdout["group_metadata_supplied"] else
+            "Group checks cannot prove independence by child or search session.",
             "This evaluation does not authorize alerts; deployment requires an independently approved safety review.",
         ],
     }

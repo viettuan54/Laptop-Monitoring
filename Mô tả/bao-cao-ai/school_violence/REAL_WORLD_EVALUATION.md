@@ -40,9 +40,14 @@ Các đối chứng này **không** phải một tập thực tế độc lập.
 
 ## Tập thực tế độc lập còn thiếu
 
-Trong workspace hiện chưa có tập query thực tế độc lập đã ẩn danh,
-được phép sử dụng và được người đánh giá gán nhãn. CSV 6.000 câu ban đầu và hai
-CSV v2.2 đều ghi nguồn `synthetic`; không đổi tên nguồn để giả làm tập thực.
+Trong workspace đã có `Mô tả/DuLieuThat1.csv` gồm 94 câu do người dùng cung cấp,
+và `Mô tả/DuLieuThat1_review.csv` với đủ ba nhãn trên 94 câu. Người cung cấp
+đã xem dự đoán model, xác nhận phần lớn và chỉ ra 12 lỗi, nên bộ này là dữ liệu
+chẩn đoán chứ không còn độc lập để ước lượng chất lượng cuối. Quyền sử dụng và
+ẩn danh thủ công cũng chưa được xác nhận; xem `DULIEUTHAT1_REVIEWED_DIAGNOSTIC.md`.
+CSV 6.000
+câu ban đầu và hai CSV v2.2 đều ghi nguồn `synthetic`; không đổi tên nguồn để
+giả làm tập thực.
 Phạm vi hiện tại chỉ là câu tìm kiếm. Không cần chờ dữ liệu `page_content`
 để đánh giá nhánh này; việc đọc và đánh giá nội dung trang làm sau.
 
@@ -50,7 +55,7 @@ Khi có dữ liệu, lưu file JSONL **ngoài Git** tại
 `ai-training/datasets/school_violence/real_world_holdout_v1.jsonl` (thư mục
 đã bị `.gitignore` bỏ qua). Mỗi dòng cần đúng một JSON object với các trường:
 
-`id`, `text`, `label`, `source_type`, `group_id`, `split`, `source`,
+`id`, `text`, `label`, `source_type`, `split`, `source`,
 `review_status`, `pii_removed`, `permission_reference`,
 `dataset_version`.
 
@@ -61,9 +66,9 @@ Khi có dữ liệu, lưu file JSONL **ngoài Git** tại
   `pii_removed=true`. Chỉ ghi `reviewed` cho câu đã được một người thực sự xem;
   không yêu cầu hai người hoặc mã người duyệt. `permission_reference` là mã hồ sơ quyền sử dụng,
   không lưu dữ liệu định danh trong trường này.
-- `group_id` phải là mã ẩn danh ổn định để nhận biết các câu cùng người/hội
-  thoại hoặc cùng nguồn trang; không dùng ID thật. Giữ toàn bộ nhóm khỏi
-  train/validation và các tập test tổng hợp cũ.
+- Không yêu cầu mã nhóm trong bảng duyệt hoặc tập JSONL. Khi thiếu thông tin
+  trẻ/phiên, chỉ kiểm tra được ID và văn bản trùng với train/validation/test cũ;
+  báo cáo phải ghi rõ chưa kiểm tra được trùng nguồn ở cấp trẻ/phiên.
 - `text` là phần văn bản mà backend thực sự gửi cho model, không có thông tin
   định danh, URL hoặc token, tối đa 1.000 ký tự sau làm sạch. Không thêm metadata
   vào text. Tập test cần được thu và khóa sau khi chọn cấu hình model; không
@@ -79,7 +84,7 @@ Chạy từ `ai-training` (PowerShell):
 ```
 
 Công cụ từ chối dữ liệu thiếu nhãn/review/khai báo quyền/ẩn danh, thiếu nhãn ở
-mỗi nguồn, trùng ID/nhóm/văn bản với train, validation hoặc test cũ, và một số
+mỗi nguồn, trùng ID/văn bản với train, validation hoặc test cũ, và một số
 dạng PII rõ ràng. Báo cáo chứa precision, recall, F1, ma trận nhầm lẫn, FP/FN
 theo nhãn và theo loại nguồn; `high_risk_false_negatives` ghi **ID và nhãn dự
 đoán**, không sao chép nội dung câu. Metadata về nguồn/quyền/kiểm duyệt là lời

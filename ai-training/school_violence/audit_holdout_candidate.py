@@ -106,6 +106,8 @@ def audit_candidate(path: Path) -> dict:
         )),
         "issues": {code: {"count": len(ids), "ids": ids} for code, ids in sorted(issues.items())},
         "schema_ready_for_official_evaluator": schema_ready,
+        "group_metadata_supplied": bool(rows) and all("group_id" in row for row in rows),
+        "same_child_or_session_independence_verified": False,
         "provenance_and_review_verified_by_code": False,
         "deployment_eligible": False,
     }

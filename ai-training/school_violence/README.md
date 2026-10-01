@@ -11,6 +11,8 @@ tổng hợp, rồi từ v2.3 loại đúng 13 câu khỏi tập test: nhãn cũ
 `Mô tả/DATASET_QUERY_V2_4_README.md` và hai script lọc để tái lập.
 CSV v2.2/v2.3 và model v3/v4 là bản lịch sử. Trọng số v5 giống v4; điểm test
 sau lọc không độc lập. V5-query chưa được duyệt production.
+Mốc checksum và lệnh huấn luyện lại/API smoke cho phiên bản này ở
+[`BASELINE_QUERY_V2_4_V5.md`](BASELINE_QUERY_V2_4_V5.md).
 
 Quy tắc gán nhãn ở `ANNOTATION_GUIDE.md`: trang phòng chống bạo lực là `RISK`;
 báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa trực tiếp là
