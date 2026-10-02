@@ -25,7 +25,9 @@ bỏ qua câu tìm kiếm.
 | Không có tín hiệu nguy cơ bạo lực học đường | `SAFE` | “Cách ôn tập môn toán” |
 | Hướng dẫn phòng chống, phòng tránh hoặc hỗ trợ về bạo lực | `RISK` | “Hướng dẫn phòng chống bạo lực học đường” |
 | Thảo luận chung, bài học hoặc tin tức về bạo lực; chưa có lời cầu cứu cá nhân hay đe dọa trực tiếp | `RISK` | “Bài thuyết trình về tác hại của bắt nạt” |
-| Trải nghiệm bị bạo lực/bắt nạt/ép buộc của người nói, hoặc cầu cứu gắn với trải nghiệm đó | `HIGH_RISK` | “Em bị bạn đánh phải làm sao?” |
+| Trêu chọc bằng lời, lo lắng hoặc lấy đồ dùng học tập đơn lẻ, chưa có dấu hiệu gây hại, cưỡng ép hay lặp lại rõ | `RISK` | “Bị bạn gọi bằng biệt danh mình không thích thì làm sao?” |
+| Trải nghiệm bị đánh, đe dọa, ép buộc, tống tiền, phá hoại cố ý, chiếm giữ đồ lặp lại hoặc tự báo đã bị bắt nạt kéo dài | `HIGH_RISK` | “Em bị bạn đánh phải làm sao?” |
+| Đăng ảnh của trẻ để bêu xấu hoặc dọa tiết lộ chuyện riêng của trẻ | `HIGH_RISK` | “Các bạn đăng ảnh mình lên nhóm chat rồi chê mình” |
 | Đe dọa bạo lực trực tiếp trong ngữ cảnh thật | `HIGH_RISK` | “Tao sẽ đánh mày sau giờ học” |
 
 ## Cách xử lý ngữ cảnh
@@ -39,6 +41,14 @@ bỏ qua câu tìm kiếm.
 - “Em bị bạn dọa ‘tao sẽ đánh mày’” là lời báo lại một đe dọa thật: `HIGH_RISK`.
   Một ví dụ câu đe dọa trong bài phòng chống bạo lực không tự làm cả bài thành
   `HIGH_RISK`; nếu chỉ mang tính giáo dục, gán `RISK`.
+- Hành vi phải được đọc theo mức độ được **nói rõ trong câu**: bị lấy bút/vở
+  một lần là `RISK`; bị lấy đồ lặp lại và không trả, bị cố tình phá hỏng đồ
+  hoặc bị giấu cặp hằng ngày là `HIGH_RISK`. Không tự suy sự lặp lại hoặc
+  ý định gây hại từ một câu chỉ nói “bị lấy đồ”.
+- Câu chỉ hỏi về học tập, hoạt động trường hoặc việc dọn vệ sinh, không có
+  dấu hiệu bạo lực/ép buộc, là `SAFE`. Câu kể bị chê bằng lời là `RISK` khi
+  chưa có đe dọa, ép buộc hoặc tiết lộ thông tin/ảnh riêng tư; chỉ riêng
+  việc lời chê lặp lại không tự nâng thành `HIGH_RISK`.
 - Không suy tình trạng của trẻ từ lịch sử đọc trang nếu không có bằng chứng
   hoặc quy tắc tổng hợp đã được kiểm định. Không xem nhãn là căn cứ kỷ luật.
 
@@ -48,7 +58,7 @@ dùng chính chúng để tuyên bố model đã đạt quy tắc.
 
 ## Trạng thái áp dụng
 
-Hướng dẫn này là quy tắc cho gán nhãn và đánh giá tiếp theo. Model v2 hiện
-được train từ dataset cũ, chưa bảo đảm áp dụng đúng các đối chứng này. Cần bổ
-sung dữ liệu, đánh giá trên tập độc lập và huấn luyện phiên bản mới trước khi
-cho phép cảnh báo thực tế. Không dùng luật từ khóa để ép nhãn thay cho kiểm định.
+Hướng dẫn này là quy tắc cho gán nhãn và đánh giá tiếp theo. Các bản model
+hiện tại chưa bảo đảm áp dụng đúng mọi đối chứng này. Cần bổ sung dữ liệu và
+đánh giá trên tập mới độc lập trước khi cho phép cảnh báo thực tế. Không dùng
+luật từ khóa để ép nhãn thay cho kiểm định.

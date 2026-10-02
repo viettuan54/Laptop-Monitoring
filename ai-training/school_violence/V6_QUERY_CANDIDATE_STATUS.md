@@ -33,13 +33,18 @@ lịch sử đã bị ảnh hưởng bởi các quyết định ở phiên bản
 chứng minh chất lượng thực tế. Bản v6 này là ứng viên thử nghiệm, chưa đủ cơ sở
 thay thế v5 trong luồng cảnh báo.
 
-Chưa có bộ query thực tế mới để kiểm thử độc lập. Mẫu trống
-`Mô tả/DuLieuThat2_review.csv` có ba cột `id,text,label` (không có `group_id`).
-Cần thu câu mới, ẩn danh, được phép dùng và gán cả ba nhãn trước khi xem dự
-đoán model; không lấy lại hoặc sửa câu từ `DuLieuThat1`. Sau đó khóa file,
-kiểm tra trùng/PII, đánh giá v5 và v6 trên **cùng** bộ mới, đặc biệt số
-`HIGH_RISK` bị bỏ sót và cảnh báo nhầm. Nếu dùng kết quả đó để chỉnh v6, phải
-dành một bộ mới khác cho quyết định triển khai cuối.
+Bản query thực tế mới `DuLieuThat2_review.csv` tại thời điểm kiểm thử v5/v6
+đã được người cung cấp xác nhận quyền sử dụng, ẩn danh và gán nhãn trước khi
+xem dự đoán. Trên cùng 99 câu ở bản nhãn ban đầu,
+v6 nhận đúng 42/50 câu `HIGH_RISK` so với 25/50 ở v5, nhưng chỉ nhận đúng
+4/40 câu `RISK` so với 10/40 ở v5; 36 câu `RISK` bị nâng thành `HIGH_RISK`.
+V6 vẫn là ứng viên thử nghiệm, chưa thay service mặc định. Xem ma trận nhầm
+lẫn, kiểm tra nguồn và giới hạn của phép thử tại
+[`DULIEUTHAT2_V5_V6_EVALUATION.md`](../../Mô%20tả/bao-cao-ai/school_violence/DULIEUTHAT2_V5_V6_EVALUATION.md).
+Nếu dùng 99 câu này để chỉnh v6, phải thu một bộ mới chưa xem model để kiểm
+thử cuối trước quyết định triển khai.
+Người cung cấp sau đó đã sửa nhãn/nội dung bộ này và dùng nó để phát triển
+ứng viên v7; xem [`V7_QUERY_CANDIDATE_STATUS.md`](V7_QUERY_CANDIDATE_STATUS.md).
 
 Tái tạo ứng viên từ thư mục `ai-training` sau khi có file gốc và xác nhận quyền
 sử dụng (đường dẫn output phải trống và nằm trong `artifacts/school_violence`):

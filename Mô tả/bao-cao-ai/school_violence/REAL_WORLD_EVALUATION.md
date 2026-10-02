@@ -38,20 +38,31 @@ Ngoài test, 12 câu đối chứng chính sách tổng hợp khi đó đạt 10
 bạn đánh". Ví dụ phủ định đã được bỏ khỏi file đối chứng hiện tại.
 Các đối chứng này **không** phải một tập thực tế độc lập.
 
-## Tập thực tế độc lập còn thiếu
+## Dữ liệu thực tế và phép thử mới
 
 Trong workspace đã có `Mô tả/DuLieuThat1.csv` gồm 94 câu do người dùng cung cấp,
 và `Mô tả/DuLieuThat1_review.csv` với đủ ba nhãn trên 94 câu. Người cung cấp
 đã xem dự đoán model, xác nhận phần lớn và chỉ ra 12 lỗi, nên bộ này là dữ liệu
-chẩn đoán chứ không còn độc lập để ước lượng chất lượng cuối. Quyền sử dụng và
-ẩn danh thủ công cũng chưa được xác nhận; xem `DULIEUTHAT1_REVIEWED_DIAGNOSTIC.md`.
+chẩn đoán chứ không còn độc lập để ước lượng chất lượng cuối. Người cung cấp
+đã xác nhận 94 câu được ẩn danh và được phép dùng để huấn luyện; xem
+`DULIEUTHAT1_REVIEWED_DIAGNOSTIC.md` và
+[`V6_QUERY_CANDIDATE_STATUS.md`](../../../ai-training/school_violence/V6_QUERY_CANDIDATE_STATUS.md).
+Một bộ mới gồm 99 câu `DuLieuThat2_review.csv` được người cung cấp xác nhận
+đã ẩn danh, được phép kiểm thử và gán nhãn trước khi xem dự đoán v5/v6. V6
+nhận đúng 42/50 câu `HIGH_RISK` nhưng chỉ 4/40 câu `RISK`, nên chưa được thay
+v5. Kết quả, ma trận nhầm lẫn và giới hạn phép thử nằm ở
+[`DULIEUTHAT2_V5_V6_EVALUATION.md`](DULIEUTHAT2_V5_V6_EVALUATION.md).
+Đó là bản nhãn ban đầu. Người cung cấp sau đó sửa nhãn/nội dung; bộ hiện tại
+đã được dùng làm dữ liệu phát triển cho ứng viên v7 và không còn là tập kiểm
+thử cuối độc lập. Xem
+[`V7_QUERY_CANDIDATE_STATUS.md`](../../../ai-training/school_violence/V7_QUERY_CANDIDATE_STATUS.md).
 CSV 6.000
 câu ban đầu và hai CSV v2.2 đều ghi nguồn `synthetic`; không đổi tên nguồn để
 giả làm tập thực.
 Phạm vi hiện tại chỉ là câu tìm kiếm. Không cần chờ dữ liệu `page_content`
 để đánh giá nhánh này; việc đọc và đánh giá nội dung trang làm sau.
 
-Khi có dữ liệu, lưu file JSONL **ngoài Git** tại
+Để chạy phép thử tương tự trên bộ tiếp theo, lưu file JSONL **ngoài Git** tại
 `ai-training/datasets/school_violence/real_world_holdout_v1.jsonl` (thư mục
 đã bị `.gitignore` bỏ qua). Mỗi dòng cần đúng một JSON object với các trường:
 
@@ -95,5 +106,5 @@ Trước khi bật cảnh báo: người phụ trách phải xem trực tiếp m
 `HIGH_RISK` bị bỏ sót, thống nhất ngưỡng chấp nhận recall và tỷ lệ cảnh báo
 nhầm cho từng loại nguồn, xác minh provenance/quyền sử dụng/ẩn danh, rồi ra
 quyết định triển khai riêng. Nếu dùng holdout để cải thiện model, phải khóa
-model mới và thu một holdout mới cho đánh giá cuối. Hiện model v3 vẫn
+model mới và thu một holdout mới cho đánh giá cuối. Các artifact hiện vẫn
 `deployment_eligible=false` và service production từ chối nạp.

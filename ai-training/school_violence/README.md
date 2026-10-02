@@ -15,8 +15,15 @@ Mốc checksum và lệnh huấn luyện lại/API smoke cho phiên bản này �
 [`BASELINE_QUERY_V2_4_V5.md`](BASELINE_QUERY_V2_4_V5.md).
 
 Ứng viên v6 cập nhật từ 12 lỗi query được người cung cấp chốt ở
-[`V6_QUERY_CANDIDATE_STATUS.md`](V6_QUERY_CANDIDATE_STATUS.md). Chưa có bộ
-query thực tế mới để kiểm thử độc lập; service vẫn mặc định dùng v5.
+[`V6_QUERY_CANDIDATE_STATUS.md`](V6_QUERY_CANDIDATE_STATUS.md). Bộ 99 query
+thực tế mới đã được kiểm thử trên v5 và v6; v6 tăng khả năng nhận `HIGH_RISK`
+nhưng báo động quá mức ở `RISK`, nên service vẫn mặc định dùng v5. Xem
+[`DULIEUTHAT2_V5_V6_EVALUATION.md`](../../Mô%20tả/bao-cao-ai/school_violence/DULIEUTHAT2_V5_V6_EVALUATION.md).
+
+Sau khi người cung cấp sửa nhãn và làm rõ nội dung `DuLieuThat2`, ứng viên
+v7 đã được huấn luyện cục bộ và kiểm tra chéo trên bộ này. Kết quả và giới
+hạn ở [`V7_QUERY_CANDIDATE_STATUS.md`](V7_QUERY_CANDIDATE_STATUS.md).
+V7 chưa thay model mặc định và chưa được phép triển khai.
 
 Quy tắc gán nhãn ở `ANNOTATION_GUIDE.md`: trang phòng chống bạo lực là `RISK`;
 báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa trực tiếp là
