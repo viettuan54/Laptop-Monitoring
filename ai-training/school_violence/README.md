@@ -14,6 +14,10 @@ sau lọc không độc lập. V5-query chưa được duyệt production.
 Mốc checksum và lệnh huấn luyện lại/API smoke cho phiên bản này ở
 [`BASELINE_QUERY_V2_4_V5.md`](BASELINE_QUERY_V2_4_V5.md).
 
+Ứng viên v6 cập nhật từ 12 lỗi query được người cung cấp chốt ở
+[`V6_QUERY_CANDIDATE_STATUS.md`](V6_QUERY_CANDIDATE_STATUS.md). Chưa có bộ
+query thực tế mới để kiểm thử độc lập; service vẫn mặc định dùng v5.
+
 Quy tắc gán nhãn ở `ANNOTATION_GUIDE.md`: trang phòng chống bạo lực là `RISK`;
 báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa trực tiếp là
 `HIGH_RISK`. Không thêm nhãn mới. Model v2 chưa được huấn luyện lại theo các

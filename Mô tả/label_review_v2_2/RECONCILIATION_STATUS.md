@@ -1,4 +1,4 @@
-# Đối chiếu hàng đợi duyệt với CSV nguồn
+g# Đối chiếu hàng đợi duyệt với CSV nguồn
 
 Cập nhật quy trình 2026-09-30: quyết định duyệt chỉ cần `id,label`, không cần
 `annotator_id`. Các số liệu đối chiếu bên dưới vẫn giữ nguyên; việc bỏ mã

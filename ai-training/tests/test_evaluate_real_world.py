@@ -129,6 +129,20 @@ class RealWorldEvaluatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "every row or omitted entirely"):
             load_holdout(self.holdout)
 
+    def test_reference_training_row_without_group_metadata_is_checked_by_text(self):
+        train_path = self.artifacts / "train.jsonl"
+        with train_path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps({
+                "id": "real-correction", "source_ids": ["real-correction"],
+                "text": "distinct real correction", "split": "train", "group_ids": [],
+            }) + "\n")
+        report = evaluate_holdout(self.holdout, self.artifacts)
+        self.assertEqual(report["independence_checks"]["id_and_runtime_text_overlap"], 0)
+        self.rows[0]["text"] = "distinct real correction"
+        self._write_rows()
+        with self.assertRaisesRegex(ValueError, "text overlaps"):
+            evaluate_holdout(self.holdout, self.artifacts)
+
     def test_pages_alone_cannot_validate_search_query_scope(self):
         self.rows = [row for row in self.rows if row["source_type"] == "page_content"]
         self._write_rows()

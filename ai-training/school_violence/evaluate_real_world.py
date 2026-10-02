@@ -145,7 +145,10 @@ def check_independence(records: list[dict], artifact_dir: Path) -> dict:
                 if reference.get("split") != split:
                     raise ValueError(f"Reference {split} record {line_number} has wrong split")
                 known_ids.update(reference.get("source_ids", [reference["id"]]))
-                known_groups.update(reference.get("group_ids", [reference["group_id"]]))
+                groups = reference.get("group_ids")
+                if groups is None:
+                    groups = [reference["group_id"]] if reference.get("group_id") else []
+                known_groups.update(groups)
                 known_text.update(_text_keys(reference["text"]))
                 reference_rows += 1
     for row in records:
