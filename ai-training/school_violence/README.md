@@ -24,6 +24,11 @@ Sau khi người cung cấp sửa nhãn và làm rõ nội dung `DuLieuThat2`, �
 v7 đã được huấn luyện cục bộ và kiểm tra chéo trên bộ này. Kết quả và giới
 hạn ở [`V7_QUERY_CANDIDATE_STATUS.md`](V7_QUERY_CANDIDATE_STATUS.md).
 V7 chưa thay model mặc định và chưa được phép triển khai.
+Trên 81 câu mới `DuLieuThat3`, v7 bỏ sót 3/9 câu `HIGH_RISK` và cảnh báo
+31/39 câu `SAFE`; xem [báo cáo kiểm thử](../../Mô%20tả/bao-cao-ai/school_violence/DULIEUTHAT3_V5_V6_V7_EVALUATION.md).
+Từ phân tích lỗi này, ứng viên v8 dùng 192 câu đã duyệt và một bộ phân loại
+TF-IDF/tuyến tính, chưa thay model mặc định. Kiểm tra chéo phát triển và
+giới hạn phép thử ở [`V8_QUERY_CANDIDATE_STATUS.md`](V8_QUERY_CANDIDATE_STATUS.md).
 
 Quy tắc gán nhãn ở `ANNOTATION_GUIDE.md`: trang phòng chống bạo lực là `RISK`;
 báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa trực tiếp là

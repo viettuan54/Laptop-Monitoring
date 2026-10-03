@@ -253,6 +253,10 @@ def fit(records: list[dict], alpha: float, *, model_version: str = MODEL_VERSION
 
 
 def predict_scores(model: dict, text: str) -> dict[str, float]:
+    if model.get("algorithm") == "tfidf_word_softmax_v1":
+        from .linear_query_model import predict_scores_linear
+
+        return predict_scores_linear(model, text)
     counts = features(text)
     total_docs = sum(model["class_docs"].values())
     vocabulary_size = model["vocabulary_size"]

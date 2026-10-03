@@ -57,8 +57,19 @@ SHA-256 `model.json.gz` là
 `d13383b8c620ae2de4ff6ee7208e481a799da0ddb58bd723ee98c5e8f14dc9ae`.
 JSON báo cáo và cấu hình không chứa nguyên văn câu tìm kiếm; `train.jsonl`
 và model chứa dữ liệu huấn luyện trong thư mục bị Git bỏ qua. Model mặc định
-vẫn là v5. V7 có `deployment_eligible=false`; chưa có tập kiểm thử cuối mới
-chưa xem dự đoán và chưa đủ cơ sở bật cảnh báo production.
+vẫn là v5. V7 có `deployment_eligible=false`. Tại thời điểm tạo ứng viên,
+chưa có tập kiểm thử cuối mới chưa xem dự đoán và chưa đủ cơ sở bật cảnh báo
+production.
+
+**Cập nhật 2026-10-03:** sau khi nhãn `DuLieuThat3` được chốt, v7 đã được
+chấm trên 81 câu mới cùng v5/v6. V7 đúng 34/81, macro-F1 0,3915, bỏ sót
+3/9 câu `HIGH_RISK` và cảnh báo 31/39 câu `SAFE`. V5 bỏ sót 1/9 câu mức cao;
+v7 giảm cảnh báo mức cao sai nhưng tăng bỏ sót. V7 vẫn chưa được triển khai.
+Xem [báo cáo kiểm thử](../../Mô%20tả/bao-cao-ai/school_violence/DULIEUTHAT3_V5_V6_V7_EVALUATION.md)
+để biết ma trận lỗi, checksum và giới hạn nguồn dữ liệu. Bộ `DuLieuThat3`
+không được dùng để huấn luyện hoặc chọn ngưỡng trong lần chạy này.
+Sau lần đánh giá, bộ này được dùng làm dữ liệu **phát triển** cho ứng viên
+[v8](V8_QUERY_CANDIDATE_STATUS.md); nó không còn là holdout độc lập cho v8.
 
 Tái tạo ứng viên từ `ai-training` khi cả hai CSV nguồn còn đúng checksum và
 thư mục output trống:

@@ -56,8 +56,14 @@ v5. Kết quả, ma trận nhầm lẫn và giới hạn phép thử nằm ở
 đã được dùng làm dữ liệu phát triển cho ứng viên v7 và không còn là tập kiểm
 thử cuối độc lập. Xem
 [`V7_QUERY_CANDIDATE_STATUS.md`](../../../ai-training/school_violence/V7_QUERY_CANDIDATE_STATUS.md).
-CSV 6.000
-câu ban đầu và hai CSV v2.2 đều ghi nguồn `synthetic`; không đổi tên nguồn để
+Sau đó, bộ mới `DuLieuThat3` gồm 81 câu được chấm một lần trên v5/v6/v7:
+v7 bỏ sót 3/9 câu `HIGH_RISK` và cảnh báo 31/39 câu `SAFE`, nên chưa được
+triển khai. Xem [báo cáo `DuLieuThat3`](DULIEUTHAT3_V5_V6_V7_EVALUATION.md)
+về nhãn, ma trận lỗi, checksum và giới hạn nguồn dữ liệu. Sau khi xem lỗi,
+`DuLieuThat3` được dùng làm dữ liệu phát triển cho ứng viên
+[v8](../../../ai-training/school_violence/V8_QUERY_CANDIDATE_STATUS.md);
+không dùng bộ này để tuyên bố hiệu năng cuối của v8. CSV 6.000 câu ban đầu
+và hai CSV v2.2 đều ghi nguồn `synthetic`; không đổi tên nguồn để
 giả làm tập thực.
 Phạm vi hiện tại chỉ là câu tìm kiếm. Không cần chờ dữ liệu `page_content`
 để đánh giá nhánh này; việc đọc và đánh giá nội dung trang làm sau.

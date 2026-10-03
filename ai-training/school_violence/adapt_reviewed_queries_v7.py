@@ -107,7 +107,7 @@ def check_reference_overlap(rows: list[dict], references: dict[str, list[dict]])
             raise ValueError(f"Real review overlaps base references at ID {row['id']}")
 
 
-def make_cv_folds(rows: list[dict]) -> tuple[list[list[int]], int]:
+def make_cv_folds(rows: list[dict], *, seed: int = CV_SEED) -> tuple[list[list[int]], int]:
     """Keep near-identical queries in the same development fold."""
     normalized = [" ".join(unicodedata.normalize("NFKC", row["text"]).casefold().split())
                   for row in rows]
@@ -129,7 +129,7 @@ def make_cv_folds(rows: list[dict]) -> tuple[list[list[int]], int]:
     if any(len({rows[index]["label"] for index in group}) != 1 for group in groups.values()):
         raise ValueError("Near-duplicate queries have conflicting labels")
     ordered = list(groups.values())
-    random.Random(CV_SEED).shuffle(ordered)
+    random.Random(seed).shuffle(ordered)
     ordered.sort(key=lambda group: -len(group))
     folds: list[list[int]] = [[] for _ in range(FOLDS)]
     label_counts = [Counter() for _ in range(FOLDS)]
