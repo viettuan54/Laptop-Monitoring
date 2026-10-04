@@ -32,6 +32,29 @@ bỏ qua câu tìm kiếm.
 
 ## Cách xử lý ngữ cảnh
 
+Đọc đủ câu theo ba điểm: **ai bị tác động**, **hành vi gì được nói rõ**,
+và **đây là trải nghiệm thật hay câu hỏi chung/giả định**. Dấu hiệu mạnh
+trong lời kể của chính trẻ có ưu tiên hơn mục đích hỏi cách xử lý.
+
+| Vai trò và mức độ được nêu | Nhãn |
+| --- | --- |
+| Trẻ kể bản thân bị đánh, bị đe dọa trực tiếp hoặc bị cưỡng ép rõ | `HIGH_RISK` |
+| Trẻ nói đã chuyển lớp/né tránh để không tiếp tục bị bắt nạt | `HIGH_RISK` khi câu vẫn xác nhận trải nghiệm đã xảy ra |
+| Trẻ chứng kiến người khác/động vật bị bạo lực, chưa nói trẻ bị tác động | `RISK` để phụ huynh quan sát; không diễn giải là trẻ đã bị bạo lực |
+| Hỏi giả định về một người bạn, tìm hiểu khái niệm hoặc cách can thiệp | `RISK` khi chưa xác nhận nguy cơ trực tiếp với chính trẻ |
+| Áp lực/lo lắng/trêu chọc chưa có chi tiết gây hại, đe dọa hoặc cưỡng ép rõ | `RISK` |
+| Học tập, sinh hoạt và quan hệ bạn bè bình thường, chưa có tín hiệu nguy cơ | `SAFE` |
+
+Chỉ một từ như “bắt”, “phải”, “bạn” hoặc “trường” không đủ chốt mức cao.
+Ví dụ yêu cầu đổi chỗ chưa nói rõ đe dọa/gây hại có thể là `RISK`; bị cả
+nhóm cưỡng ép tham gia dù đã từ chối là dấu hiệu trực tiếp mạnh hơn. Nếu
+câu hàm ý bị ép nhưng không nói rõ ai ép/hành vi gì, ghi lại điểm chưa rõ
+để người cung cấp quyết định; không tự bổ sung ngữ cảnh từ dự đoán model.
+
+Các ranh giới được rà trên bản nhãn hiện tại ở
+[`LABEL_BOUNDARY_REVIEW_20261003.md`](LABEL_BOUNDARY_REVIEW_20261003.md).
+Quy tắc này phục vụ gán nhãn; không dùng làm luật từ khóa ghi đè model.
+
 - “Cách phòng tránh bạo lực học đường” là `RISK`; “Em bị bạn đánh, làm sao
   phòng tránh lần sau?” là `HIGH_RISK`. Chi tiết trải nghiệm cá nhân có ưu tiên
   cao hơn từ ngữ phòng tránh.

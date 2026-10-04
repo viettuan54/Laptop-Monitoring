@@ -16,6 +16,8 @@ def load_model(path: Path) -> dict:
         model = json.load(handle)
     if tuple(model.get("labels", ())) != LABELS:
         raise ValueError("Artifact label order is not SAFE, RISK, HIGH_RISK")
+    if model.get("algorithm") == "frozen_sentence_encoder_softmax_v1":
+        model["_artifact_dir"] = str(path.resolve().parent)
     return model
 
 

@@ -29,6 +29,22 @@ Trên 81 câu mới `DuLieuThat3`, v7 bỏ sót 3/9 câu `HIGH_RISK` và cảnh 
 Từ phân tích lỗi này, ứng viên v8 dùng 192 câu đã duyệt và một bộ phân loại
 TF-IDF/tuyến tính, chưa thay model mặc định. Kiểm tra chéo phát triển và
 giới hạn phép thử ở [`V8_QUERY_CANDIDATE_STATUS.md`](V8_QUERY_CANDIDATE_STATUS.md).
+Lần rà lỗi lặp và thử các biến thể tiếp theo ở
+[`V8_ERROR_STABILITY_AND_VARIANTS.md`](V8_ERROR_STABILITY_AND_VARIANTS.md)
+chưa tìm được cấu hình cải thiện đồng thời các loại cảnh báo sai và bỏ sót;
+v8 vẫn là ứng viên cục bộ.
+
+Đã rà thêm ranh giới vai trò/ngữ cảnh ở
+[`LABEL_BOUNDARY_REVIEW_20261003.md`](LABEL_BOUNDARY_REVIEW_20261003.md) và
+thử 12 cấu hình hai tầng `SAFE/ALERT` rồi `RISK/HIGH_RISK` trên cùng 192 câu.
+[Kết quả hai tầng](TWO_STAGE_QUERY_EXPERIMENT.md) giảm cảnh báo nhầm nhưng
+bỏ sót mức cao nhiều hơn v8, nên chỉ lưu artifact thử, không thay model mặc định.
+
+Ngày 2026-10-04 đã thử encoder câu đa ngôn ngữ giữ nguyên trọng số và đầu
+phân loại ba nhãn trên dữ liệu hiện có. [Báo cáo ngữ nghĩa](SEMANTIC_QUERY_EXPERIMENT.md)
+ghi kết quả 16 cấu hình và sửa khác biệt khi xử lý nhiều câu/từng câu.
+Không cấu hình nào đạt tiêu chí thay v8; chưa chuyển sang đo hiệu năng hoặc
+kiểm thử toàn luồng cảnh báo cho ứng viên này.
 
 Quy tắc gán nhãn ở `ANNOTATION_GUIDE.md`: trang phòng chống bạo lực là `RISK`;
 báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa trực tiếp là

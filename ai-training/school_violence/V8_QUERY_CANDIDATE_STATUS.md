@@ -74,3 +74,18 @@ Quyết định hiện tại: giữ v8 làm ứng viên phát triển. Không th
 tích lỗi và 192 câu hiện có; khi quyết định triển khai mới cần đánh giá
 trên một bộ chưa xem dự đoán, có xác nhận nguồn/quyền sử dụng/ẩn danh và
 tiêu chí chấp nhận cho cả bỏ sót mức cao lẫn cảnh báo nhầm.
+
+**Rà tiếp 2026-10-03:** [báo cáo lỗi lặp và thử biến thể](V8_ERROR_STABILITY_AND_VARIANTS.md)
+chỉ ra ba ID mức cao bị bỏ sót trong cả năm cách chia. Những thay đổi nhỏ
+đã thử đều làm xấu ít nhất một loại lỗi quan trọng, nên chưa tạo v9 và
+không thay artifact v8.
+
+**Thử kiến trúc hai tầng 2026-10-03:**
+[báo cáo và lệnh tái lập](TWO_STAGE_QUERY_EXPERIMENT.md) so 12 cấu hình trên
+cùng năm cách chia. Điểm tổng thể/cảnh báo nhầm có cải thiện ở một số bản,
+nhưng số `HIGH_RISK` nhận đúng đều giảm; tiếp tục giữ v8 làm ứng viên phát triển.
+
+**Thử encoder ngữ nghĩa 2026-10-04:** [báo cáo](SEMANTIC_QUERY_EXPERIMENT.md)
+so 16 cấu hình encoder giữ nguyên trọng số/đầu phân loại trên cùng fold.
+Không cấu hình nào giữ được số mức cao đúng của v8 hoặc tránh tăng lỗi
+mức cao hạ `SAFE`, nên tiếp tục giữ nguyên v8.

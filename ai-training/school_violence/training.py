@@ -253,6 +253,14 @@ def fit(records: list[dict], alpha: float, *, model_version: str = MODEL_VERSION
 
 
 def predict_scores(model: dict, text: str) -> dict[str, float]:
+    if model.get("algorithm") == "frozen_sentence_encoder_softmax_v1":
+        from .semantic_query_model import predict_scores_semantic
+
+        return predict_scores_semantic(model, text)
+    if model.get("algorithm") == "tfidf_two_stage_query_v1":
+        from .two_stage_query_model import predict_scores_two_stage
+
+        return predict_scores_two_stage(model, text)
     if model.get("algorithm") == "tfidf_word_softmax_v1":
         from .linear_query_model import predict_scores_linear
 
@@ -278,9 +286,16 @@ def predict_scores(model: dict, text: str) -> dict[str, float]:
     return {label: weights[label] / total for label in LABELS}
 
 
-def predict(model: dict, text: str) -> str:
-    scores = predict_scores(model, text)
+def select_label(model: dict, scores: dict[str, float]) -> str:
+    if model.get("algorithm") == "tfidf_two_stage_query_v1":
+        from .two_stage_query_model import select_two_stage_label
+
+        return select_two_stage_label(model, scores)
     return max(LABELS, key=lambda label: scores[label])
+
+
+def predict(model: dict, text: str) -> str:
+    return select_label(model, predict_scores(model, text))
 
 
 def evaluate(model: dict, records: list[dict]) -> dict:

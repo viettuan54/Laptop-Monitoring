@@ -1,0 +1,6 @@
+# Optional, isolated environment for the frozen sentence-encoder experiment.
+numpy>=1.26,<3
+jsonschema>=4.23,<5
+onnxruntime>=1.23,<2
+tokenizers>=0.22,<1
+psutil>=7,<8

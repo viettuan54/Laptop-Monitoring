@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from school_violence.predict import load_model
-from school_violence.training import LABELS, predict_scores
+from school_violence.training import LABELS, predict_scores, select_label
 
 
 @dataclass(frozen=True)
@@ -33,7 +33,7 @@ class ThreeLabelEngine:
 
     def moderate(self, item: ModerationInput) -> dict:
         scores = predict_scores(self.model, item.text)
-        label = max(LABELS, key=lambda candidate: scores[candidate])
+        label = select_label(self.model, scores)
         return {
             "id": item.item_id,
             "label": label,

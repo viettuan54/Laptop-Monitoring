@@ -41,6 +41,7 @@ Thumbs.db
 .venv-face/
 .venv-edge/
 ai-training/.venv/
+ai-training/.venv-semantic/
 ai-training/.matplotlib-cache/
 ai-training/artifacts/
 ai-training/datasets/calibration/
