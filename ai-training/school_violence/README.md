@@ -46,6 +46,11 @@ ghi kết quả 16 cấu hình và sửa khác biệt khi xử lý nhiều câu/
 Không cấu hình nào đạt tiêu chí thay v8; chưa chuyển sang đo hiệu năng hoặc
 kiểm thử toàn luồng cảnh báo cho ứng viên này.
 
+Tiếp đó đã [tinh chỉnh hai lớp cuối MiniLM](FINETUNED_QUERY_EXPERIMENT.md)
+với bốn cấu hình trên cùng dữ liệu/fold. Không cấu hình nào đạt tiêu chí
+thay v8. Ba test API thiếu thư viện đã được chạy lại và đạt; tổng 131 test
+chung và năm test riêng của tinh chỉnh đều đạt, không còn bỏ qua.
+
 Quy tắc gán nhãn ở `ANNOTATION_GUIDE.md`: trang phòng chống bạo lực là `RISK`;
 báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa trực tiếp là
 `HIGH_RISK`. Không thêm nhãn mới. Model v2 chưa được huấn luyện lại theo các

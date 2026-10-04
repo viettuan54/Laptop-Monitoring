@@ -3,6 +3,9 @@
 Service local phục vụ model `SAFE`, `RISK`, `HIGH_RISK` đã train trong
 `../school_violence/`; xem hướng dẫn train ở `../school_violence/README.md`.
 
+[Kiểm tra API ngày 2026-10-04](API_TEST_STATUS_20261004.md) đã chạy đủ ba test
+trước đây thiếu thư viện; toàn bộ 131 test hiện đều đạt trong môi trường `.venv`.
+
 Chạy từ thư mục gốc dự án:
 
 ```powershell

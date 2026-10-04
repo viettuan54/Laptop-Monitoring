@@ -89,3 +89,8 @@ nhưng số `HIGH_RISK` nhận đúng đều giảm; tiếp tục giữ v8 làm 
 so 16 cấu hình encoder giữ nguyên trọng số/đầu phân loại trên cùng fold.
 Không cấu hình nào giữ được số mức cao đúng của v8 hoặc tránh tăng lỗi
 mức cao hạ `SAFE`, nên tiếp tục giữ nguyên v8.
+
+**Tinh chỉnh một phần encoder 2026-10-04:**
+[báo cáo](FINETUNED_QUERY_EXPERIMENT.md) so bốn cấu hình học lại hai lớp cuối
+MiniLM. Nhận đúng mức cao tốt nhất trung bình 55,4/66, kém v8 và tăng lỗi
+hạ mức cao thành `SAFE`, nên không chọn thay v8.

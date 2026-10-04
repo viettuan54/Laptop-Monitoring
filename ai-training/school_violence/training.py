@@ -253,6 +253,10 @@ def fit(records: list[dict], alpha: float, *, model_version: str = MODEL_VERSION
 
 
 def predict_scores(model: dict, text: str) -> dict[str, float]:
+    if model.get("algorithm") == "partial_minilm_finetuned_query_v1":
+        from .finetuned_query_model import predict_scores_finetuned
+
+        return predict_scores_finetuned(model, text)
     if model.get("algorithm") == "frozen_sentence_encoder_softmax_v1":
         from .semantic_query_model import predict_scores_semantic
 

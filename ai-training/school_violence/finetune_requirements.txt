@@ -1,0 +1,4 @@
+# Install torch separately from https://download.pytorch.org/whl/cpu.
+-r semantic_requirements.txt
+transformers>=4.57,<5
+safetensors>=0.6,<1
