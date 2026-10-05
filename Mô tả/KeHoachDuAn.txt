@@ -1,8 +1,0 @@
-1 Hoàn thiện installer và provisioning Agent.
-2 Xây Parent Web Dashboard để có thể trình diễn toàn bộ API hiện có.
-3 Tích hợp FCM/Expo Push Notification thật.
-4 Triển khai Edge AI bằng MediaPipe/OpenCV, bắt đầu từ khoảng cách mắt và tư thế.
-5 Thêm AI classification cho từng app/web log.
-6 Xây Mobile App và sinh trắc học.
-7 Hoàn thiện Admin Dashboard.
-8 Chạy integration/end-to-end test với PostgreSQL, Redis và Agent Windows thật.
