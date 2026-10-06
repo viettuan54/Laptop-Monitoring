@@ -253,6 +253,30 @@ def fit(records: list[dict], alpha: float, *, model_version: str = MODEL_VERSION
 
 
 def predict_scores(model: dict, text: str) -> dict[str, float]:
+    if model.get("algorithm") == "recipient_context_word_softmax_v1":
+        from .context_query_model_v13 import predict_scores_recipient_context
+
+        return predict_scores_recipient_context(model, text)
+    if model.get("algorithm") == "financial_context_word_softmax_v1":
+        from .context_query_model_v12_1 import predict_scores_financial_context
+
+        return predict_scores_financial_context(model, text)
+    if model.get("algorithm") == "typed_context_word_softmax_v1":
+        from .context_query_model_v12 import predict_scores_typed_context
+
+        return predict_scores_typed_context(model, text)
+    if model.get("algorithm") == "component_context_word_softmax_v1":
+        from .component_context_query_model import predict_scores_components
+
+        return predict_scores_components(model, text)
+    if model.get("algorithm") == "phrase_context_word_softmax_v1":
+        from .context_query_model_v11_1 import predict_scores_phrase_context
+
+        return predict_scores_phrase_context(model, text)
+    if model.get("algorithm") == "role_context_word_softmax_v1":
+        from .context_query_model_v11 import predict_scores_role_context
+
+        return predict_scores_role_context(model, text)
     if model.get("algorithm") in ("context_word_softmax_v1", "high_first_query_v1"):
         from .context_query_model import predict_scores_context
 

@@ -188,6 +188,35 @@ Thử suy luận cục bộ (PowerShell):
   --model .\artifacts\school_violence\vi-school-violence-char-nb-v5-query\model.json.gz
 ```
 
+**Ứng viên mới v13 ngày 2026-10-06:** đã [sửa biểu diễn và thử Agent cục bộ](V13_QUERY_CANDIDATE_STATUS.md).
+Dulieu5 tăng 75/90 lên 85/90 đúng (94,44%), giữ HIGH đúng 26/26; đây là
+điểm phát triển vì bộ đã được xem để thiết kế v13. Kiểm tra chéo 282 câu cũ
+có macro-F1 0,83938 → 0,85258, accuracy trung bình 84,82%. 134 test và
+12 kiểm tra luồng đạt. [V13 đã khóa](query_v13_candidate.lock.json), chưa
+bật trên máy trẻ hoặc phụ huynh thật; model mặc định v5 giữ nguyên.
+
+**Kiểm thử Dulieu5 với v12.1 ngày 2026-10-06:** sau khi người dùng chốt sáu nhãn,
+[v12.1 nhận đúng 75/90 câu](DULIEU5_V12_1_EVALUATION.md), HIGH_RISK đúng
+26/26. Còn 4 SAFE bị cảnh báo, 9 RISK lên HIGH_RISK và 2 RISK về SAFE;
+chưa đạt mốc kỹ thuật đặt trước. Nguồn thực tế của bộ mới chưa xác nhận
+riêng; chưa gọi đây là kiểm thử thực tế độc lập. Không huấn luyện lại hoặc
+thay model mặc định.
+
+**Ứng viên mới sau kiểm tra từng nhóm ngày 2026-10-06:** đã chọn
+[v12.1](V12_QUERY_CANDIDATE_STATUS.md). So với v10 cố định trên cùng các fold,
+HIGH nhận đúng tăng 92,8 → 94,2/95, SAFE cảnh báo giảm 12,4 → 10,2/79,
+RISK lên HIGH giảm 36 → 32/108; macro-F1 0,81254 → 0,83938. 121 test và
+12 kiểm tra luồng đạt. [V12.1 đã khóa](query_v12_1_candidate.lock.json) để thử
+bộ mới độc lập, chưa triển khai; service mặc định vẫn v5. Các ID 35/57/82/50
+còn lỗi ngoài phần học, không coi model đã hoàn thiện.
+
+**Sửa ngữ cảnh trước vòng v12 ngày 2026-10-06:** đã thực hiện
+[v11 và bản sửa hẹp v11.1](V11_QUERY_EXPERIMENT_STATUS.md) trên cùng 282 câu/
+25 fold. V11 giảm SAFE cảnh báo nhưng tăng RISK lên HIGH; v11.1 vẫn tăng nhẹ
+RISK lên HIGH. Cả hai chưa đạt tiêu chí thay v10. 102 test và 12 kiểm tra
+luồng cho mỗi bản đạt; đây là kiểm tra chức năng/phát triển, không phải test
+thực tế mới độc lập. Tại thời điểm đó giữ v10; kết quả vòng tiếp theo ở trên.
+
 **Giảm bỏ sót và cảnh báo sai ngày 2026-10-05:** đã chọn
 [ứng viên v10 có ngữ cảnh](V10_QUERY_CANDIDATE_STATUS.md). Trên cùng các fold
 phát triển, HIGH→SAFE trung bình giảm 0,4 xuống 0,2; RISK→HIGH giảm 43,6 xuống

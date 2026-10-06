@@ -1,0 +1,90 @@
+{
+  "locked_on": "2026-10-06",
+  "status": "experimental_only_rejected",
+  "development_rows": 282,
+  "labels": {
+    "SAFE": 79,
+    "RISK": 108,
+    "HIGH_RISK": 95
+  },
+  "baseline_model_version": "vi-school-violence-context-v10-query-candidate",
+  "baseline_model_sha256": "7e6612203fd0898171fb21c6e0e8dbdb5a336bbf7b2059baeea584db70581616",
+  "baseline_mean": {
+    "macro_f1": 0.8125404442713179,
+    "high_risk_correct": 92.8,
+    "high_risk_to_safe": 0,
+    "safe_alerts": 12.4,
+    "risk_to_high": 36,
+    "risk_to_safe": 3.8
+  },
+  "service_default_model_version": "vi-school-violence-char-nb-v5-query",
+  "service_default_model_sha256": "8c9c9642f796a596ce091ee8cf3ebe564be859862f115f22c985faba58f2bc7b",
+  "trials": [
+    {
+      "name": "v11_full_context",
+      "model_version": "vi-school-violence-role-context-v11-query-candidate",
+      "artifact_relative_to_ai_training": "artifacts/school_violence/v11_role_context_experiment_20261006/vi-school-violence-role-context-v11-query-candidate/model.json.gz",
+      "model_sha256": "6444d89371c0e3b316a4b9ea26e7076aa29496d1d41cf0276895b9f13c8ef16e",
+      "evaluation_report_relative_to_ai_training": "artifacts/school_violence/v11_role_context_experiment_20261006/evaluation_report.json",
+      "evaluation_report_sha256": "25ef00bf7f03536df4852934ed031a9d0370eda5b6e211e60514dd2e7263e185",
+      "runtime_report_relative_to_ai_training": "artifacts/school_violence/v11_role_context_runtime_20261006/verification_report.json",
+      "runtime_report_sha256": "f370f3a7dfaf7335e7ca3bbe23a482c39d1086cd2da4b60a1ac09b6d20f3c62e",
+      "plan_relative_to_ai_training": "school_violence/V11_EXPERIMENT_PLAN.md",
+      "plan_sha256": "13f0846f3fdcec6f67e81a7b5ca72ee581fe78ed3debda05a2962612eabafee1",
+      "development_criteria_met": false,
+      "candidate_mean": {
+        "macro_f1": 0.8106385786325784,
+        "high_risk_correct": 92.6,
+        "high_risk_to_safe": 0,
+        "safe_alerts": 10.8,
+        "risk_to_high": 38,
+        "risk_to_safe": 3.8
+      },
+      "dulieu4_mean": {
+        "macro_f1": 0.8519432520092344,
+        "high_risk_correct": 29,
+        "high_risk_to_safe": 0,
+        "safe_alerts": 4.4,
+        "risk_to_high": 8.6,
+        "risk_to_safe": 0.4
+      },
+      "functional_checks_passed": 12,
+      "deployment_eligible": false
+    },
+    {
+      "name": "v11_1_phrase_only",
+      "model_version": "vi-school-violence-phrase-context-v11-1-query-candidate",
+      "artifact_relative_to_ai_training": "artifacts/school_violence/v11_1_phrase_context_experiment_20261006/vi-school-violence-phrase-context-v11-1-query-candidate/model.json.gz",
+      "model_sha256": "659ffafe7d19e0e1d3310849795506631152de60aa71c3685ac3b9636d11fade",
+      "evaluation_report_relative_to_ai_training": "artifacts/school_violence/v11_1_phrase_context_experiment_20261006/evaluation_report.json",
+      "evaluation_report_sha256": "8b30cd0dbd272aaf9773ef0ed74c2a8a34176379de8fbb59e3e019763c969180",
+      "runtime_report_relative_to_ai_training": "artifacts/school_violence/v11_1_phrase_context_runtime_20261006/verification_report.json",
+      "runtime_report_sha256": "d56bc6593435e7732687cc9a78c5c900929f8d63359581f90ccc5061fe8fd081",
+      "plan_relative_to_ai_training": "school_violence/V11_1_EXPERIMENT_PLAN.md",
+      "plan_sha256": "844c2aee5529199e17def8688103b7dfa3cc6b240f2bbd74b87487e2bd1bc6b0",
+      "development_criteria_met": false,
+      "candidate_mean": {
+        "macro_f1": 0.8110795342067753,
+        "high_risk_correct": 92.8,
+        "high_risk_to_safe": 0,
+        "safe_alerts": 12,
+        "risk_to_high": 36.8,
+        "risk_to_safe": 3.8
+      },
+      "dulieu4_mean": {
+        "macro_f1": 0.8609464784409673,
+        "high_risk_correct": 29,
+        "high_risk_to_safe": 0,
+        "safe_alerts": 5,
+        "risk_to_high": 7.2,
+        "risk_to_safe": 0.4
+      },
+      "functional_checks_passed": 12,
+      "deployment_eligible": false
+    }
+  ],
+  "quality_verification_relative_to_ai_training": "artifacts/school_violence/v11_1_phrase_context_experiment_20261006/quality_verification.json",
+  "quality_verification_sha256": "532d642437dc73026ad378b828e6de0331608d95cf145d95e74cdee2ee6eeaff",
+  "independent_final_holdout_evaluated": false,
+  "deployment_eligible": false
+}

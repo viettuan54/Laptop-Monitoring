@@ -1,0 +1,82 @@
+{
+  "locked_on": "2026-10-06",
+  "model_version": "vi-school-violence-financial-context-v12-1-query-candidate",
+  "algorithm": "financial_context_word_softmax_v1",
+  "artifact_relative_to_ai_training": "artifacts/school_violence/v12_1_financial_context_experiment_20261006/vi-school-violence-financial-context-v12-1-query-candidate/model.json.gz",
+  "model_sha256": "cfc5f953afdaf8bce621ee0ba2f8d6da57b45467449e774464b0a434ef1dc8cb",
+  "selection_report_relative_to_ai_training": "artifacts/school_violence/v12_1_financial_context_experiment_20261006/evaluation_report.json",
+  "selection_report_sha256": "bfbd0745c0dde0c4bb9dee77476b0d22dc72c672c91e112bdd8d7be804b46e3b",
+  "verification_report_relative_to_ai_training": "artifacts/school_violence/v12_1_financial_context_runtime_20261006/verification_report.json",
+  "verification_report_sha256": "65bb836b2bb868169bbf9e209aac7b40d0cada5f2328a4e2f46d4160471744e5",
+  "quality_verification_relative_to_ai_training": "artifacts/school_violence/v12_1_financial_context_experiment_20261006/quality_verification.json",
+  "quality_verification_sha256": "9749ade52d024d539401c4ee1e6bb913eeebf6f604313579e021ea9645b316bb",
+  "inspected_queries_relative_to_ai_training": "artifacts/school_violence/v12_1_financial_context_experiment_20261006/inspected_queries.jsonl",
+  "inspected_queries_sha256": "e7be7e14032147acc13e0ef38dec575c985c72aec9a43f867f0732b7ea75b2d1",
+  "inspected_query_reference_rows": 364,
+  "ablation_report_relative_to_ai_training": "artifacts/school_violence/v12_context_ablation_20261006/ablation_report.json",
+  "ablation_report_sha256": "da6ef3954924f4da36c2f48009bd78828a9d27e2b1a1855141517ddd2e9c1493",
+  "prior_v12_report_relative_to_ai_training": "artifacts/school_violence/v12_typed_context_experiment_20261006/evaluation_report.json",
+  "prior_v12_report_sha256": "f5d7740a338aff2efa02b1d9797c017735b9f36b95e6156dd63f3c2ffff0fc2d",
+  "development_rows": 282,
+  "configuration": {
+    "name": "financial_context_fixed_high3",
+    "min_df": 1,
+    "context_scale": 2.0,
+    "class_weights": {
+      "SAFE": 1.5,
+      "RISK": 1.0,
+      "HIGH_RISK": 3.0
+    },
+    "epochs": 200,
+    "penalty": 0.001,
+    "decision_rule": "argmax",
+    "input_columns": [
+      "text"
+    ],
+    "features_are_learned_not_label_overrides": true,
+    "scores_are_calibrated_probabilities": false
+  },
+  "baseline_model_version": "vi-school-violence-context-v10-query-candidate",
+  "baseline_model_sha256": "7e6612203fd0898171fb21c6e0e8dbdb5a336bbf7b2059baeea584db70581616",
+  "baseline_mean": {
+    "macro_f1": 0.8125404442713179,
+    "high_risk_correct": 92.8,
+    "high_risk_to_safe": 0,
+    "safe_alerts": 12.4,
+    "risk_to_high": 36,
+    "risk_to_safe": 3.8
+  },
+  "candidate_mean": {
+    "macro_f1": 0.8393766407413752,
+    "high_risk_correct": 94.2,
+    "high_risk_to_safe": 0,
+    "safe_alerts": 10.2,
+    "risk_to_high": 32,
+    "risk_to_safe": 3.6
+  },
+  "dulieu4_mean": {
+    "baseline": {
+      "macro_f1": 0.8659689355981001,
+      "high_risk_correct": 29,
+      "high_risk_to_safe": 0,
+      "safe_alerts": 4.8,
+      "risk_to_high": 7,
+      "risk_to_safe": 0.4
+    },
+    "candidate": {
+      "macro_f1": 0.8875355274487957,
+      "high_risk_correct": 29,
+      "high_risk_to_safe": 0,
+      "safe_alerts": 4.4,
+      "risk_to_high": 5.4,
+      "risk_to_safe": 0.4
+    }
+  },
+  "development_selection_criteria_met": true,
+  "functional_flow_verified": true,
+  "functional_checks": 12,
+  "service_default_model_version": "vi-school-violence-char-nb-v5-query",
+  "service_default_model_sha256": "8c9c9642f796a596ce091ee8cf3ebe564be859862f115f22c985faba58f2bc7b",
+  "independent_final_holdout_evaluated": false,
+  "deployment_eligible": false
+}

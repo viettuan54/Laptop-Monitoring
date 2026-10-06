@@ -1,4 +1,4 @@
-"""Audit user-labelled CSV queries and evaluate the checksum-locked v8.
+"""Audit user-labelled CSV queries and evaluate a checksum-locked candidate.
 
 No fitting, threshold selection, row exclusion or source-label rewriting.
 Unknown provenance is recorded explicitly; only a confirmed real holdout with
@@ -56,9 +56,10 @@ def read_queries(path: Path) -> list[dict]:
     return rows
 
 
-def overlap_audit(rows: list[dict], artifact: Path) -> dict:
+def overlap_audit(rows: list[dict], artifact: Path, *, additional_references: list[dict] | None = None) -> dict:
     references = [json.loads(line) for split in ("train", "validation", "test")
                   for line in (artifact / f"{split}.jsonl").read_text(encoding="utf-8").splitlines()]
+    references.extend(additional_references or [])
     keys = defaultdict(list)
     for row in references:
         for key in _text_keys(row["text"]):
@@ -83,7 +84,8 @@ def overlap_audit(rows: list[dict], artifact: Path) -> dict:
             if ratio >= NEAR_RATIO:
                 internal.append({"ids": [first["id"], second["id"]], "similarity": ratio,
                                  "conflicting_labels": first["label"] != second["label"]})
-    return {"reference_rows": len(references), "reference_splits": ["train", "validation", "test"],
+    return {"reference_rows": len(references), "reference_splits": ["train", "validation", "test"]
+            + (["inspected"] if additional_references else []),
             "exact_text_overlap": exact, "near_reference_overlap": near,
             "near_pairs_in_new_set": internal, "near_ratio": NEAR_RATIO,
             "semantic_independence_verified": False,
@@ -91,7 +93,8 @@ def overlap_audit(rows: list[dict], artifact: Path) -> dict:
 
 
 def run(csv_path: Path, output: Path, *, origin: str = "unspecified",
-        metadata_confirmed: bool = False, review_ids: tuple[str, ...] = ()) -> dict:
+        metadata_confirmed: bool = False, review_ids: tuple[str, ...] = (),
+        candidate_lock: Path | None = None, require_independent: bool = False) -> dict:
     root = ARTIFACT_ROOT.resolve()
     if not output.resolve().is_relative_to(root) or output.resolve() == root:
         raise ValueError("Output must be inside the ignored artifact directory")
@@ -99,28 +102,49 @@ def run(csv_path: Path, output: Path, *, origin: str = "unspecified",
         raise FileExistsError("Output directory is not empty")
     if origin not in ("unspecified", "real_world", "self_authored"):
         raise ValueError("Invalid origin declaration")
-    lock = json.loads(LOCK.read_text(encoding="utf-8"))
-    model_path = Path(__file__).resolve().parents[1] / lock["artifact_relative_to_ai_training"]
+    lock_path = LOCK if candidate_lock is None else candidate_lock
+    lock_hash = sha256(lock_path)
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    model_path = (Path(__file__).resolve().parents[1] / lock["artifact_relative_to_ai_training"]).resolve()
+    if not model_path.is_relative_to(root):
+        raise ValueError("Locked artifact must be inside the ignored artifact directory")
     if sha256(model_path) != lock["model_sha256"]:
-        raise ValueError("V8 artifact no longer matches the candidate lock")
+        raise ValueError("Artifact no longer matches the candidate lock")
     model = load_model(model_path)
     if model["model_version"] != lock["model_version"]:
-        raise ValueError("V8 version does not match the lock")
+        raise ValueError("Model version does not match the candidate lock")
+    extra_references = []
+    reference_hash = None
+    reference_path = None
+    if "inspected_queries_relative_to_ai_training" in lock:
+        reference_path = (Path(__file__).resolve().parents[1] / lock["inspected_queries_relative_to_ai_training"]).resolve()
+        if not reference_path.is_relative_to(root):
+            raise ValueError("Inspected query references must be inside the ignored artifact directory")
+        reference_hash = sha256(reference_path)
+        if reference_hash != lock["inspected_queries_sha256"]:
+            raise ValueError("Inspected query references no longer match the candidate lock")
+        extra_references = [json.loads(line) for line in reference_path.read_text(encoding="utf-8").splitlines()]
     initial_hash = sha256(csv_path)
     rows = read_queries(csv_path)
     if set(review_ids) - {row["id"] for row in rows}:
         raise ValueError("Label review ID is not in the supplied dataset")
-    audit = overlap_audit(rows, model_path.parent)
-    # Persist both audit and exact labels before the first v8 prediction.
+    audit = overlap_audit(rows, model_path.parent, additional_references=extra_references)
+    exact_pass = not audit["exact_text_overlap"]
+    near_pass = not audit["near_reference_overlap"] and not audit["near_pairs_in_new_set"]
+    real_holdout = origin == "real_world" and metadata_confirmed and not review_ids and exact_pass and near_pass
+    # Persist audit and exact labels before the first prediction of this candidate.
     output.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(csv_path, output / "source_snapshot.csv")
     preflight = {"source_csv_sha256": initial_hash, "candidate_sha256": lock["model_sha256"],
+                 "candidate_lock_sha256": lock_hash, "inspected_queries_sha256": reference_hash,
                  "rows": len(rows), "label_counts": dict(Counter(row["label"] for row in rows)),
                  "origin": origin, "metadata_confirmed_by_user": metadata_confirmed,
                  "pending_label_review_ids": list(review_ids), "overlap_audit": audit,
                  "permission_for_local_evaluation": "user_requested_evaluation_in_conversation",
                  "formal_acceptance_thresholds_predeclared": False}
     (output / "preflight_audit.json").write_text(json.dumps(preflight, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if require_independent and not real_holdout:
+        raise ValueError("Independent real-world evaluation requires confirmed metadata, blind reviewed labels and no overlap")
     matrix = {a: {b: 0 for b in LABELS} for a in LABELS}
     predictions = []
     engine = ThreeLabelEngine(model_path)
@@ -137,9 +161,6 @@ def run(csv_path: Path, output: Path, *, origin: str = "unspecified",
                             "correct": label == row["label"], "scores": scores,
                             "confidence": scores[label], "pending_label_review": row["id"] in review_ids})
     metrics = metrics_from_matrix(matrix)
-    exact_pass = not audit["exact_text_overlap"]
-    near_pass = not audit["near_reference_overlap"] and not audit["near_pairs_in_new_set"]
-    real_holdout = origin == "real_world" and metadata_confirmed and not review_ids and exact_pass and near_pass
     official = None
     if real_holdout:
         records = [{"id": f"{csv_path.stem}:{row['id']}", "text": row["text"], "label": row["label"],
@@ -154,6 +175,8 @@ def run(csv_path: Path, output: Path, *, origin: str = "unspecified",
             raise AssertionError("Official evaluation disagrees with CSV evaluation")
     if sha256(csv_path) != initial_hash or sha256(model_path) != lock["model_sha256"]:
         raise RuntimeError("Dataset or model changed during evaluation")
+    if sha256(lock_path) != lock_hash or reference_path is not None and sha256(reference_path) != reference_hash:
+        raise RuntimeError("Candidate lock or inspected query references changed during evaluation")
     report = {"model_version": lock["model_version"], "model_sha256": lock["model_sha256"],
         "source_csv_sha256": initial_hash, "dataset_name": csv_path.stem,
         "rows": len(rows), "label_counts": preflight["label_counts"], "preflight": preflight,
@@ -170,7 +193,7 @@ def run(csv_path: Path, output: Path, *, origin: str = "unspecified",
         "official_real_world_evaluation": official,
         "independent_real_world_evaluation_completed": real_holdout,
         "deployment_eligible": False,
-        "limitations": ["A balanced 90-row benchmark does not estimate live alert frequency.",
+        "limitations": ["A selected or balanced benchmark does not estimate live alert frequency.",
             "Provenance, permission, anonymization and blind labelling are operator claims, not code-verified facts.",
             "No formal numerical release thresholds were approved before this evaluation.",
             "Review-pending IDs retain their supplied labels and are not silently excluded."]}
@@ -189,9 +212,12 @@ def main():
     parser.add_argument("--origin", choices=("unspecified", "real_world", "self_authored"), default="unspecified")
     parser.add_argument("--metadata-confirmed", action="store_true")
     parser.add_argument("--review-id", action="append", default=[])
+    parser.add_argument("--candidate-lock", type=Path, help="Defaults to the historical v8 lock")
+    parser.add_argument("--require-independent", action="store_true", help="Reject ineligible holdouts before prediction")
     args = parser.parse_args()
     run(args.csv, args.output_dir, origin=args.origin, metadata_confirmed=args.metadata_confirmed,
-        review_ids=tuple(args.review_id))
+        review_ids=tuple(args.review_id), candidate_lock=args.candidate_lock,
+        require_independent=args.require_independent)
 
 
 if __name__ == "__main__":
