@@ -94,3 +94,20 @@ mức cao hạ `SAFE`, nên tiếp tục giữ nguyên v8.
 [báo cáo](FINETUNED_QUERY_EXPERIMENT.md) so bốn cấu hình học lại hai lớp cuối
 MiniLM. Nhận đúng mức cao tốt nhất trung bình 55,4/66, kém v8 và tăng lỗi
 hạ mức cao thành `SAFE`, nên không chọn thay v8.
+
+**Hoàn thiện ứng viên 2026-10-04:** [báo cáo triển khai thử](V8_ROLLOUT_READINESS.md)
+đã chọn trọng số/ranh giới quyết định trong fold huấn luyện, đánh giá ngoài
+trên cùng năm seed. Giảm cảnh báo nhầm nhưng nhận đúng mức cao giảm 60 xuống
+59,4/66 và xuất hiện mức cao xuống `SAFE`; kết thúc đợt chỉnh và giữ v8.
+[Ứng viên đã khóa](query_v8_candidate.lock.json) đạt 11 kiểm tra Agent/API/DB/API
+phụ huynh. Đã đo thời gian/RAM; bước còn lại là bộ kiểm thử độc lập.
+
+**Đánh giá Dulieu4 ngày 2026-10-05:** [báo cáo](DULIEU4_V8_EVALUATION.md)
+chấm 90 câu mới bằng đúng artifact đã khóa. Sau xác nhận sửa nhãn ID 82,
+nhận đúng 70/90, mức cao 26/29; ID 66 và 83 bị trả `SAFE`, ID 90 bị hạ `RISK`.
+Giữ `deployment_eligible=false`; không huấn luyện lại hoặc chỉnh ngưỡng.
+
+**Vòng sửa tiếp ngày 2026-10-05:** [v9](V9_QUERY_CANDIDATE_STATUS.md) học đủ
+282 câu, gồm Dulieu4, và giữ công thức v8 sau thử cấu hình. V8 gốc không đổi.
+V9 chưa được triển khai: ID 66 còn sai ngoài phần học và lỗi nâng RISK vẫn
+cao. Kết quả học lại không thay thế kiểm thử thực tế độc lập của phiên bản mới.

@@ -6,6 +6,11 @@ Service local phục vụ model `SAFE`, `RISK`, `HIGH_RISK` đã train trong
 [Kiểm tra API ngày 2026-10-04](API_TEST_STATUS_20261004.md) đã chạy đủ ba test
 trước đây thiếu thư viện; toàn bộ 131 test hiện đều đạt trong môi trường `.venv`.
 
+Lượt [hoàn thiện v8 và kiểm tra luồng thật](../school_violence/V8_ROLLOUT_READINESS.md)
+tiếp theo đã đạt 137 test AI/service và 11 kiểm tra Agent tới API phụ huynh.
+`/health.engine` trả thuật toán của artifact đang nạp, gồm TF-IDF/tuyến tính
+của v8. V8 được khóa để kiểm thử độc lập; model mặc định vẫn là v5.
+
 Chạy từ thư mục gốc dự án:
 
 ```powershell

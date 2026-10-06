@@ -85,7 +85,7 @@ class ModerationBatchResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     provider: Literal["local"] = "local"
-    engine: Literal["character_ngram_nb"] = "character_ngram_nb"
+    engine: str = "character_ngram_nb"
     model: str
     labelVersion: str
     deploymentEligible: bool
@@ -144,6 +144,7 @@ async def sanitized_validation_error(
 def health() -> HealthResponse:
     taxonomy = load_taxonomy()
     return HealthResponse(
+        engine=get_engine().model.get("algorithm", "character_ngram_nb"),
         model=get_engine().model_version,
         labelVersion=taxonomy["version"],
         deploymentEligible=get_settings().deployment_eligible,

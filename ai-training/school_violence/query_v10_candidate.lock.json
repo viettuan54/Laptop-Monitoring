@@ -1,0 +1,60 @@
+{
+  "locked_on": "2026-10-05",
+  "model_version": "vi-school-violence-context-v10-query-candidate",
+  "algorithm": "context_word_softmax_v1",
+  "artifact_relative_to_ai_training": "artifacts/school_violence/v10_context_experiment_20261005/vi-school-violence-context-v10-query-candidate/model.json.gz",
+  "model_sha256": "7e6612203fd0898171fb21c6e0e8dbdb5a336bbf7b2059baeea584db70581616",
+  "selection_report_relative_to_ai_training": "artifacts/school_violence/v10_context_experiment_20261005/evaluation_report.json",
+  "selection_report_sha256": "b0d85e3a80592ea3c49e42f60ca66af628e5fcdd947975f1c1ba5608e5fd6ab3",
+  "verification_report_relative_to_ai_training": "artifacts/school_violence/v10_runtime_acceptance_20261005/verification_report.json",
+  "verification_report_sha256": "ff45d217b1b70d84ece20676c68f3908028e6aa75e565cc775552ce3b7481dcb",
+  "quality_verification_relative_to_ai_training": "artifacts/school_violence/v10_context_experiment_20261005/quality_verification.json",
+  "quality_verification_sha256": "f14735a326deb25acaa9ece7ab1aaeb7b34b830a0f997f90307eaa83950949a4",
+  "fixed_recipe_audit_relative_to_ai_training": "artifacts/school_violence/v10_context_experiment_20261005/fixed_recipe_development_audit.json",
+  "fixed_recipe_audit_sha256": "55b877c3eeec73871d371f24ab02aa91264fbd372f323f0bac461ceb04de5b8d",
+  "development_rows": 282,
+  "development_labels": {
+    "HIGH_RISK": 95,
+    "RISK": 108,
+    "SAFE": 79
+  },
+  "configuration": {
+    "name": "flat_context_high3",
+    "kind": "flat",
+    "context": true,
+    "high_weight": 3.0,
+    "context_scale": 2.0,
+    "penalty": 0.001,
+    "epochs": 200,
+    "input_columns": [
+      "text"
+    ],
+    "selection_method": "nested_grouped_development_cv",
+    "final_independent_test_available": false,
+    "features_are_learned_not_label_overrides": true,
+    "scores_are_calibrated_probabilities": false
+  },
+  "v9_nested_baseline_mean": {
+    "macro_f1": 0.7709755526632467,
+    "high_risk_correct": 91.8,
+    "high_risk_to_safe": 0.4,
+    "safe_alerts": 13.6,
+    "risk_to_high": 43.6,
+    "risk_to_safe": 5.4
+  },
+  "v10_nested_selection_mean": {
+    "macro_f1": 0.8064695438179446,
+    "high_risk_correct": 92,
+    "high_risk_to_safe": 0.2,
+    "safe_alerts": 12.2,
+    "risk_to_high": 36.2,
+    "risk_to_safe": 4.6
+  },
+  "development_selection_criteria_met": true,
+  "functional_flow_verified": true,
+  "functional_checks": 12,
+  "service_default_model_version": "vi-school-violence-char-nb-v5-query",
+  "service_default_model_sha256": "8c9c9642f796a596ce091ee8cf3ebe564be859862f115f22c985faba58f2bc7b",
+  "independent_final_holdout_evaluated": false,
+  "deployment_eligible": false
+}

@@ -1,0 +1,20 @@
+{
+  "locked_on": "2026-10-04",
+  "model_version": "vi-school-violence-word-linear-v8-query-candidate",
+  "artifact_relative_to_ai_training": "artifacts/school_violence/vi-school-violence-word-linear-v8-query-candidate/model.json.gz",
+  "model_sha256": "ab55715bb011c4735349b3d340bd0aa6502286f29c08a5fc2f8a1fc35d9d9134",
+  "service_default_model_version": "vi-school-violence-char-nb-v5-query",
+  "service_default_model_sha256": "8c9c9642f796a596ce091ee8cf3ebe564be859862f115f22c985faba58f2bc7b",
+  "selection_report_relative_to_ai_training": "artifacts/school_violence/v8_nested_adjustment_20261004/evaluation_report.json",
+  "selection_report_sha256": "9933cb79af071401ccb9030fbda6df7971686c2596dca5301c57c16ad229f390",
+  "verification_report_relative_to_ai_training": "artifacts/school_violence/v8_runtime_acceptance_20261004_v3/verification_report.json",
+  "verification_report_sha256": "1dabb52683a6ab84ac752976a46ff9b3732c77f6b98d122c2372a0ef3182cb85",
+  "development_rows": 192,
+  "development_labels": {"SAFE": 49, "RISK": 77, "HIGH_RISK": 66},
+  "weights": {"SAFE": 1.5, "RISK": 1.0, "HIGH_RISK": 3.0},
+  "decision_rule": "argmax_without_additional_score_shifts",
+  "additional_tuning_in_this_round": false,
+  "functional_flow_verified": true,
+  "independent_final_holdout_evaluated": false,
+  "deployment_eligible": false
+}

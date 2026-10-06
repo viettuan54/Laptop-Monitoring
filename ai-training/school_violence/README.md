@@ -51,6 +51,19 @@ với bốn cấu hình trên cùng dữ liệu/fold. Không cấu hình nào đ
 thay v8. Ba test API thiếu thư viện đã được chạy lại và đạt; tổng 131 test
 chung và năm test riêng của tinh chỉnh đều đạt, không còn bỏ qua.
 
+Đã hoàn tất [đợt điều chỉnh v8 và thử luồng Agent tới phụ huynh](V8_ROLLOUT_READINESS.md)
+ngày 2026-10-04. Điều chỉnh bằng fold trong vẫn làm tăng bỏ sót mức cao, nên
+giữ và [khóa ứng viên v8](query_v8_candidate.lock.json). Đã đo hiệu năng, kiểm
+tra model thật qua API, DPAPI/hàng đợi Agent và PostgreSQL/RLS thật: 11 kiểm
+tra luồng đạt; 207 test AI, Agent, backend và web đạt. Còn kiểm thử độc lập
+trước quyết định triển khai; service mặc định giữ v5.
+
+Ngày 2026-10-05 đã [đánh giá v8 trên 90 câu Dulieu4](DULIEU4_V8_EVALUATION.md)
+với nguồn/ẩn danh/nhãn ban đầu được người dùng xác nhận. ID 82 được sửa
+thành `RISK` theo hướng dẫn và xác nhận riêng; lịch sử sửa được giữ lại.
+Kết quả sau sửa: 70/90 đúng, mức cao 26/29, có hai mức cao trả `SAFE`
+(ID 66, 83). Chưa đưa v8 vào cảnh báo thực tế; giữ nguyên artifact.
+
 Quy tắc gán nhãn ở `ANNOTATION_GUIDE.md`: trang phòng chống bạo lực là `RISK`;
 báo cáo bị bạo lực cá nhân, cầu cứu liên quan hoặc đe dọa trực tiếp là
 `HIGH_RISK`. Không thêm nhãn mới. Model v2 chưa được huấn luyện lại theo các
@@ -174,6 +187,20 @@ Thử suy luận cục bộ (PowerShell):
 'Bạn bè liên tục đe dọa đánh em' | .\.venv\Scripts\python.exe -m school_violence.predict `
   --model .\artifacts\school_violence\vi-school-violence-char-nb-v5-query\model.json.gz
 ```
+
+**Giảm bỏ sót và cảnh báo sai ngày 2026-10-05:** đã chọn
+[ứng viên v10 có ngữ cảnh](V10_QUERY_CANDIDATE_STATUS.md). Trên cùng các fold
+phát triển, HIGH→SAFE trung bình giảm 0,4 xuống 0,2; RISK→HIGH giảm 43,6 xuống
+36,2; macro-F1 tăng 0,77098 lên 0,80647. 88 test và 12 kiểm tra luồng đạt.
+[V10 đã khóa](query_v10_candidate.lock.json), chưa triển khai. Dulieu4 còn
+lỗi cảnh báo sai; các số này không phải kiểm thử thực tế độc lập.
+
+**Sửa sau Dulieu4 ngày 2026-10-05:** đã tạo [ứng viên v9](V9_QUERY_CANDIDATE_STATUS.md)
+trên 282 câu phát triển, thử sáu cấu hình bằng CV nhóm lồng nhau và giữ công
+thức v8 với dữ liệu mở rộng. Sửa 16/20 lỗi cũ trên dữ liệu đã học; ID 66 vẫn
+bị trả SAFE ở 2/5 cách chia ngoài học. 113 test và 12 kiểm tra Agent/API/DB/web
+renderer đạt. [V9 đã khóa](query_v9_candidate.lock.json), chưa triển khai;
+Dulieu4 không còn là kiểm thử độc lập của v9.
 
 Artifact v5-query đã được tạo cục bộ; đường dẫn mặc định của service trỏ đến v5-query.
 Biến `TEXT_SAFETY_MODEL_PATH` vẫn có thể ghi đè đường dẫn này; service cần

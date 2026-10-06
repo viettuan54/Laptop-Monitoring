@@ -1,0 +1,46 @@
+{
+  "locked_on": "2026-10-05",
+  "model_version": "vi-school-violence-linear-v9-reviewed-query-candidate",
+  "algorithm": "tfidf_word_softmax_v1",
+  "artifact_relative_to_ai_training": "artifacts/school_violence/v9_dulieu4_development_20261005/vi-school-violence-linear-v9-reviewed-query-candidate/model.json.gz",
+  "model_sha256": "04c966f9d7ccaa65577e3917e64c1986afe4e1fa379cc30b3c142fae67454760",
+  "selection_report_relative_to_ai_training": "artifacts/school_violence/v9_dulieu4_development_20261005/evaluation_report.json",
+  "selection_report_sha256": "aa626a40973fd953664ab66ee662501d79579cf90ea414bcedbd3d26ada86524",
+  "verification_report_relative_to_ai_training": "artifacts/school_violence/v9_runtime_acceptance_20261005/verification_report.json",
+  "verification_report_sha256": "4a29caedcf55e9d98bf86270ba725ab7083be1403df6b2dd5e1304babf60e8c7",
+  "paired_data_update_audit_relative_to_ai_training": "artifacts/school_violence/v9_dulieu4_development_20261005/paired_data_update_audit.json",
+  "paired_data_update_audit_sha256": "dfe3391bdf0722560e6b0426c0ebe6e4f613574ac81bd73f3d5c7a3ff9df63b9",
+  "quality_verification_relative_to_ai_training": "artifacts/school_violence/v9_dulieu4_development_20261005/quality_verification.json",
+  "quality_verification_sha256": "78060ec53e86e11a802df22699f41f04e6a27bc7897dbe0a9e9ac62952fe87c1",
+  "development_rows": 282,
+  "development_labels": {
+    "HIGH_RISK": 95,
+    "RISK": 108,
+    "SAFE": 79
+  },
+  "configuration": {
+    "hybrid": false,
+    "min_df": 2,
+    "safe_weight": 1.5,
+    "high_weight": 3.0,
+    "name": "word_df2",
+    "input_columns": [
+      "text"
+    ],
+    "character_scale": 0,
+    "penalty": 0.001,
+    "epochs": 200,
+    "decision_rule": "argmax_without_score_shifts",
+    "selection_method": "nested_near_duplicate_grouped_development_cv",
+    "final_independent_test_available": false,
+    "scores_are_calibrated_probabilities": false
+  },
+  "nested_feature_selection_accepted": false,
+  "dulieu4_is_development_data": true,
+  "functional_flow_verified": true,
+  "functional_checks": 12,
+  "service_default_model_version": "vi-school-violence-char-nb-v5-query",
+  "service_default_model_sha256": "8c9c9642f796a596ce091ee8cf3ebe564be859862f115f22c985faba58f2bc7b",
+  "independent_final_holdout_evaluated": false,
+  "deployment_eligible": false
+}

@@ -56,6 +56,7 @@ ai-training/datasets/text_safety/*
 ai-training/datasets/school_violence/
 # Locally collected child search queries must not enter Git.
 Mô tả/DuLieuThat*.csv
+Mô tả/Dulieu4.csv
 !ai-training/datasets/text_safety/README.md
 !ai-training/datasets/text_safety/*.example.jsonl
 !ai-training/datasets/text_safety/*.manifest.example.json

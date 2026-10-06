@@ -74,6 +74,18 @@ class ThreeLabelApiTest(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertNotIn("private-child-text", response.text)
 
+    def test_health_reports_the_algorithm_of_the_loaded_candidate(self):
+        model = {"algorithm": "tfidf_word_softmax_v1", "model_version": "linear-test",
+                 "labels": ["SAFE", "RISK", "HIGH_RISK"], "features": {},
+                 "bias": [0.0, 0.0, 0.0],
+                 "fallback_prior": {"SAFE": 0.3, "RISK": 0.4, "HIGH_RISK": 0.3}}
+        with gzip.open(self.model_path, "wt", encoding="utf-8") as handle:
+            json.dump(model, handle)
+        get_engine.cache_clear()
+        health = self.client.get("/health").json()
+        self.assertEqual(health["model"], "linear-test")
+        self.assertEqual(health["engine"], "tfidf_word_softmax_v1")
+
     def test_unapproved_artifact_cannot_start_in_production(self):
         (self.model_path.parent / "evaluation_report.json").write_text(
             json.dumps({"deployment_eligible": False}), encoding="utf-8")

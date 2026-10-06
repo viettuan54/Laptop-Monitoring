@@ -99,9 +99,12 @@ def _vectorize(rows: list[dict], features: dict[str, list[float]]) -> np.ndarray
     return matrix
 
 
-def fit_linear(rows: list[dict]) -> dict:
+def fit_linear(rows: list[dict], *, safe_weight: float = SAFE_WEIGHT,
+               high_weight: float = HIGH_WEIGHT) -> dict:
     if {row["label"] for row in rows} != set(LABELS):
         raise ValueError("Training needs all three labels")
+    if any(not math.isfinite(value) or value <= 0 for value in (safe_weight, high_weight)):
+        raise ValueError("Class weights must be finite and positive")
     frequencies = Counter(feature for row in rows for feature in word_features(row["text"]))
     features = {
         feature: [math.log((1 + len(rows)) / (1 + frequencies[feature])) + 1]
@@ -111,7 +114,7 @@ def fit_linear(rows: list[dict]) -> dict:
         raise ValueError("No shared word features")
     matrix = _vectorize(rows, features)
     actual = np.array([LABELS.index(row["label"]) for row in rows])
-    class_weights = np.array((SAFE_WEIGHT, 1.0, HIGH_WEIGHT))
+    class_weights = np.array((safe_weight, 1.0, high_weight))
     sample_weights = class_weights[actual]
     targets = np.eye(len(LABELS))[actual]
     weights = np.zeros((len(features), len(LABELS)), dtype=np.float64)

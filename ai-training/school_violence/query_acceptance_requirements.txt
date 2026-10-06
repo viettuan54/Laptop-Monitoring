@@ -1,0 +1,5 @@
+# Optional Windows environment for the bounded v8 experiment and live Agent test.
+-r ../text_safety/requirements.txt
+numpy>=1.26,<3
+requests>=2.32,<3
+pywin32>=308; sys_platform == "win32"

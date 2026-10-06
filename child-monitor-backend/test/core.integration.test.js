@@ -117,6 +117,50 @@ after(async () => {
   if (cleanupError) throw cleanupError;
 });
 
+test('parent device list sees the first heartbeat and a reconnect after going offline', async () => {
+  const login = await request('/api/auth/login', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[0], password: 'Integration1!' }),
+  });
+  assert.equal(login.status, 200);
+  const headers = { authorization: `Bearer ${login.body.accessToken}` };
+  const readDevice = async (query = '') => {
+    const result = await request(`/api/devices${query}`, { headers });
+    assert.equal(result.status, 200);
+    return result.body.data.find((device) => device.device_id === deviceOne);
+  };
+
+  assert.equal((await readDevice()).last_seen_at, null);
+
+  for (const query of ['', `?child_id=${childOne}`]) {
+    if (query) {
+      await adminPool.query(
+        "UPDATE devices SET last_seen_at = NOW() - INTERVAL '10 minutes' WHERE device_id = $1",
+        [deviceOne]
+      );
+      const offline = await readDevice(query);
+      assert.ok(Date.now() - Date.parse(offline.last_seen_at) > 5 * 60 * 1000);
+    }
+
+    const heartbeat = await request('/api/agent/heartbeat', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-device-secret': plaintextDeviceSecret },
+      body: '{}',
+    });
+    assert.equal(heartbeat.status, 200);
+    const online = await readDevice(query);
+    assert.equal(online.last_seen_at, heartbeat.body.last_seen_at);
+    assert.ok(Math.abs(Date.now() - Date.parse(online.last_seen_at)) < 60 * 1000);
+  }
+  const logout = await request('/api/auth/logout', {
+    method: 'POST',
+    headers: { ...headers, 'content-type': 'application/json' },
+    body: JSON.stringify({ refreshToken: login.body.refreshToken }),
+  });
+  assert.equal(logout.status, 200);
+});
+
 test('auth login succeeds and a refresh token can only be rotated once concurrently', async () => {
   const login = await request('/api/auth/login', {
     method: 'POST',

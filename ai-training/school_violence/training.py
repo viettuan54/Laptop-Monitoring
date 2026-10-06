@@ -253,6 +253,14 @@ def fit(records: list[dict], alpha: float, *, model_version: str = MODEL_VERSION
 
 
 def predict_scores(model: dict, text: str) -> dict[str, float]:
+    if model.get("algorithm") in ("context_word_softmax_v1", "high_first_query_v1"):
+        from .context_query_model import predict_scores_context
+
+        return predict_scores_context(model, text)
+    if model.get("algorithm") == "tfidf_word_char_softmax_v1":
+        from .hybrid_query_model import predict_scores_hybrid
+
+        return predict_scores_hybrid(model, text)
     if model.get("algorithm") == "partial_minilm_finetuned_query_v1":
         from .finetuned_query_model import predict_scores_finetuned
 
@@ -291,6 +299,10 @@ def predict_scores(model: dict, text: str) -> dict[str, float]:
 
 
 def select_label(model: dict, scores: dict[str, float]) -> str:
+    if model.get("algorithm") in ("context_word_softmax_v1", "high_first_query_v1"):
+        from .context_query_model import select_context_label
+
+        return select_context_label(model, scores)
     if model.get("algorithm") == "tfidf_two_stage_query_v1":
         from .two_stage_query_model import select_two_stage_label
 
