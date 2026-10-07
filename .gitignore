@@ -76,3 +76,7 @@ child-monitor-agent/build/output/
 
 /reports/
 /Mô tả/
+
+# impeccable
+.codex/
+.agents/skills/impeccable/

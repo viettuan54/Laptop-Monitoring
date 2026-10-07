@@ -30,6 +30,12 @@ function request(text = 'tôi cần giúp đỡ', source = 'search_query') {
 }
 
 async function scenario(options = {}) {
+  const savedEnvironment = { ...process.env };
+  Object.assign(process.env, {
+    TEXT_MODERATION_MODE: options.mode || 'alerts',
+    LOCAL_MODERATION_EXPECTED_MODEL: 'vi-school-violence-char-nb-v3',
+    LOCAL_MODERATION_EXPECTED_SHA256: 'a'.repeat(64),
+  });
   const originalQuery = adminPool.query;
   const originalConnect = adminPool.connect;
   let enabled = options.enabled ?? true;
@@ -69,8 +75,9 @@ async function scenario(options = {}) {
     inferenceCount += 1;
     if (options.disableDuringModel) enabled = false;
     if (options.newWindowDuringModel) revision = '2026-09-26T08:01:00Z';
+    if (options.modeDuringModel) process.env.TEXT_MODERATION_MODE = options.modeDuringModel;
     const label = options.label || 'HIGH_RISK';
-    return { model: 'vi-school-violence-char-nb-v3', results: [{ label,
+    return { model: 'vi-school-violence-char-nb-v3', modelSha256: 'a'.repeat(64), results: [{ label,
       flagged: label !== 'SAFE', confidence: 0.9,
       scores: Object.fromEntries(['SAFE', 'RISK', 'HIGH_RISK'].map((key) => [key, key === label ? 0.9 : 0.05])) }] };
   };
@@ -78,8 +85,52 @@ async function scenario(options = {}) {
     const res = response();
     await controller.moderateTextBatch(request(options.text, options.source), res);
     return { res, inferenceCount, writes, alertWrites, pushes, queries, released };
-  } finally { adminPool.query = originalQuery; adminPool.connect = originalConnect; }
+  } finally {
+    adminPool.query = originalQuery; adminPool.connect = originalConnect;
+    for (const key of Object.keys(process.env)) if (!(key in savedEnvironment)) delete process.env[key];
+    Object.assign(process.env, savedEnvironment);
+  }
 }
+
+test('shadow persists all three labels and pinned metadata without querying alerts or sending push', async () => {
+  for (const label of ['SAFE', 'RISK', 'HIGH_RISK']) {
+    const result = await scenario({ label, mode: 'shadow' });
+    assert.equal(result.res.statusCode, 201);
+    assert.equal(result.res.body.moderation_mode, 'shadow');
+    assert.equal(result.res.body.flagged_count, 0);
+    assert.equal(result.res.body.observed_count, 1);
+    assert.equal(result.writes[0][5], label);
+    assert.equal(result.writes[0][11], 'shadow');
+    assert.equal(result.writes[0][12], 'a'.repeat(64));
+    assert.ok(Number.isInteger(result.writes[0][13]) && result.writes[0][13] >= 0);
+    assert.equal(result.queries.some(sql => sql.includes('FROM alerts') || sql.includes('INTO alerts')), false);
+    assert.equal(result.pushes.length, 0);
+  }
+});
+
+test('shadow remains silent if server mode changes while inference runs', async () => {
+  const result = await scenario({ mode: 'shadow', modeDuringModel: 'alerts' });
+  assert.equal(result.writes[0][11], 'shadow');
+  assert.equal(result.alertWrites.length, 0);
+  assert.equal(result.pushes.length, 0);
+});
+
+test('shadow respects consent revocation and duplicate insertion', async () => {
+  for (const option of [{ disableDuringModel: true }, { duplicateEvent: true }]) {
+    const result = await scenario({ mode: 'shadow', ...option });
+    assert.equal(result.res.statusCode, 201);
+    assert.equal(result.res.body.observed_count || 0, 0);
+    assert.equal(result.alertWrites.length, 0);
+    assert.equal(result.pushes.length, 0);
+  }
+});
+
+test('invalid mode rejects pending queries before inference and persistence', async () => {
+  const result = await scenario({ mode: 'shdaow' });
+  assert.equal(result.res.statusCode, 503);
+  assert.equal(result.inferenceCount, 0);
+  assert.equal(result.writes.length, 0);
+});
 
 test('disabled or missing consent acknowledges discard without calling model or storing events', async () => {
   const result = await scenario({ enabled: false });

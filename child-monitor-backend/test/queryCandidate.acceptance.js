@@ -11,6 +11,9 @@ const dotenv = require('dotenv');
 const jwt = require('jsonwebtoken');
 
 async function main(input) {
+  const shadow = input.moderation_mode === 'shadow';
+  const expectedAlerts = shadow ? 0 : 2;
+  if (shadow) assert.match(input.model_sha256, /^[0-9a-f]{64}$/);
   dotenv.config({ path: path.join(__dirname, '..', '.env.test'), quiet: true });
   const required = ['HOST', 'NAME', 'ADMIN_USER', 'ADMIN_PASSWORD', 'BACKEND_USER', 'BACKEND_PASSWORD'];
   for (const name of required) assert.ok(process.env[`TEST_DB_${name}`], `Missing TEST_DB_${name}`);
@@ -24,6 +27,9 @@ async function main(input) {
     NODE_ENV: 'test', REDIS_URL: '', JWT_SECRET: crypto.randomBytes(32).toString('hex'),
     TEXT_MODERATION_PROVIDER: 'local', LOCAL_MODERATION_URL: input.provider_url,
     LOCAL_MODERATION_API_KEY: input.provider_key, LOCAL_MODERATION_TIMEOUT_MS: '3000',
+    TEXT_MODERATION_MODE: shadow ? 'shadow' : 'alerts',
+    LOCAL_MODERATION_EXPECTED_MODEL: input.model_version,
+    LOCAL_MODERATION_EXPECTED_SHA256: input.model_sha256 || '',
   });
   const { adminPool, backendPool, validateRlsConfiguration } = require('../src/config/db');
   const pushes = [];
@@ -35,6 +41,8 @@ async function main(input) {
   try {
     const database = await adminPool.query('SELECT current_database() AS name');
     assert.equal(database.rows[0].name, process.env.TEST_DB_NAME);
+    // Migrations use a separate owner connection; normal requests keep the app role.
+    await adminPool.query('SELECT moderation_mode,model_sha256,batch_inference_ms FROM text_moderation_events LIMIT 0');
     await validateRlsConfiguration();
     const app = require('../src/app');
     server = app.listen(0, '127.0.0.1');
@@ -78,15 +86,16 @@ async function main(input) {
     assert.equal((await command({ base_url: baseUrl, device_secret: secret })).ready, true);
     const makeRecords = () => fixtures.map(item => ({ client_record_id: crypto.randomUUID(), text: item.text }));
     const counts = async () => {
-      const events = await adminPool.query('SELECT classification_label,moderation_model,label_scores FROM text_moderation_events WHERE device_id=$1', [deviceId]);
+      const events = await adminPool.query('SELECT classification_label,moderation_model,label_scores,moderation_mode,model_sha256,batch_inference_ms FROM text_moderation_events WHERE device_id=$1', [deviceId]);
       const alerts = await adminPool.query('SELECT alert_type,message FROM alerts WHERE device_id=$1', [deviceId]);
       for (const item of fixtures) assert.equal(JSON.stringify([events.rows, alerts.rows, pushes]).includes(item.text), false);
       return { events: events.rows, alerts: alerts.rows };
     };
-    const enqueued = await command({ command: 'enqueue', records: makeRecords() });
+    const enqueued = await command({ command: shadow ? 'collect' : 'enqueue', records: makeRecords() });
     assert.equal(enqueued.queued, 3);
     assert.equal(enqueued.all_dpapi_protected, true);
     checks.push('real_agent_queue_uses_windows_dpapi');
+    if (shadow) checks.push('browser_fixture_history_extracted_by_real_collector_and_service_handler_without_duplicate_scan');
 
     process.env.LOCAL_MODERATION_API_KEY = 'intentional-invalid-acceptance-key';
     const failedHttp = await fetch(`${baseUrl}/api/agent/text-moderation/batch`, {
@@ -106,6 +115,13 @@ async function main(input) {
     await new Promise(resolve => disconnectedPort.listen(0, '127.0.0.1', resolve));
     const unusedPort = disconnectedPort.address().port;
     await new Promise(resolve => disconnectedPort.close(resolve));
+    if (shadow) {
+      const offline = await command({ command: 'offline_sync', base_url: `http://127.0.0.1:${unusedPort}` });
+      assert.equal(offline.queued, 3);
+      assert.deepEqual(offline.statuses, [null]);
+      assert.equal((await counts()).events.length, 0);
+      checks.push('agent_to_backend_connection_failure_retains_queue');
+    }
     process.env.LOCAL_MODERATION_URL = `http://127.0.0.1:${unusedPort}`;
     const disconnected = await command({ command: 'sync' });
     assert.equal(disconnected.queued, 3);
@@ -113,6 +129,28 @@ async function main(input) {
     assert.equal((await counts()).events.length, 0);
     checks.push('model_connection_failure_retains_queue_for_retry');
     process.env.LOCAL_MODERATION_URL = input.provider_url;
+    if (input.stability_checks) {
+      const restartPort = server.address().port;
+      await new Promise(resolve => server.close(resolve));
+      const unavailable = await command({ command: 'sync' });
+      assert.equal(unavailable.queued, 3);
+      assert.deepEqual(unavailable.statuses, [null]);
+      server = app.listen(restartPort, '127.0.0.1');
+      await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
+      checks.push('backend_listener_restart_keeps_pending_agent_queue');
+    }
+    if (shadow) {
+      for (const setting of ['LOCAL_MODERATION_EXPECTED_MODEL', 'LOCAL_MODERATION_EXPECTED_SHA256']) {
+        const original = process.env[setting];
+        process.env[setting] = setting.endsWith('MODEL') ? 'wrong-model' : '0'.repeat(64);
+        const mismatched = await command({ command: 'sync' });
+        assert.equal(mismatched.queued, 3);
+        assert.deepEqual(mismatched.statuses, [null]);
+        assert.equal((await counts()).events.length, 0);
+        process.env[setting] = original;
+      }
+      checks.push('wrong_model_version_or_hash_retains_queue_without_events');
+    }
     const synced = await command({ command: 'sync' });
     assert.equal(synced.queued, 0);
     assert.deepEqual(synced.statuses, [201]);
@@ -120,32 +158,46 @@ async function main(input) {
     assert.equal(first.events.length, 3);
     assert.deepEqual(first.events.map(row => row.classification_label).sort(), ['HIGH_RISK', 'RISK', 'SAFE']);
     assert.ok(first.events.every(row => row.moderation_model === input.model_version));
-    assert.equal(first.alerts.length, 2);
-    assert.deepEqual(first.alerts.map(row => row.alert_type).sort(), ['text_risk', 'text_violence']);
-    assert.deepEqual(pushes.map(row => row[1]).sort(), ['Bé có dấu hiệu bị bạo lực', 'Cần quan sát bé trong thời gian này'].sort());
-    checks.push('actual_model_three_labels_reach_parent_alert_policy', 'acknowledgement_deletes_agent_raw_queue');
+    assert.ok(first.events.every(row => row.moderation_mode === (shadow ? 'shadow' : 'alerts')));
+    assert.ok(first.events.every(row => Number.isInteger(row.batch_inference_ms) && row.batch_inference_ms >= 0));
+    if (input.model_sha256) assert.ok(first.events.every(row => row.model_sha256 === input.model_sha256));
+    assert.equal(first.alerts.length, expectedAlerts);
+    assert.equal(pushes.length, expectedAlerts);
+    if (!shadow) {
+      assert.deepEqual(first.alerts.map(row => row.alert_type).sort(), ['text_risk', 'text_violence']);
+      assert.deepEqual(pushes.map(row => row[1]).sort(), ['Bé có dấu hiệu bị bạo lực', 'Cần quan sát bé trong thời gian này'].sort());
+    }
+    checks.push(shadow ? 'three_labels_and_pinned_metadata_persist_without_alerts_or_push' : 'actual_model_three_labels_reach_parent_alert_policy',
+      'acknowledgement_deletes_agent_raw_queue');
 
     const repeated = await command({ command: 'resend' });
     assert.equal(repeated.status, 201);
     assert.equal(repeated.response.flagged_count, 0);
     assert.equal((await counts()).events.length, 3);
     checks.push('same_record_retry_is_idempotent');
+    if (shadow) {
+      process.env.TEXT_MODERATION_MODE = 'alerts';
+      assert.equal((await command({ command: 'resend' })).status, 201);
+      assert.equal((await counts()).alerts.length, 0);
+      process.env.TEXT_MODERATION_MODE = 'shadow';
+      checks.push('replaying_shadow_ids_after_mode_change_cannot_create_alerts');
+    }
 
     await command({ command: 'enqueue', records: makeRecords() });
     assert.equal((await command({ command: 'sync' })).queued, 0);
     const cooled = await counts();
     assert.equal(cooled.events.length, 6);
-    assert.equal(cooled.alerts.length, 2);
-    assert.equal(pushes.length, 2);
-    checks.push('cooldown_suppresses_duplicate_alerts_per_label');
+    assert.equal(cooled.alerts.length, expectedAlerts);
+    assert.equal(pushes.length, expectedAlerts);
+    checks.push(shadow ? 'new_shadow_queries_remain_silent' : 'cooldown_suppresses_duplicate_alerts_per_label');
 
     for (let i = 0; i < users.length; i++) {
       const token = jwt.sign({ user_id: users[i].user_id, token_version: users[i].token_version }, process.env.JWT_SECRET, { expiresIn: '5m', algorithm: 'HS256' });
       const response = await fetch(`${baseUrl}/api/alerts?device_id=${deviceId}`, { headers: { authorization: `Bearer ${token}` } });
       assert.equal(response.status, 200);
       const alerts = (await response.json()).data;
-      assert.equal(alerts.length, i === 0 ? 2 : 0);
-      if (i === 0) {
+      assert.equal(alerts.length, i === 0 ? expectedAlerts : 0);
+      if (i === 0 && !shadow) {
         assert.ok(alerts.some(row => row.message.includes('Bé có dấu hiệu bị bạo lực')));
         assert.ok(alerts.some(row => row.message.includes('quan sát, trò chuyện và quan tâm bé trong thời gian này')));
         const { renderQueryAlerts } = require('../../child-monitor-web/test/queryAlertRenderer');
@@ -162,8 +214,8 @@ async function main(input) {
         assert.ok(rendered.html.includes('alert-symbol warning'));
       }
     }
-    checks.push('parent_api_returns_correct_messages_and_enforces_ownership_rls',
-      'parent_alert_renderer_displays_actual_api_results');
+    checks.push(shadow ? 'parent_api_has_no_shadow_alerts' : 'parent_api_returns_correct_messages_and_enforces_ownership_rls');
+    if (!shadow) checks.push('parent_alert_renderer_displays_actual_api_results');
 
     await command({ command: 'enqueue', records: [makeRecords()[0]] });
     await command({ command: 'credential', device_secret: crypto.randomUUID() });
@@ -186,13 +238,44 @@ async function main(input) {
       assert.equal(response.status, 400);
     }
     checks.push('page_and_chat_inputs_are_rejected_by_backend');
+    if (input.stability_checks) {
+      await command({ command: 'enqueue', records: [makeRecords()[0]] });
+      const reopened = await command({ command: 'restart_queue' });
+      assert.equal(reopened.queued, 0);
+      assert.equal((await command({ command: 'sync' })).statuses.length, 0);
+      assert.equal((await counts()).events.length, 6);
+      checks.push('reopened_agent_queue_discards_pending_text_without_startup_consent');
+      await command({ command: 'enqueue', records: [makeRecords()[0]] });
+      const revoked = await command({ command: 'local_policy', enabled: false });
+      assert.equal(revoked.queued, 0);
+      const disabledSync = await command({ command: 'sync' });
+      assert.equal(disabledSync.statuses.length, 0);
+      assert.equal((await counts()).events.length, 6);
+      checks.push('local_consent_off_clears_queue_before_network_dispatch');
+      await adminPool.query('UPDATE settings SET enable_text_moderation=TRUE, updated_at=NOW() WHERE child_id=$1', [child.rows[0].child_id]);
+      await command({ command: 'local_policy', enabled: true });
+      // Separate the new query from the consent revision across Windows clock resolutions.
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await command({ command: 'enqueue', records: [makeRecords()[0]] });
+      const reenabledSync = await command({ command: 'sync' });
+      assert.equal(reenabledSync.queued, 0);
+      assert.deepEqual(reenabledSync.statuses, [201]);
+      assert.equal((await counts()).events.length, 7);
+      assert.equal(pushes.length, expectedAlerts);
+      checks.push('consent_reenabled_processes_a_fresh_safe_query');
+    }
+    const finalCounts = await counts();
     worker.stdin.write(JSON.stringify({ command: 'close' }) + '\n');
     console.log('ACCEPTANCE_RESULT ' + JSON.stringify({ checks, check_count: checks.length,
       model: input.model_version, database_isolated: true, actual_model_http: true,
+      mode: shadow ? 'shadow' : 'alerts', model_sha256: input.model_sha256,
+      observations: finalCounts.events.length, alerts_created: finalCounts.alerts.length, push_calls: pushes.length,
+      stability_checks: Boolean(input.stability_checks), installed_agent_reboot_tested: false,
+      actual_browser_collector: shadow, temporary_browser_history: shadow, named_pipe_transport_mocked: shadow,
       actual_agent_client_and_queue: true, real_postgresql_and_rls: true,
       external_push_delivery_mocked: true, rate_limit_store: 'test_memory',
       independent_accuracy_evaluation: false, browser_ui_tested: false,
-      dashboard_alert_renderer_tested_with_live_api: true }));
+      dashboard_alert_renderer_tested_with_live_api: !shadow }));
   } finally {
     if (worker) {
       const exited = new Promise(resolve => worker.once('exit', resolve));

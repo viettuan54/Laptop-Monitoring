@@ -178,7 +178,7 @@ class WebTrackingTest(unittest.TestCase):
         )
         with open(tracker.status_path, "r", encoding="utf-8") as stream:
             status = json.load(stream)
-        self.assertEqual(status["agent_version"], "1.0.14")
+        self.assertEqual(status["agent_version"], "1.0.15")
         self.assertEqual(status["records_discovered"], 1)
         self.assertEqual(status["records_forwarded"], 1)
 
@@ -220,6 +220,14 @@ class WebTrackingTest(unittest.TestCase):
 
     def test_enable_does_not_backfill_pre_consent_search_history(self):
         self._insert_visit("https://www.google.com/search?q=old-query")
+        # Windows clock resolution can make insertion and consent share a tick.
+        # Place the fixture strictly before consent instead of relying on timing.
+        connection = sqlite3.connect(self.history_path)
+        try:
+            connection.execute("UPDATE visits SET visit_time = visit_time - 60000000")
+            connection.commit()
+        finally:
+            connection.close()
         policy = enabled_policy()
         policy["enabled_since"] = policy["issued_at"]
         pipe = FakePipeClient(policy=policy)

@@ -1,5 +1,11 @@
 # Phân loại bạo lực học đường: ba nhãn
 
+**Vận hành 2026-10-07:** người dùng đã xác nhận Agent phân loại và gửi cảnh báo
+thành công. Máy backend dùng bộ khởi động ghim v13; xem
+[hướng dẫn dịch vụ và kiểm tra phục hồi](../text_safety/V13_OPERATIONS.md).
+Phần model mặc định v5 bên dưới nói về cấu hình mặc định khi chạy module
+trực tiếp, không phải dịch vụ v13 đã cấu hình. Chưa thay đổi đánh giá chất lượng.
+
 Luồng này dùng **một nhãn cho mỗi câu**: `SAFE`, `RISK`, hoặc `HIGH_RISK`.
 `labels.json` là hợp đồng nhãn chung cho trainer, service `text_safety` và
 backend. Ba nhãn không mã hóa loại hành vi hoặc ý định tự hại.
@@ -187,6 +193,11 @@ Thử suy luận cục bộ (PowerShell):
 'Bạn bè liên tục đe dọa đánh em' | .\.venv\Scripts\python.exe -m school_violence.predict `
   --model .\artifacts\school_violence\vi-school-violence-char-nb-v5-query\model.json.gz
 ```
+
+**Chạy thử shadow ngày 2026-10-07:** đã [thêm chế độ quan sát v13](V13_SHADOW_TRIAL.md),
+kiểm tra đúng tên/hash model và ghi đủ ba nhãn mà không tạo cảnh báo/push.
+316 test, 15 kiểm tra luồng shadow và 12 kiểm tra hồi quy cảnh báo đạt.
+Chỉ chạy môi trường cô lập; chưa bật trên máy trẻ hoặc triển khai production.
 
 **Ứng viên mới v13 ngày 2026-10-06:** đã [sửa biểu diễn và thử Agent cục bộ](V13_QUERY_CANDIDATE_STATUS.md).
 Dulieu5 tăng 75/90 lên 85/90 đúng (94,44%), giữ HIGH đúng 26/26; đây là

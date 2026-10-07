@@ -1,4 +1,5 @@
 import gzip
+import hashlib
 import json
 import os
 import sys
@@ -56,10 +57,13 @@ class ThreeLabelApiTest(unittest.TestCase):
         self.assertEqual(health.status_code, 200)
         self.assertEqual(health.json()["labelVersion"], "2.0.0")
         self.assertFalse(health.json()["deploymentEligible"])
+        expected_hash = hashlib.sha256(self.model_path.read_bytes()).hexdigest()
+        self.assertEqual(health.json()["modelSha256"], expected_hash)
         response = self.client.post("/v1/moderate",
             headers={"X-Local-Moderation-Key": "local-test-secret-1234"},
             json={"items": [{"id": "one", "text": "Họ dọa đánh em", "sourceType": "chat_received"}]})
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["modelSha256"], expected_hash)
         result = response.json()["results"][0]
         self.assertIn(result["label"], ("SAFE", "RISK", "HIGH_RISK"))
         self.assertEqual(set(result["scores"]), {"SAFE", "RISK", "HIGH_RISK"})
@@ -73,6 +77,11 @@ class ThreeLabelApiTest(unittest.TestCase):
             headers={"X-Local-Moderation-Key": "local-test-secret-1234"}, json=payload)
         self.assertEqual(response.status_code, 422)
         self.assertNotIn("private-child-text", response.text)
+
+    def test_hash_describes_loaded_bytes_until_engine_is_reloaded(self):
+        before = self.client.get("/health").json()["modelSha256"]
+        self.model_path.write_bytes(b"replaced after load")
+        self.assertEqual(self.client.get("/health").json()["modelSha256"], before)
 
     def test_health_reports_the_algorithm_of_the_loaded_candidate(self):
         model = {"algorithm": "tfidf_word_softmax_v1", "model_version": "linear-test",

@@ -4,6 +4,10 @@ Windows Agent gồm một Service chạy dưới `LocalSystem` và Companion ch�
 phiên đăng nhập của trẻ. Bản phát hành được đóng thành một bộ cài `.exe`; máy
 được giám sát không cần cài Python hay tải package từ Internet.
 
+**Bản 1.0.15:** đóng gói phần thu thập và gửi câu tìm kiếm để phân loại văn bản.
+Bộ cài 1.0.14 cũ chưa có phần này dù mã nguồn đã được cập nhật;
+xem [nguyên nhân và hướng dẫn nâng cấp](docs/agent_1_0_15_text_queries.md).
+
 ## Cài bằng ChildMonitorSetup.exe (khuyến nghị)
 
 1. Đăng ký thiết bị trên Parent Dashboard để nhận `device_secret`.
@@ -49,7 +53,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.14"
+  -Version "1.0.15"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -57,14 +61,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.14.exe
+build\output\ChildMonitorSetup-1.0.15.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.14" `
+  -Version "1.0.15" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"

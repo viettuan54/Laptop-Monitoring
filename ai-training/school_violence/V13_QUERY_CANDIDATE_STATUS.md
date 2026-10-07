@@ -1,5 +1,15 @@
 # V13: hoàn tất sửa biểu diễn, so sánh và thử Agent cục bộ
 
+**Mốc vận hành mới 2026-10-07:** người dùng đã xác nhận phân loại và cảnh báo
+trên Agent hoạt động. Bộ khởi động khóa v13 và kiểm tra phục hồi được ghi ở
+[V13_OPERATIONS.md](../text_safety/V13_OPERATIONS.md). Các thông tin chưa bật
+cảnh báo bên dưới mô tả mốc phát triển trước đó; không phải trạng thái mới này.
+Điểm chất lượng và trạng thái chưa duyệt production giữ nguyên.
+
+**Cập nhật 2026-10-07:** đã [triển khai và kiểm thử chế độ shadow](V13_SHADOW_TRIAL.md):
+lưu kết quả v13 nhưng không tạo cảnh báo/push. Luồng shadow đạt 15/15 kiểm tra;
+model và các báo cáo khóa ngày 2026-10-06 giữ nguyên.
+
 Ngày 2026-10-06. Đã thực hiện lần lượt phân tích 15 lỗi, thử đúng một cấu
 hình v13, so sánh với v12.1 và kiểm tra luồng Agent cục bộ. **V13 đạt cổng
 chọn ứng viên phát triển** và được khóa. Dulieu5 đúng **85/90 (94,44%)**,

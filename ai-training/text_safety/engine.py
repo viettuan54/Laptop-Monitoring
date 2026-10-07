@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from hashlib import sha256
 from pathlib import Path
 
 from school_violence.predict import load_model
@@ -26,7 +27,9 @@ class ThreeLabelEngine:
     """
 
     def __init__(self, model_path: Path):
-        self.model = load_model(model_path)
+        artifact_bytes = model_path.read_bytes()
+        self.model = load_model(model_path, artifact_bytes=artifact_bytes)
+        self.model_sha256 = sha256(artifact_bytes).hexdigest()
         self.model_version = str(self.model["model_version"])
         if tuple(self.model["labels"]) != LABELS:
             raise ValueError("Runtime artifact must have exactly three labels")

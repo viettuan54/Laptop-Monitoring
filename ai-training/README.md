@@ -6,6 +6,9 @@ chia lại để tránh trùng văn bản giữa các tập và train baseline t
 `artifacts/school_violence/`. Service `text_safety` và backend hiện cũng dùng
 đúng ba nhãn này; artifact thử nghiệm chưa được phép chạy production.
 
+Hướng dẫn chạy v13 cùng Windows, kiểm tra dịch vụ và kết quả thử phục hồi:
+[text_safety/V13_OPERATIONS.md](text_safety/V13_OPERATIONS.md).
+
 Thư mục này dành cho thu thập dữ liệu, xử lý đặc trưng và huấn luyện model.
 Nó được tách khỏi code chạy thật trong `child-monitor-agent`.
 

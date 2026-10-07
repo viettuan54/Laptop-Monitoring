@@ -10,7 +10,7 @@ const {
   normalizeDomain,
 } = require('../services/contentClassification.service');
 const { getAgentPolicySnapshot } = require('../services/agentPolicy.service');
-const { moderateRecords } = require('../services/textModeration.service');
+const { moderateRecords, getModerationConfig } = require('../services/textModeration.service');
 const { cleanText } = require('../services/textPrivacy.service');
 
 const TEXT_MODERATION_BATCH_MAX = 20;
@@ -566,10 +566,15 @@ exports.moderateTextBatch = async (req, res) => {
       return current.rows[0]?.enable_text_moderation === true
         && pendingRecords.every((record) => textRecordWithinPolicy(record, current.rows[0]));
     };
-    const moderation = await moderateRecords(pendingRecords, { beforeSend });
+    // Snapshot server policy for this entire request, including provider retries.
+    const config = getModerationConfig();
+    const inferenceStarted = performance.now();
+    const moderation = await moderateRecords(pendingRecords, { beforeSend, config });
+    const batchInferenceMs = Math.round(performance.now() - inferenceStarted);
     const client = await adminPool.connect();
     const alertsToPush = [];
     let flaggedCount = 0;
+    let observedCount = 0;
     try {
       await client.query('BEGIN');
       // A setting update cannot race with event/alert persistence. Do not hold
@@ -591,8 +596,8 @@ exports.moderateTextBatch = async (req, res) => {
           `INSERT INTO text_moderation_events(
              device_id, client_record_id, source_type, status, severity,
              classification_label, confidence, label_scores, moderation_model,
-             domain, occurred_at
-           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
+             domain, occurred_at, moderation_mode, model_sha256, batch_inference_ms
+           ) VALUES($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14)
            ON CONFLICT (device_id, client_record_id) DO NOTHING
            RETURNING event_id`,
           [
@@ -607,9 +612,15 @@ exports.moderateTextBatch = async (req, res) => {
             moderation.model,
             record.domain,
             record.occurredAt,
+            config.mode,
+            moderation.modelSha256,
+            batchInferenceMs,
           ]
         );
-        if (!result.flagged || eventInsert.rows.length === 0) continue;
+        if (eventInsert.rows.length === 0) continue;
+        observedCount += 1;
+        // All labels are observable in shadow; neither alert rows nor push are created.
+        if (config.mode === 'shadow' || !result.flagged) continue;
         flaggedCount += 1;
         const presentation = textAlertPresentation(result, record.sourceType, record.domain);
         if (!presentation) continue;
@@ -664,6 +675,8 @@ exports.moderateTextBatch = async (req, res) => {
       enabled: true,
       accepted_client_record_ids: acceptedIds,
       flagged_count: flaggedCount,
+      observed_count: observedCount,
+      moderation_mode: config.mode,
     });
   } catch (error) {
     if (error.code === 'TEXT_MODERATION_DISABLED') {

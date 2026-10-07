@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.14",
+    [string]$Version = "1.0.15",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -206,6 +206,8 @@ if ($PostureProfilePath) {
 
 Invoke-Checked "$ReleaseRoot\service\ChildMonitorService.exe" "--self-test"
 Invoke-Checked "$ReleaseRoot\companion\ChildMonitorCompanion.exe" "--self-test"
+Invoke-Checked $PythonExe "$BuildRoot\verify-text-capabilities.py" `
+    "--release-root" $ReleaseRoot "--expected-version" $Version
 
 if (-not $SkipInstaller) {
     if (-not $InnoSetupCompiler) {

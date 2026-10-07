@@ -70,7 +70,7 @@ function normalizeRecords(records) {
 
 async function moderateRecords(records, options = {}) {
   const normalizedRecords = normalizeRecords(records);
-  const config = getModerationConfig(options.environment);
+  const config = options.config || getModerationConfig(options.environment);
   const fetchImpl = options.fetchImpl || globalThis.fetch;
   if (typeof fetchImpl !== 'function') {
     const error = new Error('fetch is unavailable');

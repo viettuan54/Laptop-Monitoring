@@ -18,6 +18,55 @@ function localResult(id, label = 'SAFE') {
   };
 }
 
+const shadowEnvironment = {
+  TEXT_MODERATION_MODE: 'shadow', LOCAL_MODERATION_EXPECTED_MODEL: 'pinned-v13',
+  LOCAL_MODERATION_EXPECTED_SHA256: 'a'.repeat(64),
+};
+
+test('shadow requires both valid pins and rejects misspelled modes', () => {
+  assert.equal(getModerationConfig({}).mode, 'alerts');
+  assert.equal(getModerationConfig(shadowEnvironment).mode, 'shadow');
+  for (const overrides of [
+    { TEXT_MODERATION_MODE: 'shdaow' }, { LOCAL_MODERATION_EXPECTED_MODEL: '' },
+    { LOCAL_MODERATION_EXPECTED_SHA256: '' }, { LOCAL_MODERATION_EXPECTED_SHA256: 'bad' },
+  ]) {
+    assert.throws(() => getModerationConfig({ ...shadowEnvironment, ...overrides }),
+      error => error.code === 'TEXT_MODERATION_INVALID_CONFIG');
+  }
+});
+
+test('every shadow response must match model version and loaded artifact hash', async () => {
+  for (const overrides of [{}, { model: 'other-version' }, { modelSha256: 'b'.repeat(64) },
+    { modelSha256: undefined }, { modelSha256: 'malformed' }]) {
+    let attempts = 0;
+    const run = () => moderateTexts(['private query'], {
+      environment: shadowEnvironment,
+      fetchImpl: async () => {
+        attempts += 1;
+        return { ok: true, json: async () => ({ provider: 'local', model: 'pinned-v13',
+          modelSha256: 'a'.repeat(64), labelVersion: '2.0.0', deploymentEligible: false,
+          results: [localResult('0')], ...overrides }) };
+      },
+    });
+    if (Object.keys(overrides).length) {
+      await assert.rejects(run, error => error.code === 'TEXT_MODERATION_PROVIDER_FAILED'
+        && !error.message.includes('private query'));
+    } else {
+      assert.equal((await run()).modelSha256, 'a'.repeat(64));
+    }
+    assert.equal(attempts, 1);
+  }
+});
+
+test('shadow does not bypass production approval guard', async () => {
+  await assert.rejects(moderateTexts(['text'], {
+    environment: { ...shadowEnvironment, NODE_ENV: 'production', LOCAL_MODERATION_API_KEY: 'long-enough-local-secret' },
+    fetchImpl: async () => ({ ok: true, json: async () => ({ provider: 'local', model: 'pinned-v13',
+      modelSha256: 'a'.repeat(64), labelVersion: '2.0.0', deploymentEligible: false,
+      results: [localResult('0')] }) }),
+  }), error => error.code === 'TEXT_MODERATION_PROVIDER_FAILED');
+});
+
 test('uses exactly three mutually exclusive labels', () => {
   assert.deepEqual(LABELS, ['SAFE', 'RISK', 'HIGH_RISK']);
   assert.equal(getModerationConfig({ NODE_ENV: 'development' }).provider, 'local');

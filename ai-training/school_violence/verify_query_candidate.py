@@ -38,13 +38,20 @@ def http_json(url: str, body=None, key=None):
         return json.load(response)
 
 
-def run(selection_path: Path, output: Path) -> dict:
+def run(selection_path: Path, output: Path, shadow_lock: Path | None = None, stability: bool = False) -> dict:
     root = ARTIFACT_ROOT.resolve()
     if not output.resolve().is_relative_to(root) or output.resolve() == root:
         raise ValueError("Output must be inside the ignored artifact directory")
     if output.exists() and any(output.iterdir()):
         raise FileExistsError("Output directory is not empty")
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
+    lock = json.loads(shadow_lock.read_text(encoding="utf-8")) if shadow_lock else None
+    if lock:
+        if sha256(selection_path) != lock["selection_report_sha256"]:
+            raise ValueError("Selection report does not match the frozen shadow lock")
+        if (selection["selected_model_sha256"] != lock["model_sha256"]
+                or selection["selected_model_version"] != lock["model_version"]):
+            raise ValueError("Selected model does not match the frozen shadow lock")
     model_path = Path(selection["selected_artifact"])
     if not model_path.resolve().is_relative_to(root):
         raise ValueError("Candidate must be a local ignored artifact")
@@ -92,6 +99,7 @@ def run(selection_path: Path, output: Path) -> dict:
                     time.sleep(0.05)
             startup_ms = (time.perf_counter() - started) * 1000
             assert health["model"] == selection["selected_model_version"]
+            assert health["modelSha256"] == selection["selected_model_sha256"]
             assert health["deploymentEligible"] is False
             assert health["engine"] == expected_algorithm
             singles = []
@@ -101,6 +109,7 @@ def run(selection_path: Path, output: Path) -> dict:
                     {"id": row["id"], "text": row["text"], "sourceType": "search_query"}]}, key)
                 singles.append((time.perf_counter() - started) * 1000)
                 result = response["results"][0]
+                assert response["modelSha256"] == selection["selected_model_sha256"]
                 assert result["label"] == expected[row["id"]]["label"]
                 assert all(abs(result["scores"][label] - expected[row["id"]]["scores"][label]) < 1e-12
                            for label in ("SAFE", "RISK", "HIGH_RISK"))
@@ -130,11 +139,14 @@ def run(selection_path: Path, output: Path) -> dict:
             print(json.dumps({"runtime_benchmark": benchmark["inference"], "api": api}), flush=True)
             input_data = {"provider_url": base_url, "provider_key": key,
                 "model_version": selection["selected_model_version"],
+                "model_sha256": selection["selected_model_sha256"],
+                "moderation_mode": "shadow" if lock else "alerts",
+                "stability_checks": stability,
                 "fixtures_path": str(fixtures_path.resolve()), "python": sys.executable,
                 "agent_probe": str(Path(__file__).parent / "probe_agent_queue.py")}
             accepted = subprocess.run(["node", "test/queryCandidate.acceptance.js"],
                 input=json.dumps(input_data), cwd=ROOT / "child-monitor-backend", capture_output=True,
-                text=True, encoding="utf-8", timeout=60, env=os.environ | {"PYTHONIOENCODING": "utf-8"})
+                text=True, encoding="utf-8", timeout=90, env=os.environ | {"PYTHONIOENCODING": "utf-8"})
             (output / "acceptance_test.log").write_text(accepted.stdout + accepted.stderr, encoding="utf-8")
             if accepted.returncode:
                 raise RuntimeError("Agent acceptance checks failed; see local acceptance_test.log")
@@ -161,9 +173,14 @@ def run(selection_path: Path, output: Path) -> dict:
         "development_holdout_reuse_rejected": independence_guard,
         "unapproved_production_startup_rejected": True, "deployment_eligible": False,
         "independent_final_holdout_evaluated": False,
+        "moderation_mode": "shadow" if lock else "alerts",
+        "shadow_lock_sha256": sha256(shadow_lock) if lock else None,
+        "model_unchanged": sha256(model_path) == selection["selected_model_sha256"],
         "limitations": ["Local sequential CPU benchmark on development queries; not a concurrent load test.",
                         "Real isolated PostgreSQL; test memory rate limiting; external push delivery captured.",
-                        "Parent API and dashboard alert renderer checked; browser layout not exercised."]}
+                        ("Real collector on temporary history and real pipe message handler; named-pipe I/O mocked; no installed Agent or real child monitored."
+                         if lock else "Parent API and dashboard alert renderer checked; browser layout not exercised.")]}
+    assert report["model_unchanged"]
     (output / "verification_report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"acceptance_checks": flow["check_count"], "report": str(output / "verification_report.json")}), flush=True)
     return report
@@ -171,10 +188,19 @@ def run(selection_path: Path, output: Path) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--selection-report", required=True, type=Path)
+    parser.add_argument("--selection-report", type=Path)
+    parser.add_argument("--shadow-lock", type=Path,
+        help="Run silent shadow checks pinned to this lock; defaults selection report from the lock")
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--stability", action="store_true", help="Also test queue reopen, backend listener restart and consent re-enable")
     args = parser.parse_args()
-    run(args.selection_report, args.output_dir)
+    selection_path = args.selection_report
+    if selection_path is None:
+        if args.shadow_lock is None:
+            parser.error("Supply --selection-report or --shadow-lock")
+        lock = json.loads(args.shadow_lock.read_text(encoding="utf-8"))
+        selection_path = ROOT / "ai-training" / lock["selection_report_relative_to_ai_training"]
+    run(selection_path, args.output_dir, args.shadow_lock, args.stability)
 
 
 if __name__ == "__main__":

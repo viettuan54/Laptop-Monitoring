@@ -10,6 +10,15 @@ function configurationError(message) {
 }
 
 function getLocalConfig(environment) {
+  const mode = String(environment.TEXT_MODERATION_MODE || 'alerts').trim().toLowerCase();
+  const expectedModel = String(environment.LOCAL_MODERATION_EXPECTED_MODEL || '').trim();
+  const expectedSha256 = String(environment.LOCAL_MODERATION_EXPECTED_SHA256 || '').trim();
+  if (!['alerts', 'shadow'].includes(mode)
+      || (expectedModel && !isSafeModelName(expectedModel))
+      || (expectedSha256 && !/^[0-9a-f]{64}$/.test(expectedSha256))
+      || (mode === 'shadow' && (!expectedModel || !expectedSha256))) {
+    throw configurationError('Shadow mode requires an expected model and SHA-256; mode must be alerts or shadow');
+  }
   const rawUrl = String(
     environment.LOCAL_MODERATION_URL || DEFAULT_LOCAL_MODERATION_URL
   ).trim();
@@ -45,6 +54,9 @@ function getLocalConfig(environment) {
 
   const baseUrl = parsedUrl.toString().replace(/\/$/, '');
   return {
+    mode,
+    expectedModel,
+    expectedSha256,
     apiKey,
     endpoint: `${baseUrl}/v1/moderate`,
     timeoutMs,
@@ -113,6 +125,11 @@ async function moderateWithLocal(records, options) {
       if (config.requireApprovedModel && !payload.deploymentEligible) {
         throw providerFailure('Unapproved three-label model is unavailable in production');
       }
+      if ((payload.modelSha256 !== undefined && !/^[0-9a-f]{64}$/.test(payload.modelSha256))
+          || (config.expectedModel && payload.model !== config.expectedModel)
+          || (config.expectedSha256 && payload.modelSha256 !== config.expectedSha256)) {
+        throw providerFailure('Local moderation model does not match the configured artifact');
+      }
       let normalizedResults;
       try {
         normalizedResults = payload.results.map(normalizeLocalResult);
@@ -133,6 +150,7 @@ async function moderateWithLocal(records, options) {
       return {
         provider: 'local',
         model: payload.model,
+        modelSha256: payload.modelSha256 || null,
         results: results.map(({ id, ...result }) => result),
       };
     } catch (error) {

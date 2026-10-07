@@ -77,6 +77,7 @@ class ModerationBatchResponse(BaseModel):
 
     provider: Literal["local"] = "local"
     model: str
+    modelSha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     labelVersion: str
     deploymentEligible: bool
     results: list[ModerationResultModel]
@@ -87,6 +88,7 @@ class HealthResponse(BaseModel):
     provider: Literal["local"] = "local"
     engine: str = "character_ngram_nb"
     model: str
+    modelSha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     labelVersion: str
     deploymentEligible: bool
 
@@ -146,6 +148,7 @@ def health() -> HealthResponse:
     return HealthResponse(
         engine=get_engine().model.get("algorithm", "character_ngram_nb"),
         model=get_engine().model_version,
+        modelSha256=get_engine().model_sha256,
         labelVersion=taxonomy["version"],
         deploymentEligible=get_settings().deployment_eligible,
     )
@@ -174,6 +177,7 @@ def moderate(
     ]
     return ModerationBatchResponse(
         model=engine.model_version,
+        modelSha256=engine.model_sha256,
         labelVersion=load_taxonomy()["version"],
         deploymentEligible=get_settings().deployment_eligible,
         results=engine.moderate_batch(items),
