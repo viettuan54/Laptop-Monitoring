@@ -63,8 +63,14 @@ async function bootstrap() {
   // và đảm bảo production thực sự dùng distributed store.
   const app = require('./src/app');
 
+  // Remove expired images at startup and hourly; reads also enforce retention.
+  const cleanupScreenshots = () => adminPool.query("DELETE FROM screenshots WHERE created_at <= NOW() - INTERVAL '7 days'")
+    .catch((error) => console.error('Screenshot retention cleanup failed:', error.code || error.name));
+
   // Không mở cổng HTTP nếu role hoặc policy RLS đang cấu hình sai.
   await validateRlsConfiguration();
+  await cleanupScreenshots();
+  setInterval(cleanupScreenshots, 60 * 60 * 1000).unref();
 
   // Khởi tạo FCM/Expo sau khi database và RLS đã sẵn sàng.
   await initializePushProviders();

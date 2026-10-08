@@ -4,6 +4,12 @@ Windows Agent gồm một Service chạy dưới `LocalSystem` và Companion ch�
 phiên đăng nhập của trẻ. Bản phát hành được đóng thành một bộ cài `.exe`; máy
 được giám sát không cần cài Python hay tải package từ Internet.
 
+**Bản 1.0.17:** bổ sung nút **Bắt đầu chụp ảnh** trong phần giám sát để gửi
+yêu cầu chụp một ảnh mới đến Agent; trạng thái chờ và ngoại tuyến hiển thị ngay
+trên trang. Giữ chức năng chụp màn hình mỗi 5 phút khi phụ huynh bật giám sát,
+gửi ảnh lên **Hoạt động → Giám sát màn hình**, giữ ảnh 7 ngày.
+Xem [hướng dẫn nâng cấp và kiểm tra trên VMware](docs/screenshot_monitoring.md).
+
 **Bản 1.0.15:** đóng gói phần thu thập và gửi câu tìm kiếm để phân loại văn bản.
 Bộ cài 1.0.14 cũ chưa có phần này dù mã nguồn đã được cập nhật;
 xem [nguyên nhân và hướng dẫn nâng cấp](docs/agent_1_0_15_text_queries.md).
@@ -53,7 +59,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.15"
+  -Version "1.0.17"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -61,14 +67,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.15.exe
+build\output\ChildMonitorSetup-1.0.17.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.15" `
+  -Version "1.0.17" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"

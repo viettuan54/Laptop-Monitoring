@@ -50,6 +50,7 @@ const RLS_TABLES = [
   'admin_face_challenges',
   'child_category_policies',
   'text_moderation_events',
+  'screenshots',
 ];
 
 async function validateRlsConfiguration() {

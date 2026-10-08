@@ -20,15 +20,17 @@ async function renderQueryAlerts({ api, deviceId }) {
   const state = {
     devices: [{ device_id: deviceId, device_name: 'Thiết bị kiểm thử' }],
     alerts: [], alertFilter: { device_id: deviceId }, unreadAlertCount: 0,
+    accessToken: 'fixture-session', role: 'parent',
   };
   let indicatorUpdated = false;
   const context = vm.createContext({
     state, api, URLSearchParams, icons: { alert: '!' },
+    alertRefreshPromise: null, alertRefreshSequence: 0,
     pageHead: () => '', sectionVisual: () => '', emptyState: () => '<p>Không có cảnh báo</p>',
     updateAlertIndicator: () => { indicatorUpdated = true; },
   });
   const functions = ['escapeHtml', 'formatDate', 'queryString', 'deviceName',
-    'alertPresentation', 'renderAlerts'];
+    'alertPresentation', 'refreshUnreadAlertCount', 'renderAlerts'];
   vm.runInContext(functions.map(name => functionSource(source, name)).join('\n'), context);
   const content = { innerHTML: '' };
   await context.renderAlerts(content);
@@ -36,4 +38,4 @@ async function renderQueryAlerts({ api, deviceId }) {
   return { html: content.innerHTML, rows: state.alerts, unreadCount: state.unreadAlertCount };
 }
 
-module.exports = { renderQueryAlerts };
+module.exports = { renderQueryAlerts, functionSource };

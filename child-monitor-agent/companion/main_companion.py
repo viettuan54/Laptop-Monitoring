@@ -12,6 +12,7 @@ from app_tracker import AppTracker
 from web_tracker import WebTracker
 from ui_alerts import UIAlerts
 from edge_vision import EdgeVisionMonitor
+from screen_monitor import ScreenMonitor
 from runtime_paths import agent_root
 
 # Cấu hình logging
@@ -129,11 +130,14 @@ def main():
         warning_callback=UIAlerts.show_vision_warning,
     )
     vision_monitor.start()
+    screen_monitor = ScreenMonitor(pipe_client, UIAlerts.show_screenshot_notice)
+    screen_monitor.start()
     start_web_tracker(web_tracker)
 
     def update_monitor_configs(response):
         vision_monitor.update_config(response)
         web_tracker.update_text_config(response)
+        screen_monitor.update_config(response)
 
     # Khởi chạy luồng timer 30s PING kiểm tra policy
     start_ping_timer(
@@ -155,6 +159,7 @@ def main():
             time.sleep(3)
     finally:
         vision_monitor.stop()
+        screen_monitor.stop()
         try:
             handle_policy_response(tracker.flush())
         except Exception as e:

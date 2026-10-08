@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "check": "node --check app.js && node --check server.js",
-    "test": "node --test test/smoke.test.js"
+    "test": "node --test test/smoke.test.js test/queryAlertRenderer.test.js test/alertIndicator.test.js test/screenshots.test.js"
   },
   "engines": {
     "node": ">=18"

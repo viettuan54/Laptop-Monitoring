@@ -29,6 +29,10 @@ Object.assign(process.env, TEST_ENV, {
   NODE_ENV: 'test',
   JWT_SECRET: process.env.TEST_JWT_SECRET || crypto.randomBytes(32).toString('hex'),
   REDIS_URL: process.env.TEST_REDIS_URL,
+  // The local fake provider has its own contract, independent of live model pins.
+  TEXT_MODERATION_MODE: 'alerts',
+  LOCAL_MODERATION_EXPECTED_MODEL: '',
+  LOCAL_MODERATION_EXPECTED_SHA256: '',
 });
 
 const { adminPool, backendPool, validateRlsConfiguration } = require('../src/config/db');
@@ -847,3 +851,131 @@ test(`Agent search query ${label} reaches the provider and applies the parent al
   }
 });
 }
+
+
+test('screenshot capture requires consent, is idempotent, private to its parent and expires', async () => {
+  const fs = require('node:fs');
+  const image = fs.readFileSync(path.join(__dirname, 'fixtures/screenshot.jpg')).toString('base64');
+  const thumbnail = fs.readFileSync(path.join(__dirname, 'fixtures/screenshot-thumb.jpg')).toString('base64');
+  const logins = await Promise.all(emails.map(email => request('/api/auth/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password: 'Integration1!' }),
+  })));
+  for (const login of logins) assert.equal(login.status, 200);
+  const owner = { authorization: 'Bearer ' + logins[0].body.accessToken, 'content-type': 'application/json' };
+  const other = { authorization: 'Bearer ' + logins[1].body.accessToken };
+  const agent = { 'x-device-secret': plaintextDeviceSecret, 'content-type': 'application/json' };
+  const toggle = async enabled => {
+    const result = await request('/api/settings/' + childOne, {
+      method: 'PUT', headers: owner, body: JSON.stringify({ enable_screenshot_review: enabled }),
+    });
+    assert.equal(result.status, 200);
+    const config = await request('/api/agent/config', { headers: agent });
+    assert.equal(config.status, 200);
+    assert.equal(config.body.config.screenshot_interval_seconds, 300);
+    return config.body.config.updated_at;
+  };
+  const upload = (body, headers = agent) => request('/api/logs/screenshots', {
+    method: 'POST', headers, body: JSON.stringify(body),
+  });
+  const makeRecord = revision => ({ client_record_id: crypto.randomUUID(),
+    captured_at: new Date().toISOString(), policy_revision: revision,
+    image_base64: image, thumbnail_base64: thumbnail });
+  let revision = await toggle(false);
+  assert.equal((await upload(makeRecord(revision))).status, 409);
+  revision = await toggle(true);
+  const record = makeRecord(revision);
+  assert.equal((await upload(record, { 'content-type': 'application/json' })).status, 401);
+  assert.equal((await upload(record, owner)).status, 401);
+  assert.equal((await upload({ ...record, image_base64: '<svg/>' })).status, 400);
+  const results = await Promise.all([upload(record), upload(record)]);
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 201]);
+  assert.equal(results[0].body.screenshot_id, results[1].body.screenshot_id);
+  assert.equal(results[0].body.accepted_client_record_id, record.client_record_id);
+  const id = results[0].body.screenshot_id;
+  assert.equal((await upload(makeRecord(revision))).status, 429);
+  const listed = await request('/api/logs/screenshots?device_id=' + deviceOne + '&limit=1', { headers: owner });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.total, 1);
+  assert.equal(listed.body.data[0].screenshot_id, id);
+  assert.equal(listed.body.data[0].image_base64, undefined);
+  assert.equal(listed.body.data[0].thumbnail_base64.replace(/\s/g, ''), thumbnail);
+  assert.equal((await request('/api/logs/screenshots?start=invalid', { headers: owner })).status, 400);
+  const paginated = await request('/api/logs/screenshots?limit=1&offset=1', { headers: owner });
+  assert.equal(paginated.body.total, 1);
+  assert.equal(paginated.body.data.length, 0);
+  const invisible = await request('/api/logs/screenshots?device_id=' + deviceOne, { headers: other });
+  assert.equal(invisible.status, 200);
+  assert.equal(invisible.body.total, 0);
+  assert.equal((await request('/api/logs/screenshots/' + id, { headers: other })).status, 404);
+  assert.equal((await request('/api/logs/screenshots/' + id, { headers: agent })).status, 401);
+  const full = await fetch(baseUrl + '/api/logs/screenshots/' + id, { headers: owner });
+  assert.equal(full.status, 200);
+  assert.equal(full.headers.get('cache-control'), 'private, no-store');
+  assert.equal((await full.json()).image_base64.replace(/\s/g, ''), image);
+  await toggle(false);
+  assert.equal((await upload(makeRecord(revision))).status, 409);
+  await toggle(true);
+  assert.equal((await upload(makeRecord(revision))).status, 409);
+  await adminPool.query("UPDATE screenshots SET created_at = NOW() - INTERVAL '8 days' WHERE screenshot_id = $1", [id]);
+  assert.equal((await request('/api/logs/screenshots/' + id, { headers: owner })).status, 404);
+  assert.equal((await request('/api/logs/screenshots', { headers: owner })).body.total, 0);
+  await adminPool.query('DELETE FROM screenshots WHERE device_id = $1', [deviceOne]);
+});
+
+test('parent capture request reaches only its Agent, bypasses periodic delay once and expires', async () => {
+  const fs = require('node:fs');
+  const logins = await Promise.all(emails.map(email => request('/api/auth/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password: 'Integration1!' }),
+  })));
+  const parentHeaders = index => ({ authorization: 'Bearer ' + logins[index].body.accessToken, 'content-type': 'application/json' });
+  const agent = { 'x-device-secret': plaintextDeviceSecret, 'content-type': 'application/json' };
+  const capture = (headers = parentHeaders(0)) => request('/api/logs/screenshots/request', {
+    method: 'POST', headers, body: JSON.stringify({ device_id: deviceOne }),
+  });
+  const toggle = enabled => request('/api/settings/' + childOne, { method: 'PUT', headers: parentHeaders(0),
+    body: JSON.stringify({ enable_screenshot_review: enabled }) });
+  await toggle(false);
+  assert.equal((await capture()).status, 409);
+  assert.equal((await capture(parentHeaders(1))).status, 404);
+  assert.equal((await capture(agent)).status, 401);
+  await toggle(true);
+  const initial = await request('/api/agent/config', { headers: agent });
+  const revision = initial.body.config.updated_at;
+  const upload = id => request('/api/logs/screenshots', { method: 'POST', headers: agent,
+    body: JSON.stringify({ client_record_id: id, captured_at: new Date().toISOString(), policy_revision: revision,
+      image_base64: fs.readFileSync(path.join(__dirname, 'fixtures/screenshot.jpg')).toString('base64'),
+      thumbnail_base64: fs.readFileSync(path.join(__dirname, 'fixtures/screenshot-thumb.jpg')).toString('base64') }),
+  });
+  assert.equal((await upload(crypto.randomUUID())).status, 201);
+  const starts = await Promise.all([capture(), capture()]);
+  for (const start of starts) assert.equal(start.status, 202);
+  const id = starts[0].body.request_id;
+  assert.equal(starts[1].body.request_id, id);
+  const heartbeat = await request('/api/agent/heartbeat', { method: 'POST', headers: agent, body: '{}' });
+  assert.equal(heartbeat.body.config.screenshot_request.id, id);
+  assert.ok(Date.parse(heartbeat.body.config.screenshot_request.expires_at) > Date.now());
+  const listed = await request('/api/logs/screenshots', { headers: parentHeaders(0) });
+  const monitor = listed.body.devices.find(row => row.device_id === deviceOne);
+  assert.equal(monitor.enabled, true);
+  assert.equal(monitor.pending_request_id, id);
+  assert.equal((await upload(id)).status, 201);
+  assert.equal((await upload(id)).status, 200);
+  assert.equal((await request('/api/agent/config', { headers: agent })).body.config.screenshot_request, null);
+  assert.equal((await capture()).status, 429);
+  await adminPool.query("UPDATE devices SET screenshot_requested_at = NOW() - INTERVAL '15 seconds' WHERE device_id = $1", [deviceOne]);
+  const next = await capture();
+  assert.equal(next.status, 202);
+  await adminPool.query("UPDATE devices SET screenshot_requested_at = NOW() - INTERVAL '4 minutes' WHERE device_id = $1", [deviceOne]);
+  assert.equal((await request('/api/agent/config', { headers: agent })).body.config.screenshot_request, null);
+  const expired = await request('/api/logs/screenshots', { headers: parentHeaders(0) });
+  assert.equal(expired.body.devices.find(row => row.device_id === deviceOne).request_expired, true);
+  await capture();
+  await toggle(false);
+  assert.equal((await request('/api/agent/config', { headers: agent })).body.config.screenshot_request, null);
+  assert.equal((await upload(next.body.request_id)).status, 409);
+  const other = await request('/api/logs/screenshots', { headers: parentHeaders(1) });
+  assert.equal(other.body.devices.some(row => row.device_id === deviceOne), false);
+  await adminPool.query('DELETE FROM screenshots WHERE device_id = $1', [deviceOne]);
+});

@@ -41,6 +41,10 @@ Có thể dùng `npm start` nếu PowerShell cho phép chạy npm script. Chạy
   cài Agent 1.0.14 và trạng thái kết nối Backend ngay trên Dashboard.
 - Hoạt động: tìm kiếm, lọc theo thiết bị/danh mục/thời gian, phân trang cục bộ,
   mở liên kết website an toàn và xuất CSV UTF-8.
+- Giám sát màn hình: tab bên cạnh Ứng dụng/Website, xem ảnh Agent chụp mỗi
+  5 phút khi được bật, lọc thiết bị/thời gian, phân trang từ API và mở ảnh lớn.
+  Nút **Bắt đầu chụp ảnh** gửi yêu cầu đến thiết bị đang chọn và hiển thị trạng
+  thái chờ/ngoại tuyến. Ảnh giữ 7 ngày; xem [hướng dẫn cập nhật Agent 1.0.17](../child-monitor-agent/docs/screenshot_monitoring.md).
 - Admin: thống kê, người dùng, blacklist và audit log.
 - Quản trị tài khoản: tìm/lọc người dùng, xem hồ sơ trẻ và thiết bị,
   khóa/mở tài khoản, xác minh email, đổi vai trò, thu hồi phiên và xóa tài khoản.

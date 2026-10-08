@@ -53,3 +53,15 @@ class UIAlerts:
             )
 
         threading.Thread(target=_warning_thread, daemon=True).start()
+
+    @classmethod
+    def show_screenshot_notice(cls):
+        """Visible notice before each capture; called only by the capture worker."""
+        title = "LaptopChildren · Giám sát màn hình"
+        message = "Phụ huynh đã bật giám sát màn hình. Agent sắp chụp và gửi ảnh màn hình cho phụ huynh."
+        try:
+            # Auto-dismiss before capture so the notice does not obscure the image.
+            ctypes.windll.user32.MessageBoxTimeoutW(0, message, title, 0x40 | 0x1000, 0, 3000)
+        except AttributeError:
+            # Older Windows must still show a notice, even if acknowledgement is needed.
+            cls._display_toast(title, message)

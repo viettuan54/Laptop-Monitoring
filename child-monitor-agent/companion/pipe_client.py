@@ -71,6 +71,10 @@ class PipeClient:
         }
         return self._send_and_receive(payload)
 
+    def send_screenshot(self, record):
+        """Use the Service's device credential; keep all image bytes in memory."""
+        return self._send_and_receive({"action": "SCREENSHOT", "record": record}, max_retries=1)
+
     def send_vision_alert(self, alert_type, message, metrics=None):
         """Gửi metadata Edge AI tới Service; tuyệt đối không nhận dữ liệu ảnh."""
         payload = {
@@ -84,6 +88,7 @@ class PipeClient:
     def _send_and_receive(self, payload_dict, max_retries=3):
         """Mở kết nối pipe có hỗ trợ retry ngắn (100-300ms) để tránh xung đột tranh chấp."""
         for attempt in range(1, max_retries + 1):
+            handle = None
             try:
                 # Mở kết nối tới Named Pipe
                 handle = win32file.CreateFile(
@@ -100,7 +105,6 @@ class PipeClient:
 
                 # Đọc dữ liệu phản hồi từ Service
                 result, data = win32file.ReadFile(handle, 65536)
-                win32file.CloseHandle(handle)
 
                 if result == 0 and data:
                     return json.loads(data.decode('utf-8'))
@@ -115,5 +119,8 @@ class PipeClient:
             except Exception as e:
                 if attempt < max_retries:
                     time.sleep(0.15)
+            finally:
+                if handle is not None:
+                    win32file.CloseHandle(handle)
 
         return None

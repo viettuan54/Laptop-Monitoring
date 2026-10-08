@@ -12,6 +12,7 @@ const {
 const { getAgentPolicySnapshot } = require('../services/agentPolicy.service');
 const { moderateRecords, getModerationConfig } = require('../services/textModeration.service');
 const { cleanText } = require('../services/textPrivacy.service');
+const { pendingScreenshotRequest } = require('../services/screenshot.service');
 
 const TEXT_MODERATION_BATCH_MAX = 20;
 const TEXT_MODERATION_SOURCES = new Set([
@@ -123,6 +124,7 @@ exports.heartbeat = async (req, res) => {
       adminPool,
       child_id
     );
+    config.screenshot_request = await pendingScreenshotRequest(adminPool, device_id);
 
     res.json({
       message: 'Heartbeat received',
@@ -152,6 +154,7 @@ exports.getConfig = async (req, res) => {
       getAgentPolicySnapshot(adminPool, child_id),
       adminPool.query('SELECT domain FROM website_blacklist ORDER BY domain ASC'),
     ]);
+    policySnapshot.config.screenshot_request = await pendingScreenshotRequest(adminPool, device_id);
 
     res.json({
       device_id,

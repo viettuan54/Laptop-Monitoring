@@ -1,4 +1,4 @@
-"""Reject frozen releases missing the search-query collection and upload path.
+"""Reject frozen releases missing the query or opt-in screenshot upload paths.
 
 Inspect bytecode without starting a service or touching an installed Agent.
 The old 1.0.14 bundle predates text collection despite the source having it.
@@ -18,11 +18,14 @@ REQUIRED = {
     "service/ChildMonitorService.exe": {
         "api_client": {"post_text_moderation"},
         "offline_queue": {"enqueue_text_moderation", "_sync_text_moderation"},
-        "enforcement_core": {"get_text_moderation_policy"},
+        "enforcement_core": {"get_text_moderation_policy", "get_screenshot_policy"},
+        "screenshot_upload": {"ScreenshotUploader", "enqueue", "upload"},
         "pipe_server": {"validate_text_moderation_record"},
         "text_privacy": {"eligible_timestamp", "protect_text", "unprotect_text"},
     },
     "companion/ChildMonitorCompanion.exe": {
+        "screen_monitor": {"ScreenMonitor", "capture_desktop", "desktop_available", "last_request_expires_at"},
+        "pipe_client": {"send_screenshot"},
         "web_tracker": {"extract_search_query", "update_text_config"},
         "text_privacy": {"eligible_timestamp", "search_parameter"},
     },
@@ -55,7 +58,8 @@ def verify(root, version):
         checked.append({"binary": relative,
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "required_modules": sorted(required_modules)})
-    return {"version": version, "text_capabilities_verified": True, "binaries": checked,
+    return {"version": version, "text_capabilities_verified": True,
+        "screenshot_capabilities_verified": True, "binaries": checked,
         "installed_agent_tested": False}
 
 

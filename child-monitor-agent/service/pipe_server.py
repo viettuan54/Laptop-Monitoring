@@ -18,6 +18,7 @@ import win32con
 
 from runtime_paths import agent_root
 from text_privacy import clean_text, eligible_timestamp, policy_enabled, safe_web_metadata
+from screenshot_upload import ScreenshotUploader
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -84,6 +85,7 @@ class PipeServer:
         self.classification_queue = queue.Queue()
         self.classification_pending = set()
         self.classification_lock = threading.Lock()
+        self.screenshot_uploader = ScreenshotUploader(api_client, enforcement_core.get_screenshot_policy)
 
     @staticmethod
     def validate_app_tracking_payload(message):
@@ -600,6 +602,7 @@ class PipeServer:
     def start(self):
         """Khởi chạy luồng Named Pipe Server."""
         self.running = True
+        self.screenshot_uploader.start()
         thread = threading.Thread(target=self._server_loop, daemon=True)
         thread.start()
         classification_thread = threading.Thread(
@@ -612,6 +615,7 @@ class PipeServer:
 
     def stop(self):
         self.running = False
+        self.screenshot_uploader.stop()
         self.classification_queue.put(None)
         # ConnectNamedPipe/ReadFile are blocking. Cancel their pending I/O and
         # let the server thread close its own handle; a cross-thread CloseHandle
@@ -671,6 +675,16 @@ class PipeServer:
         try:
             while self.running:
                 result, data = win32file.ReadFile(pipe_handle, 65536)
+                chunks = [data]
+                size = len(data)
+                # Message-mode pipes report ERROR_MORE_DATA for image payloads.
+                while result == 234:
+                    result, data = win32file.ReadFile(pipe_handle, 65536)
+                    size += len(data)
+                    if size > 650000:
+                        raise ValueError("Pipe message exceeds maximum size")
+                    chunks.append(data)
+                data = b"".join(chunks)
                 if result == 0 and data:
                     message_str = data.decode('utf-8')
                     self._process_client_message(message_str, pipe_handle)
@@ -691,6 +705,7 @@ class PipeServer:
             msg = json.loads(message_str)
             action = msg.get("action")
             tracking_ack = None
+            screenshot_accepted = None
 
             if action == "TRACK_APP":
                 app_payload = self.validate_app_tracking_payload(msg)
@@ -804,6 +819,9 @@ class PipeServer:
                 # Action PING chỉ kiểm tra chính sách mà không ghi nhận sự kiện theo dõi ứng dụng mới
                 pass
 
+            elif action == "SCREENSHOT":
+                screenshot_accepted = self.screenshot_uploader.enqueue(msg.get("record"))
+
             elif action == "VISION_ALERT":
                 alert_type = msg.get("alert_type")
                 message = msg.get("message")
@@ -838,7 +856,10 @@ class PipeServer:
                 "countdown_minutes": countdown_minutes,
                 "vision_config": self._get_vision_config(),
                 "text_moderation_config": self._get_text_moderation_config(),
+                "screenshot_config": self.enforcement_core.get_screenshot_policy(),
             }
+            if screenshot_accepted is not None:
+                response_payload["screenshot_queued"] = screenshot_accepted
             if tracking_ack:
                 response_payload["tracking_ack"] = tracking_ack
             response_bytes = json.dumps(response_payload).encode('utf-8')

@@ -40,6 +40,8 @@ class EnforcementCore:
         self.hosts_path = r"C:\Windows\System32\drivers\etc\hosts"
         self.lock = threading.Lock()
         self.cache_lock = threading.RLock()
+        self._screenshot_policy = {"enabled": False}
+        self._screenshot_policy_deadline = 0
         if hasattr(self.offline_queue, "set_text_policy_provider"):
             self.offline_queue.set_text_policy_provider(self.get_text_moderation_policy)
 
@@ -85,6 +87,14 @@ class EnforcementCore:
         if not policy_enabled(policy):
             return {"enabled": False}
         return policy
+
+    def get_screenshot_policy(self):
+        """Screenshot consent is memory-only and must be renewed by the backend."""
+        with self.cache_lock:
+            remaining = self._screenshot_policy_deadline - time.monotonic()
+            if remaining <= 0 or self._screenshot_policy.get("enabled") is not True:
+                return {"enabled": False}
+            return {**self._screenshot_policy, "valid_for_seconds": remaining}
 
     def load_web_classification_cache(self):
         """Đọc ánh xạ domain -> nhãn AI đã xác nhận trên thiết bị này."""
@@ -202,6 +212,20 @@ class EnforcementCore:
                 if policy_blocked_domains is not None:
                     cache_data["policy_blocked_domains"] = policy_blocked_domains
                 self._write_json_atomic(self.settings_cache_path, cache_data)
+                # A cached True on disk never authorizes capture after a restart.
+                screenshot_enabled = (isinstance(config_data, dict)
+                                      and config_data.get("enable_screenshot_review") is True
+                                      and isinstance(new_revision, str))
+                interval = config_data.get("screenshot_interval_seconds", 300) if isinstance(config_data, dict) else 300
+                if not isinstance(interval, int) or isinstance(interval, bool) or not 60 <= interval <= 3600:
+                    interval = 300
+                self._screenshot_policy = {
+                    "enabled": screenshot_enabled,
+                    "revision": new_revision,
+                    "interval_seconds": interval,
+                    "request": config_data.get("screenshot_request") if screenshot_enabled else None,
+                }
+                self._screenshot_policy_deadline = time.monotonic() + 180
                 current_domains = self._effective_blocked_domains(
                     cache_data,
                     classifications,

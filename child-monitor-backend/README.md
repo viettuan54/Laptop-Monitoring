@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy lần lượt toàn bộ migration đến `migration_v23.sql`. Với database hiện có, tối thiểu phải chạy:
+Chạy lần lượt toàn bộ migration đến `migration_v26.sql`. Với database hiện có, tối thiểu phải chạy:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql
@@ -31,6 +31,8 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v20.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v21.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v22.sql
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v23.sql
+psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v24.sql
+node scripts/migrate-screenshots.js
 ```
 
 `migration_v12.sql` khắc phục lỗi đăng nhập `column "is_active" does not exist`; `migration_v13.sql` tạo bảng push; `migration_v14.sql` tạo challenge xác thực khuôn mặt một lần cho admin; `migration_v15.sql` bổ sung nhãn ứng dụng `browsers`; `migration_v16.sql` thêm hai công tắc AI và bảng chính sách `allow/block` theo từng trẻ; `migration_v17.sql` lưu nguồn/độ tin cậy của nhãn website và đánh dấu các dòng cần backfill; `migration_v18.sql` thêm index cho snapshot domain đã phân loại dùng khi Agent đồng bộ policy chặn.
@@ -39,6 +41,13 @@ psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v23.sql
 `migration_v21.sql` thêm công tắc phân tích văn bản, bảng kết quả đã tối giản dữ liệu và ba loại cảnh báo tự hại/bắt nạt/bạo lực. Bảng này không có cột chứa văn bản gốc.
 `migration_v22.sql` thêm `classification_label` và `label_scores` cho ba nhãn mới; giữ các cột cũ chỉ để đọc lịch sử. Phải chạy migration này trước khi nhận batch phân loại mới.
 `migration_v23.sql` thêm `text_risk` cho cảnh báo quan sát ở nhãn `RISK`.
+`migration_v24.sql` bổ sung metadata cho chế độ shadow của phân loại văn bản.
+`migration_v25.sql` tạo bảng ảnh màn hình với RLS và quyền cho các role backend.
+`migration_v26.sql` thêm yêu cầu chụp ảnh có thời hạn theo thiết bị để Agent nhận
+qua heartbeat/config. Script `scripts/migrate-screenshots.js` áp dụng v25–v26 bằng cấu hình DB trong `.env`;
+chạy trước khi khởi động backend mới. Ảnh chỉ nhận khi phụ huynh bật giám sát,
+chu kỳ mặc định 300 giây và giữ 7 ngày. Xem
+[hướng dẫn giám sát màn hình](../child-monitor-agent/docs/screenshot_monitoring.md).
 Chạy bằng role sở hữu enum (hoặc superuser); quyền BYPASSRLS không đủ để đổi enum.
 
 Hãy dùng role sở hữu schema (thường là `postgres`), vì role chỉ được `GRANT` quyền đọc/ghi không thể chạy `ALTER TABLE`.

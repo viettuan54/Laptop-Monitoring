@@ -79,6 +79,10 @@ class FakeQueue:
 
 class FakeEnforcementCore:
     @staticmethod
+    def get_screenshot_policy():
+        return {"enabled": False}
+
+    @staticmethod
     def get_text_moderation_policy():
         return {"enabled": False}
 
@@ -178,7 +182,8 @@ class WebTrackingTest(unittest.TestCase):
         )
         with open(tracker.status_path, "r", encoding="utf-8") as stream:
             status = json.load(stream)
-        self.assertEqual(status["agent_version"], "1.0.15")
+        from web_tracker import AGENT_VERSION
+        self.assertEqual(status["agent_version"], AGENT_VERSION)
         self.assertEqual(status["records_discovered"], 1)
         self.assertEqual(status["records_forwarded"], 1)
 

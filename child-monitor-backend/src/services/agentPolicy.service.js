@@ -1,3 +1,4 @@
+const { captureIntervalSeconds } = require('./screenshot.service');
 const DEFAULT_AGENT_CONFIG = Object.freeze({
   daily_limit_minutes: 120,
   allowed_start_time: '07:00:00',
@@ -48,6 +49,7 @@ async function getAgentPolicyConfig(db, childId) {
   return {
     ...DEFAULT_AGENT_CONFIG,
     ...(settingsResult.rows[0] || {}),
+    screenshot_interval_seconds: captureIntervalSeconds(),
     blocked_app_categories: blocked.app,
     blocked_web_categories: blocked.web,
   };

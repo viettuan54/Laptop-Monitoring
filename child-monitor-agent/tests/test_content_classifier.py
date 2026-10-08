@@ -337,6 +337,7 @@ class ContentClassifierTest(unittest.TestCase):
     def test_app_tracking_is_acknowledged_only_after_local_persistence(self):
         enforcement = Mock()
         enforcement.load_cached_settings.return_value = {}
+        enforcement.get_screenshot_policy.return_value = {"enabled": False}
         enforcement.check_policy_status.return_value = (False, "OK", 3600)
         queue = Mock()
         record_id = "bc24f35c-ce48-4c5e-8d99-e4b565056269"
@@ -390,6 +391,7 @@ class ContentClassifierTest(unittest.TestCase):
         enforcement.load_cached_settings.return_value = {
             "enable_web_classification": True,
         }
+        enforcement.get_screenshot_policy.return_value = {"enabled": False}
         enforcement.check_policy_status.return_value = (False, "OK", 3600)
         classifier = Mock()
         classifier.classify_web.return_value = {
@@ -428,6 +430,7 @@ class ContentClassifierTest(unittest.TestCase):
         enforcement.load_cached_settings.return_value = {
             "enable_web_classification": True,
         }
+        enforcement.get_screenshot_policy.return_value = {"enabled": False}
         enforcement.check_policy_status.return_value = (False, "OK", 3600)
         classifier = Mock()
         classifier.classify_web.return_value = {"label": None, "confidence": 0.4}
@@ -461,6 +464,7 @@ class ContentClassifierTest(unittest.TestCase):
         enforcement.load_cached_settings.return_value = {
             "enable_app_classification": True,
         }
+        enforcement.get_screenshot_policy.return_value = {"enabled": False}
         enforcement.check_policy_status.return_value = (False, "OK", 3600)
         classifier = Mock()
         classifier.classify_app.return_value = {"label": None, "confidence": 0.4}
