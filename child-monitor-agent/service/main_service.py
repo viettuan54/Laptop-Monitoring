@@ -186,7 +186,7 @@ class ChildMonitorService(ServiceBaseClass):
         threads = [
             threading.Thread(
                 target=run_forever,
-                args=("HeartbeatLoop", self._heartbeat_loop_step, 60),
+                args=("HeartbeatLoop", self._heartbeat_loop_step, 5),
                 daemon=True
             ),
             threading.Thread(
@@ -228,7 +228,7 @@ class ChildMonitorService(ServiceBaseClass):
         logging.info("ChildMonitorService terminated cleanly.")
 
     def _heartbeat_loop_step(self):
-        """Heartbeat Loop (60s): Báo cáo trạng thái hoạt động của Agent lên Backend."""
+        """Heartbeat Loop (5s): Receive parent commands without a minute-long wait."""
         logging.info("Sending heartbeat to backend...")
         res = self.api_client.post("/api/agent/heartbeat", data={})
         if res and res.status_code == 200:
@@ -237,7 +237,7 @@ class ChildMonitorService(ServiceBaseClass):
                 payload = res.json()
                 config = payload.get("config")
                 if isinstance(config, dict):
-                    # Heartbeat is the fastest policy channel (60s). Preserve the
+                    # Heartbeat is the fastest policy channel (5s). Preserve the
                     # global blacklist, but replace the per-child classified-domain
                     # snapshot whenever the new backend includes it.
                     policy_blocked_domains = (

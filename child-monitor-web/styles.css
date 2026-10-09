@@ -6265,7 +6265,9 @@ button.list-item:hover .list-arrow {
 .screenshot-preview span { position: absolute; right: 10px; bottom: 10px; padding: 4px 10px; border-radius: 6px; background: var(--paper); color: var(--forest); font-size: 0.8rem; font-weight: 600; }
 .screenshot-preview:hover { border-color: var(--forest); }
 .screenshot-preview:focus-visible { outline: 3px solid var(--primary-ring); outline-offset: 3px; }
-.screenshot-card figcaption { display: grid; gap: 3px; padding: 12px 2px 0; overflow-wrap: anywhere; }
+.screenshot-card figcaption { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 12px 2px 0; overflow-wrap: anywhere; }
+.screenshot-card figcaption > div { display: grid; gap: 3px; min-width: 0; }
+.screenshot-delete { flex-shrink: 0; }
 .screenshot-card time { color: var(--ink-soft); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
 .screenshot-pagination { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-top: 28px; color: var(--ink-soft); }
 .screenshot-pagination > div { display: flex; gap: 8px; }

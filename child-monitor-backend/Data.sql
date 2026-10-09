@@ -465,8 +465,13 @@ CREATE TABLE IF NOT EXISTS screenshots (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     width INTEGER NOT NULL CHECK (width BETWEEN 1 AND 1920),
     height INTEGER NOT NULL CHECK (height BETWEEN 1 AND 1920),
-    image_data BYTEA NOT NULL CHECK (octet_length(image_data) BETWEEN 1 AND 409600),
-    thumbnail_data BYTEA NOT NULL CHECK (octet_length(thumbnail_data) BETWEEN 1 AND 40960),
+    image_data BYTEA CHECK (octet_length(image_data) BETWEEN 1 AND 409600),
+    thumbnail_data BYTEA CHECK (octet_length(thumbnail_data) BETWEEN 1 AND 40960),
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT screenshots_image_lifecycle CHECK (
+        (deleted_at IS NULL AND image_data IS NOT NULL AND thumbnail_data IS NOT NULL)
+        OR (deleted_at IS NOT NULL AND image_data IS NULL AND thumbnail_data IS NULL)
+    ),
     UNIQUE (device_id, client_record_id)
 );
 CREATE INDEX IF NOT EXISTS idx_screenshots_device_time ON screenshots(device_id, captured_at DESC);
@@ -480,6 +485,7 @@ CREATE POLICY screenshots_owner ON screenshots
         WHERE c.user_id = current_setting('app.current_user_id', true)::INTEGER
     ));
 GRANT SELECT, DELETE ON screenshots TO app_backend;
+GRANT UPDATE (image_data, thumbnail_data, deleted_at) ON screenshots TO app_backend;
 GRANT ALL PRIVILEGES ON screenshots TO app_admin;
 GRANT USAGE, SELECT ON SEQUENCE screenshots_screenshot_id_seq TO app_admin;
 

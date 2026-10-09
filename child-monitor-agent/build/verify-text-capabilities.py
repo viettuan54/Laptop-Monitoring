@@ -24,7 +24,7 @@ REQUIRED = {
         "text_privacy": {"eligible_timestamp", "protect_text", "unprotect_text"},
     },
     "companion/ChildMonitorCompanion.exe": {
-        "screen_monitor": {"ScreenMonitor", "capture_desktop", "desktop_available", "last_request_expires_at"},
+        "screen_monitor": {"ScreenMonitor", "capture_desktop", "desktop_available", "last_request_expires_at", "check_capture_support", "GetDIBits"},
         "pipe_client": {"send_screenshot"},
         "web_tracker": {"extract_search_query", "update_text_config"},
         "text_privacy": {"eligible_timestamp", "search_parameter"},
@@ -53,6 +53,8 @@ def verify(root, version):
             missing = required_names - symbols(code)
             if missing:
                 raise ValueError(f"{relative}:{module} missing {', '.join(sorted(missing))}")
+            if module == "screen_monitor" and "win32ui" in symbols(code):
+                raise ValueError("Screenshot capture must not depend on an unbundled MFC runtime")
             if module == "web_tracker" and version not in code.co_consts:
                 raise ValueError("Frozen collector version does not match installer version")
         checked.append({"binary": relative,

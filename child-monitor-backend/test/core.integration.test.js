@@ -136,6 +136,7 @@ test('parent device list sees the first heartbeat and a reconnect after going of
   };
 
   assert.equal((await readDevice()).last_seen_at, null);
+  assert.equal((await readDevice()).online, false);
 
   for (const query of ['', `?child_id=${childOne}`]) {
     if (query) {
@@ -144,6 +145,7 @@ test('parent device list sees the first heartbeat and a reconnect after going of
         [deviceOne]
       );
       const offline = await readDevice(query);
+      assert.equal(offline.online, false);
       assert.ok(Date.now() - Date.parse(offline.last_seen_at) > 5 * 60 * 1000);
     }
 
@@ -154,6 +156,7 @@ test('parent device list sees the first heartbeat and a reconnect after going of
     });
     assert.equal(heartbeat.status, 200);
     const online = await readDevice(query);
+    assert.equal(online.online, true);
     assert.equal(online.last_seen_at, heartbeat.body.last_seen_at);
     assert.ok(Math.abs(Date.now() - Date.parse(online.last_seen_at)) < 60 * 1000);
   }
@@ -978,4 +981,103 @@ test('parent capture request reaches only its Agent, bypasses periodic delay onc
   const other = await request('/api/logs/screenshots', { headers: parentHeaders(1) });
   assert.equal(other.body.devices.some(row => row.device_id === deviceOne), false);
   await adminPool.query('DELETE FROM screenshots WHERE device_id = $1', [deviceOne]);
+});
+
+test('device list, screenshot gallery and capture request agree across the five-minute heartbeat window', async () => {
+  const login = await request('/api/auth/login', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[0], password: 'Integration1!' }) });
+  assert.equal(login.status, 200);
+  const headers = { authorization: 'Bearer ' + login.body.accessToken, 'content-type': 'application/json' };
+  assert.equal((await request('/api/settings/' + childOne, { method: 'PUT', headers,
+    body: JSON.stringify({ enable_screenshot_review: true }) })).status, 200);
+  for (const [age, expected] of [[null, false], [60, true], [180, true], [270, true], [330, false]]) {
+    await adminPool.query(
+      `UPDATE devices SET last_seen_at = CASE WHEN $2::int IS NULL THEN NULL ELSE NOW() - $2 * INTERVAL '1 second' END,
+         screenshot_request_id = NULL, screenshot_requested_at = NULL WHERE device_id = $1`, [deviceOne, age]);
+    for (const query of ['', '?child_id=' + childOne]) {
+      const devices = await request('/api/devices' + query, { headers });
+      assert.equal(devices.status, 200);
+      assert.equal(devices.body.data.find(row => row.device_id === deviceOne).online, expected, `devices, age=${age}`);
+    }
+    const screenshots = await request('/api/logs/screenshots', { headers });
+    assert.equal(screenshots.status, 200);
+    assert.equal(screenshots.body.devices.find(row => row.device_id === deviceOne).online, expected, `screenshots, age=${age}`);
+    const capture = await request('/api/logs/screenshots/request', { method: 'POST', headers,
+      body: JSON.stringify({ device_id: deviceOne }) });
+    assert.equal(capture.status, 202);
+    assert.equal(capture.body.online, expected, `capture, age=${age}`);
+  }
+  const heartbeat = await request('/api/agent/heartbeat', { method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-device-secret': plaintextDeviceSecret }, body: '{}' });
+  assert.equal(heartbeat.status, 200);
+  const reconnected = await request('/api/logs/screenshots', { headers });
+  assert.equal(reconnected.body.devices.find(row => row.device_id === deviceOne).online, true);
+});
+
+test('screenshot metadata and deletion isolate parents, erase bytes and cannot resurrect deleted captures', async () => {
+  const fs = require('node:fs');
+  const image = fs.readFileSync(path.join(__dirname, 'fixtures/screenshot.jpg'));
+  const thumb = fs.readFileSync(path.join(__dirname, 'fixtures/screenshot-thumb.jpg'));
+  const logins = await Promise.all(emails.map(email => request('/api/auth/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email, password: 'Integration1!' }),
+  })));
+  const headers = index => ({ authorization: 'Bearer ' + logins[index].body.accessToken, 'content-type': 'application/json' });
+  const owner = headers(0), other = headers(1);
+  const agent = { 'x-device-secret': plaintextDeviceSecret, 'content-type': 'application/json' };
+  const extraDevices = await adminPool.query(
+    'INSERT INTO devices(child_id, device_name, device_uid, device_secret) VALUES ($1,$2,$3,$4),($5,$6,$7,$8) RETURNING device_id',
+    [childOne, runId + '_extra', crypto.randomUUID(), crypto.randomBytes(32).toString('hex'),
+      childTwo, runId + '_foreign', crypto.randomUUID(), crypto.randomBytes(32).toString('hex')]);
+  const [extra, foreign] = extraDevices.rows.map(row => row.device_id);
+  const insert = async (device, recordId = crypto.randomUUID()) => (await adminPool.query(
+    `INSERT INTO screenshots(device_id, client_record_id, captured_at, width, height, image_data, thumbnail_data)
+     VALUES ($1,$2,NOW(),960,540,$3,$4) RETURNING screenshot_id`, [device, recordId, image, thumb])).rows[0].screenshot_id;
+  const capture = await request('/api/logs/screenshots/request', { method: 'POST', headers: owner,
+    body: JSON.stringify({ device_id: deviceOne }) });
+  assert.equal(capture.status, 202);
+  const capturedId = capture.body.request_id;
+  const first = await insert(deviceOne, capturedId);
+  const second = await insert(deviceOne);
+  const extraId = await insert(extra);
+  const foreignId = await insert(foreign);
+  const metadata = await request('/api/logs/screenshots?metadata=1&device_id=' + deviceOne, { headers: owner });
+  assert.equal(metadata.status, 200);
+  assert.deepEqual(metadata.body.data, []);
+  assert.equal(metadata.body.total, 2);
+  assert.equal(metadata.body.latest_id, second);
+  assert.equal(metadata.body.scope_total, 2);
+  const filtered = await request('/api/logs/screenshots?metadata=1&device_id=' + deviceOne + '&end=2000-01-01', { headers: owner });
+  assert.equal(filtered.body.total, 0);
+  assert.equal(filtered.body.scope_total, 2);
+  assert.equal((await request('/api/logs/screenshots/' + first, { method: 'DELETE', headers: other })).status, 404);
+  assert.equal((await request('/api/logs/screenshots/' + first, { method: 'DELETE', headers: agent })).status, 401);
+  assert.equal((await request('/api/logs/screenshots/' + first, { method: 'DELETE', headers: owner })).body.deleted, 1);
+  assert.equal((await request('/api/logs/screenshots/' + first, { headers: owner })).status, 404);
+  assert.equal((await request('/api/logs/screenshots/' + first, { method: 'DELETE', headers: owner })).status, 404);
+  const erased = (await adminPool.query('SELECT image_data, thumbnail_data, deleted_at FROM screenshots WHERE screenshot_id=$1', [first])).rows[0];
+  assert.equal(erased.image_data, null);
+  assert.equal(erased.thumbnail_data, null);
+  assert.ok(erased.deleted_at);
+  const config = await request('/api/agent/config', { headers: agent });
+  assert.equal(config.body.config.screenshot_request, null, 'deletion must not reissue a completed command');
+  const retry = await request('/api/logs/screenshots', { method: 'POST', headers: agent,
+    body: JSON.stringify({ client_record_id: capturedId, captured_at: new Date().toISOString(),
+      policy_revision: config.body.config.updated_at, image_base64: image.toString('base64'), thumbnail_base64: thumb.toString('base64') }) });
+  assert.equal(retry.status, 410, 'late upload retries cannot restore deleted photos');
+  const arrivedLater = await insert(deviceOne);
+  const clear = (query, body, auth = owner) => request('/api/logs/screenshots' + query,
+    { method: 'DELETE', headers: auth, body: JSON.stringify(body) });
+  assert.equal((await clear('', {})).status, 400);
+  assert.equal((await clear('?device_id=bad', { confirm_all: true, through_id: second })).status, 400);
+  assert.equal((await clear('?device_id=' + foreign, { confirm_all: true, through_id: foreignId })).status, 404);
+  const cleared = await clear('?device_id=' + deviceOne, { confirm_all: true, through_id: metadata.body.scope_latest_id });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.body.deleted, 1);
+  const left = await request('/api/logs/screenshots', { headers: owner });
+  assert.deepEqual(left.body.data.map(row => row.screenshot_id).sort(), [extraId, arrivedLater].sort());
+  assert.equal((await clear('', { confirm_all: true, through_id: left.body.scope_latest_id })).body.deleted, 2);
+  assert.equal((await request('/api/logs/screenshots', { headers: owner })).body.total, 0);
+  assert.equal((await request('/api/logs/screenshots/' + foreignId, { headers: other })).status, 200);
+  assert.equal((await clear('', { confirm_all: true, through_id: left.body.scope_latest_id })).body.deleted, 0);
 });

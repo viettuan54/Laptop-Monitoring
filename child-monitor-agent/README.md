@@ -4,6 +4,17 @@ Windows Agent gồm một Service chạy dưới `LocalSystem` và Companion ch�
 phiên đăng nhập của trẻ. Bản phát hành được đóng thành một bộ cài `.exe`; máy
 được giám sát không cần cài Python hay tải package từ Internet.
 
+**Bản 1.0.19:** nhận yêu cầu chụp qua heartbeat mỗi 5 giây, Companion kiểm tra
+mỗi giây và gửi lại cùng ảnh khi pipe tạm bận. Dashboard kiểm tra metadata mỗi
+2 giây trong lúc chờ, chỉ tải lại ảnh khi có thay đổi; thêm xóa từng ảnh hoặc
+xóa tất cả ảnh theo thiết bị/tài khoản. Xem [hướng dẫn cập nhật](docs/screenshot_monitoring.md).
+
+**Bản 1.0.18:** sửa phụ thuộc `win32ui`/MFC bị thiếu trong bộ cài, có thể khiến
+Agent hiện thông báo nhưng không chụp được ảnh trên máy Windows/VMware mới.
+Chụp ảnh dùng GDI trực tiếp, không cần MFC. Mã chụp ảnh được kiểm tra bằng bitmap
+màu giả lập qua GDI và JPEG; log ghi rõ lỗi chụp hoặc mã HTTP khi gửi ảnh thất bại.
+Xem [hướng dẫn nâng cấp](docs/screenshot_monitoring.md).
+
 **Bản 1.0.17:** bổ sung nút **Bắt đầu chụp ảnh** trong phần giám sát để gửi
 yêu cầu chụp một ảnh mới đến Agent; trạng thái chờ và ngoại tuyến hiển thị ngay
 trên trang. Giữ chức năng chụp màn hình mỗi 5 phút khi phụ huynh bật giám sát,
@@ -59,7 +70,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.17"
+  -Version "1.0.19"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -67,14 +78,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.17.exe
+build\output\ChildMonitorSetup-1.0.19.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.17" `
+  -Version "1.0.19" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"

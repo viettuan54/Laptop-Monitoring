@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / 'service'))
 sys.path.insert(0, str(ROOT / 'companion'))
-from screen_monitor import ScreenMonitor, capture_desktop
+from screen_monitor import ScreenMonitor, capture_desktop, check_capture_support
 from screenshot_upload import ScreenshotUploader
 from enforcement_core import EnforcementCore
 from pipe_client import PipeClient
@@ -68,12 +68,12 @@ class ScreenMonitorTest(unittest.TestCase):
         self.assertIsNotNone(datetime.fromisoformat(uploaded['captured_at']).tzinfo)
 
     def test_revoked_during_notice_or_capture_discards_image(self):
-        self.notice.side_effect = lambda: self.monitor.update_config(None)
+        self.notice.side_effect = lambda: self.monitor.update_config({'screenshot_config': {'enabled': False}})
         self.assertFalse(self.monitor.step())
         self.capture.assert_not_called()
         self.notice.side_effect = None
         self.monitor.last_capture = None
-        self.capture.side_effect = lambda: self.monitor.update_config(None) or {'image_base64': 'x'}
+        self.capture.side_effect = lambda: self.monitor.update_config({'screenshot_config': {'enabled': False}}) or {'image_base64': 'x'}
         self.assertFalse(self.monitor.step())
         self.pipe.send_screenshot.assert_not_called()
 
@@ -99,32 +99,96 @@ class ScreenMonitorTest(unittest.TestCase):
         self.pipe.send_ping.return_value = {'screenshot_config': {**policy(), 'request': request}}
         self.assertFalse(self.monitor.step())
 
+    def test_transient_pipe_failure_keeps_only_the_existing_unexpired_lease(self):
+        with patch('screen_monitor.time.monotonic', return_value=1000):
+            self.monitor.update_config({'screenshot_config': policy()})
+        with patch('screen_monitor.time.monotonic', return_value=1100):
+            self.monitor.update_config(None)
+            self.assertTrue(self.monitor._allowed())
+        with patch('screen_monitor.time.monotonic', return_value=1181):
+            self.assertFalse(self.monitor._allowed())
+        self.monitor.update_config({'screenshot_config': {'enabled': False}})
+        self.assertFalse(self.monitor._allowed())
+
+    def test_busy_pipe_retries_same_image_without_recapturing_and_drops_revoked_bytes(self):
+        self.pipe.send_screenshot.side_effect = [None, {'screenshot_queued': True, 'screenshot_config': policy()}]
+        with patch('screen_monitor.time.monotonic', return_value=1000):
+            self.assertFalse(self.monitor.step())
+        first = self.pipe.send_screenshot.call_args.args[0]
+        with patch('screen_monitor.time.monotonic', return_value=1001):
+            self.assertFalse(self.monitor.step())
+        self.assertEqual(self.pipe.send_screenshot.call_count, 1)
+        with patch('screen_monitor.time.monotonic', return_value=1005):
+            self.assertTrue(self.monitor.step())
+        self.assertEqual(self.pipe.send_screenshot.call_args.args[0], first)
+        self.capture.assert_called_once()
+        self.notice.assert_called_once()
+        self.assertIsNone(self.monitor.pending_record)
+        self.pipe.send_screenshot.side_effect = None
+        self.pipe.send_screenshot.return_value = None
+        self.monitor.last_capture = None
+        self.assertFalse(self.monitor.step())
+        self.assertIsNotNone(self.monitor.pending_record)
+        self.pipe.send_ping.return_value = {'screenshot_config': {'enabled': False}}
+        self.assertFalse(self.monitor.step())
+        self.assertIsNone(self.monitor.pending_record)
+
     def test_gdi_capture_encodes_valid_jpegs_and_releases_owned_resources(self):
         import cv2
         import numpy as np
         import screen_monitor
         import win32gui
-        import win32ui
-        # Synthetic pixels; this test never captures the developer's desktop.
-        pixels = np.full((600, 800, 4), 120, dtype=np.uint8)
-        bitmap = Mock()
-        bitmap.GetBitmapBits.return_value = pixels.tobytes()
-        source, memory = Mock(), Mock()
-        source.CreateCompatibleDC.return_value = memory
-        user32 = Mock()
-        user32.GetSystemMetrics.side_effect = [800, 600]
+        # Exercise real native handles/JPEGs without MFC or any desktop pixels.
+        def paint(memory, x, y, width, height, source, sx, sy, flags):
+            brush = win32gui.CreateSolidBrush(0x787878)
+            try:
+                win32gui.FillRect(memory, (0, 0, width, height), brush)
+            finally:
+                win32gui.DeleteObject(brush)
+
         with patch.object(screen_monitor, 'desktop_available', return_value=True), \
-             patch.object(screen_monitor.ctypes, 'windll', Mock(user32=user32)), \
-             patch.object(win32gui, 'CreateDC', return_value=123), \
-             patch.object(win32gui, 'DeleteObject') as delete_bitmap, \
-             patch.object(win32ui, 'CreateDCFromHandle', return_value=source), \
-             patch.object(win32ui, 'CreateBitmap', return_value=bitmap):
+             patch.object(screen_monitor.ctypes.windll.user32, 'GetSystemMetrics', side_effect=[800, 600]), \
+             patch.dict(sys.modules, {'win32ui': None}), \
+             patch.object(win32gui, 'BitBlt', side_effect=paint), \
+             patch.object(win32gui, 'CreateCompatibleBitmap', wraps=win32gui.CreateCompatibleBitmap) as create_bitmap, \
+             patch.object(win32gui, 'DeleteDC', wraps=win32gui.DeleteDC) as delete_dc, \
+             patch.object(win32gui, 'DeleteObject', wraps=win32gui.DeleteObject) as delete_object:
             result = capture_desktop()
         decoded = cv2.imdecode(np.frombuffer(base64.b64decode(result['image_base64']), np.uint8), cv2.IMREAD_COLOR)
         self.assertEqual(decoded.shape, (600, 800, 3))
-        source.DeleteDC.assert_called_once()
-        memory.DeleteDC.assert_called_once()
-        delete_bitmap.assert_called_once_with(bitmap.GetHandle())
+        self.assertTrue(np.all(np.abs(decoded.astype(int) - 120) <= 2))
+        self.assertEqual(delete_dc.call_count, 2)
+        self.assertEqual(create_bitmap.call_count, 1)
+        self.assertEqual(delete_object.call_count, 2)  # paint brush and bitmap
+        self.assertLessEqual(len(base64.b64decode(result['thumbnail_base64'])), 40 * 1024)
+
+    def test_frozen_capture_self_test_uses_offscreen_colors_without_mfc(self):
+        import cv2  # Load native extensions before patch.dict restores sys.modules.
+        import win32gui
+        with patch.dict(sys.modules, {'win32ui': None}), \
+             patch.object(win32gui, 'BitBlt') as read_desktop:
+            result = check_capture_support()
+        read_desktop.assert_not_called()
+        self.assertTrue(base64.b64decode(result['image_base64']).startswith(b'\xff\xd8'))
+
+    def test_gdi_failure_releases_handles_and_restores_dpi(self):
+        import screen_monitor
+        import win32gui
+        user32 = screen_monitor.ctypes.windll.user32
+        for failure in ('blit', 'read'):
+            with self.subTest(failure=failure), \
+                 patch.object(screen_monitor, 'desktop_available', return_value=True), \
+                 patch.object(user32, 'GetSystemMetrics', side_effect=[64, 48]), \
+                 patch.object(user32, 'SetThreadDpiAwarenessContext', return_value=123) as dpi, \
+                 patch.object(win32gui, 'BitBlt', side_effect=OSError('blit failed') if failure == 'blit' else None), \
+                 patch.object(screen_monitor.ctypes.windll.gdi32, 'GetDIBits', return_value=0), \
+                 patch.object(win32gui, 'DeleteDC', wraps=win32gui.DeleteDC) as delete_dc, \
+                 patch.object(win32gui, 'DeleteObject', wraps=win32gui.DeleteObject) as delete_object:
+                with self.assertRaises(OSError):
+                    capture_desktop()
+                self.assertEqual(delete_dc.call_count, 2)
+                delete_object.assert_called_once()
+                self.assertEqual(dpi.call_args.args, (123,))
 
 
 class ScreenshotConsentTest(unittest.TestCase):
@@ -214,7 +278,8 @@ class ScreenshotPipeTest(unittest.TestCase):
              patch('pipe_client.win32file.WriteFile', side_effect=ValueError()), \
              patch('pipe_client.win32file.CloseHandle') as close:
             self.assertIsNone(PipeClient().send_screenshot(record()))
-        close.assert_called_once_with(123)
+        self.assertEqual(close.call_count, 3)
+        self.assertTrue(all(call.args == (123,) for call in close.call_args_list))
 
 
 if __name__ == '__main__':

@@ -202,7 +202,20 @@ const resetPasswordLimiter = rateLimit({
   },
 });
 
+// Frequent lightweight gallery checks must not consume the general parent budget.
+// Applied after authentication, so unrelated parents behind one NAT are isolated.
+const screenshotReadLimiter = rateLimit({
+  store: createRateLimitStore('screenshot-read'),
+  windowMs: 15 * 60 * 1000,
+  max: 1200,
+  keyGenerator: (req) => String(req.user.user_id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Đang tải ảnh quá thường xuyên. Vui lòng chờ một chút rồi thử lại.' },
+});
+
 module.exports = {
+  screenshotReadLimiter,
   loginLimiter,
   faceAuthLimiter,
   registerLimiter,

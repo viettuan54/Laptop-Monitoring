@@ -73,7 +73,7 @@ class PipeClient:
 
     def send_screenshot(self, record):
         """Use the Service's device credential; keep all image bytes in memory."""
-        return self._send_and_receive({"action": "SCREENSHOT", "record": record}, max_retries=1)
+        return self._send_and_receive({"action": "SCREENSHOT", "record": record}, max_retries=3)
 
     def send_vision_alert(self, alert_type, message, metrics=None):
         """Gửi metadata Edge AI tới Service; tuyệt đối không nhận dữ liệu ảnh."""

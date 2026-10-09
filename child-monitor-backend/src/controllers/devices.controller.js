@@ -1,6 +1,7 @@
 const { v4: uuidv4 } = require('uuid');
 const crypto = require('crypto');
 const { recordAudit } = require('../services/audit.service');
+const { deviceOnlineSql } = require('../services/devicePresence.service');
 
 exports.getDevices = async (req, res) => {
   const { child_id } = req.query;
@@ -16,7 +17,8 @@ exports.getDevices = async (req, res) => {
       // Lấy danh sách thiết bị của một đứa trẻ cụ thể (được bảo vệ bởi RLS)
       // Không SELECT device_secret – chỉ trả về khi đăng ký lần đầu
       result = await req.db.query(
-        `SELECT device_id, child_id, device_name, device_uid, last_seen_at, created_at
+        `SELECT device_id, child_id, device_name, device_uid, last_seen_at, created_at,
+                ${deviceOnlineSql()} AS online
          FROM devices
          WHERE child_id = $1
          ORDER BY created_at DESC LIMIT $2 OFFSET $3`,
@@ -25,7 +27,8 @@ exports.getDevices = async (req, res) => {
     } else {
       // Lấy toàn bộ thiết bị thuộc quyền sở hữu của phụ huynh hiện tại
       result = await req.db.query(
-        `SELECT device_id, child_id, device_name, device_uid, last_seen_at, created_at
+        `SELECT device_id, child_id, device_name, device_uid, last_seen_at, created_at,
+                ${deviceOnlineSql()} AS online
          FROM devices
          ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
         [limit, offset]

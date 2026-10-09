@@ -167,10 +167,13 @@ def main():
 
 
 def run_self_test():
-    """Verify native Edge AI imports and external model deployment."""
+    """Verify native capture, Edge AI imports and external model deployment."""
     import cv2
 
     from mediapipe_runtime import load_mediapipe
+    from screen_monitor import check_capture_support
+
+    check_capture_support()
 
     mediapipe = load_mediapipe()
     models_dir = os.path.join(agent_root(), "models")
@@ -200,7 +203,7 @@ def run_self_test():
     pose_landmarker.close()
     print(
         "ChildMonitorCompanion self-test passed. "
-        f"MediaPipe={mediapipe.__version__}, OpenCV={cv2.__version__}"
+        f"MediaPipe={mediapipe.__version__}, OpenCV={cv2.__version__}, Screenshot=OK"
     )
     return 0
 

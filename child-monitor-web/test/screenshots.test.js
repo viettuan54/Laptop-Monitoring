@@ -9,21 +9,26 @@ const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 function dashboard(api) {
   const calls = [];
   const timers = [];
+  const timerDelays = [];
   const state = { page: 'activity', activityTab: 'screenshots', activityFilter: {}, activityOffset: 0,
     accessToken: 'test-token', activityViewRows: [], devices: [{ device_id: 7, device_name: 'Máy <test>' }] };
   const content = { innerHTML: '', isConnected: true, contains: () => true };
   const context = vm.createContext({ state, URLSearchParams, activityRenderVersion: 1,
     screenshotRefreshTimer: null, modalRoot: {}, icons: { refresh: '', device: '' },
-    document: { hidden: false, activeElement: { matches: () => false } },
-    setTimeout: callback => { timers.push(callback); return timers.length; }, clearTimeout: () => {},
+    document: { hidden: false, activeElement: { matches: () => false }, querySelector: () => null },
+    setTimeout: (callback, delay) => { timers.push(callback); timerDelays.push(delay); return timers.length; }, clearTimeout: () => {},
     pageHead: (_page, actions) => actions,
     emptyState: (_icon, title, text, action = '') => `<div>${title}${text}${action}</div>`,
     api: async (...args) => { calls.push(args); return api(...args); }, toast: (...args) => calls.push(['toast', ...args]),
   });
-  vm.runInContext(['escapeHtml', 'formatDate', 'deviceName', 'queryString', 'activityTabs',
-    'screenshotDataUrl', 'stopScreenshotPolling', 'scheduleScreenshotRefresh', 'renderScreenshotActivity', 'startScreenshotCapture']
+  vm.runInContext(['escapeHtml', 'formatDate', 'deviceName', 'queryString', 'activityTabs', 'isDeviceOnline',
+    'screenshotDataUrl', 'screenshotQuery', 'screenshotSignature', 'screenshotInteractionActive',
+    'stopScreenshotPolling', 'scheduleScreenshotRefresh', 'renderScreenshotActivity', 'startScreenshotCapture',
+    'confirmScreenshotDelete', 'confirmClearScreenshots', 'deleteScreenshots']
     .map(name => functionSource(source, name)).join('\n'), context);
-  return { context, state, content, calls, timers };
+  context.showModal = (...args) => { calls.push(['modal', ...args]); context.modalRoot.firstElementChild = {}; };
+  context.closeModal = () => { context.modalRoot.firstElementChild = null; };
+  return { context, state, content, calls, timers, timerDelays };
 }
 
 test('screenshot history renders beside app/web tabs with protected thumbnails and pagination', async () => {
@@ -39,11 +44,24 @@ test('screenshot history renders beside app/web tabs with protected thumbnails a
   assert.match(page.content.innerHTML, /Máy &lt;test&gt;/);
   assert.match(page.content.innerHTML, /data:image\/jpeg;base64,/);
   assert.match(page.content.innerHTML, /data-action="view-screenshot" data-id="9"/);
+  assert.match(page.content.innerHTML, /data-action="delete-screenshot" data-id="9"/);
+  assert.match(page.content.innerHTML, /data-action="clear-screenshots"/);
   assert.match(page.content.innerHTML, /data-offset="12"/);
   assert.equal(page.calls[0][1].cache, 'no-store');
   const params = new URL(page.calls[0][0], 'http://test').searchParams;
   assert.equal(params.get('device_id'), '7');
   assert.match(params.get('start'), /Z$/);
+});
+
+test('device badges trust the same backend presence as screenshots despite browser clock skew', async () => {
+  const page = dashboard(async () => ({ data: [], total: 0,
+    devices: [{ device_id: 7, enabled: true, online: true, pending_request_id: 'request' }] }));
+  assert.equal(page.context.isDeviceOnline({ online: true, last_seen_at: '2000-01-01T00:00:00Z' }), true);
+  assert.equal(page.context.isDeviceOnline({ online: false, last_seen_at: new Date().toISOString() }), false);
+  assert.equal(page.context.isDeviceOnline({ last_seen_at: null }), false);
+  await page.context.renderScreenshotActivity(page.content, 1);
+  assert.match(page.content.innerHTML, /Đang chờ Agent chụp và gửi ảnh/);
+  assert.doesNotMatch(page.content.innerHTML, /Thiết bị đang ngoại tuyến/);
 });
 
 test('enabled empty history starts capture instead of linking back to controls', async () => {
@@ -124,4 +142,111 @@ test('automatic refresh allows main focus and pauses for hidden tabs or form int
   await page.timers.pop()();
   assert.equal(page.calls.length, 2);
   assert.equal(page.context.screenshotDataUrl('javascript:alert(1)'), '');
+});
+
+test('pending capture checks metadata every two seconds without repeatedly fetching thumbnails', async () => {
+  const result = { data: [], total: 0, latest_id: null, devices: [{ device_id: 7, enabled: true, pending_request_id: 'r' }] };
+  const page = dashboard(async () => result);
+  await page.context.renderScreenshotActivity(page.content, 1);
+  assert.equal(page.timerDelays.at(-1), 2000);
+  const html = page.content.innerHTML;
+  // A previously clicked button must not pause updates indefinitely.
+  page.context.document.activeElement.matches = selector => selector.split(',').some(item => item.trim() === 'button');
+  await page.timers.pop()();
+  assert.equal(page.calls.length, 2);
+  assert.match(page.calls[1][0], /metadata=1/);
+  assert.equal(page.content.innerHTML, html);
+  result.total = 1;
+  result.latest_id = '12';
+  result.data = [{ screenshot_id: '12', device_id: 7, captured_at: new Date().toISOString(), thumbnail_base64: '/9j/AA==' }];
+  result.devices[0].pending_request_id = null;
+  await page.timers.pop()();
+  assert.equal(page.calls.length, 4);
+  assert.doesNotMatch(page.calls[3][0], /metadata=1/);
+  assert.match(page.content.innerHTML, /data-id="12"/);
+  assert.equal(page.timerDelays.at(-1), 15000);
+});
+
+test('poll failure keeps photos, backs off, and recovers without changing the filter', async () => {
+  let fail = false;
+  const page = dashboard(async () => { if (fail) throw new Error('offline'); return { data: [], total: 0 }; });
+  await page.context.renderScreenshotActivity(page.content, 1);
+  const html = page.content.innerHTML;
+  fail = true;
+  await page.timers.pop()();
+  assert.equal(page.content.innerHTML, html);
+  assert.equal(page.timerDelays.at(-1), 30000);
+  fail = false;
+  await page.timers.pop()();
+  assert.equal(page.state.screenshotPollError, false);
+  assert.equal(page.timerDelays.at(-1), 15000);
+});
+
+test('polling preserves dirty filters after blur and keyboard-focused controls', async () => {
+  const page = dashboard(async () => ({ data: [], total: 0 }));
+  await page.context.renderScreenshotActivity(page.content, 1);
+  const values = { device_id: '7', start: '2026-10-09T10:00', end: '' };
+  page.content.querySelector = () => ({ elements: { namedItem: name => ({ value: values[name] }) } });
+  await page.timers.pop()();
+  assert.equal(page.calls.length, 1, 'unapplied values survive even without input focus');
+  page.state.activityFilter = { ...values };
+  page.context.document.activeElement.matches = selector => selector.includes('button:focus-visible');
+  await page.timers.pop()();
+  assert.equal(page.calls.length, 1, 'keyboard-focused buttons must not be replaced');
+  page.context.document.activeElement.matches = () => false;
+  await page.timers.pop()();
+  assert.equal(page.calls.length, 2);
+});
+
+test('deletion requires confirmation and uses the chosen image only', async () => {
+  const page = dashboard(async () => ({ deleted: 1 }));
+  page.state.screenshotRows = [{ screenshot_id: '9', device_id: 7, captured_at: '2026-10-09T02:00:00Z' }];
+  page.context.confirmScreenshotDelete('9');
+  assert.equal(page.calls[0][0], 'modal');
+  assert.match(page.calls[0][3], /data-action="confirm-delete-screenshot" data-id="9"/);
+  assert.equal(page.calls.some(call => call[0].startsWith('/logs/')), false);
+  let rendered = false;
+  page.context.renderActivity = async () => { rendered = true; };
+  await page.context.deleteScreenshots({ dataset: { id: '9' } });
+  assert.equal(page.calls[1][0], '/logs/screenshots/9');
+  assert.equal(page.calls[1][1].method, 'DELETE');
+  assert.equal(page.state.activityOffset, 0);
+  assert.equal(rendered, true);
+});
+
+test('clear confirmation names the visible device and freezes its snapshot independent of date filters', async () => {
+  const page = dashboard(async () => ({ scope_total: 5, scope_latest_id: '42' }));
+  page.context.document.querySelector = () => ({ value: '7' });
+  page.state.activityFilter = { device_id: '8', start: '2026-01-01' };
+  await page.context.confirmClearScreenshots();
+  const request = page.calls.find(call => call[0].startsWith('/logs/'));
+  assert.match(request[0], /device_id=7/);
+  assert.doesNotMatch(request[0], /start=/);
+  const modal = page.calls.at(-1);
+  assert.match(modal[2], /Máy <test>/);
+  assert.match(modal[2], /ngoài bộ lọc thời gian/);
+  assert.match(modal[3], /data-device-id="7" data-through-id="42"/);
+  page.context.renderActivity = async () => {};
+  await page.context.deleteScreenshots({ dataset: { deviceId: '7', throughId: '42' } }, true);
+  const deletion = page.calls.find(call => call[1]?.method === 'DELETE');
+  assert.equal(deletion[0], '/logs/screenshots?device_id=7');
+  assert.equal(deletion[1].body.through_id, '42');
+  assert.equal(deletion[1].body.confirm_all, true);
+});
+
+test('failed deletion preserves confirmation and stale deletion completion cannot replace another page', async () => {
+  const page = dashboard(async () => { throw new Error('offline'); });
+  const modal = {};
+  page.context.modalRoot.firstElementChild = modal;
+  await assert.rejects(page.context.deleteScreenshots({ dataset: { id: '9' } }), /offline/);
+  assert.equal(page.context.modalRoot.firstElementChild, modal);
+  let resolve;
+  const late = dashboard(() => new Promise(done => { resolve = done; }));
+  late.context.modalRoot.firstElementChild = modal;
+  const deletion = late.context.deleteScreenshots({ dataset: { id: '9' } });
+  late.context.activityRenderVersion = 2;
+  resolve({ deleted: 1 });
+  await deletion;
+  assert.equal(late.context.modalRoot.firstElementChild, modal);
+  assert.equal(late.calls.length, 1);
 });

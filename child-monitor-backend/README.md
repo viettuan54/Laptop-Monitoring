@@ -44,7 +44,7 @@ node scripts/migrate-screenshots.js
 `migration_v24.sql` bổ sung metadata cho chế độ shadow của phân loại văn bản.
 `migration_v25.sql` tạo bảng ảnh màn hình với RLS và quyền cho các role backend.
 `migration_v26.sql` thêm yêu cầu chụp ảnh có thời hạn theo thiết bị để Agent nhận
-qua heartbeat/config. Script `scripts/migrate-screenshots.js` áp dụng v25–v26 bằng cấu hình DB trong `.env`;
+qua heartbeat/config. Script `scripts/migrate-screenshots.js` áp dụng v25–v27 bằng cấu hình DB trong `.env`;
 chạy trước khi khởi động backend mới. Ảnh chỉ nhận khi phụ huynh bật giám sát,
 chu kỳ mặc định 300 giây và giữ 7 ngày. Xem
 [hướng dẫn giám sát màn hình](../child-monitor-agent/docs/screenshot_monitoring.md).

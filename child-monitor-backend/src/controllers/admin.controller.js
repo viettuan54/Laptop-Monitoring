@@ -1,6 +1,7 @@
 const { adminPool } = require('../config/db');
 const { normalizeDomain } = require('../utils/domain');
 const { recordAudit } = require('../services/audit.service');
+const { deviceOnlineSql } = require('../services/devicePresence.service');
 
 /**
  * GET /api/admin/users
@@ -84,7 +85,7 @@ exports.getStats = async (req, res) => {
         (SELECT COUNT(*) FROM children) AS total_children,
         (SELECT COUNT(*) FROM devices)  AS total_devices,
         (SELECT COUNT(*) FROM alerts  WHERE created_at >= CURRENT_DATE) AS alerts_today,
-        (SELECT COUNT(*) FROM devices WHERE last_seen_at > NOW() - INTERVAL '5 minutes') AS devices_online,
+        (SELECT COUNT(*) FROM devices WHERE ${deviceOnlineSql()}) AS devices_online,
         (SELECT COUNT(*) FROM website_blacklist) AS blacklist_count
     `);
 

@@ -64,7 +64,7 @@ class ScreenshotUploader:
         if not self.allowed(record) or self.stop_event.is_set():
             return False
         response = self.api_client.request(
-            "POST", "/api/logs/screenshots", payload=record, timeout=15, max_retries=2,
+            "POST", "/api/logs/screenshots", payload=record, timeout=15, max_retries=3,
             before_send=lambda: not self.stop_event.is_set() and self.allowed(record),
         )
         if response is not None and response.status_code in (200, 201):
@@ -72,6 +72,8 @@ class ScreenshotUploader:
                 return response.json().get("accepted_client_record_id") == record["client_record_id"]
             except (ValueError, AttributeError):
                 pass
+        if response is not None:
+            logging.warning("Screenshot upload was not acknowledged by backend (HTTP %s).", response.status_code)
         return False
 
     def start(self):
