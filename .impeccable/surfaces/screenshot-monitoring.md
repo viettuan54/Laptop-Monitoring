@@ -36,9 +36,9 @@ Pre-existing naming drift remains: committed frontend titles/auth copy still use
 
 **Finish review disposition: `recapture`. Visual review remains unresolved.** The finish reviewer verified that the two source findings were resolved: keyboard-focused buttons/links remain protected, and unapplied filter drafts survive blur. That source review does not constitute visual approval. The current browser runtime could not be selected and browser discovery returned `browsers.list() = []`; no current captures were available. An earlier user screenshot does not verify the current capture/deletion controls. Required remaining evidence is a full-page desktop capture at 1440px and mobile capture at 390px, plus the user's viewport if available, checked for content/loading, overflow, caption actions, confirmation dialogs, and keyboard interaction. Submit those captures for a full review. No visual pass is claimed.
 
-The implementation handoff reports 41 frontend tests and `npm run check`, 75 backend unit/middleware tests, 15 backend integration tests, and 148 Agent tests passing. These checks were not rerun by the documenter. Agent 1.0.19 is being packaged; the native executable self-test is blocked by Windows Application Control. The user's report establishes that images arrived with 1.0.18. It does not verify installation or capture with 1.0.19 in the VMware guest, and no such test is claimed here.
+The implementation handoff reports 41 frontend tests and `npm run check`, 75 backend unit/middleware tests, 15 backend integration tests, and 148 Agent tests passing. These checks were not rerun by the documenter. Agent 1.0.19 has been packaged; the native executable self-test is blocked by Windows Application Control. The user's report establishes that images arrived with 1.0.18. It does not verify installation or capture with 1.0.19 in the VMware guest, and no such test is claimed here. Logout also clears screenshot rows, device state and polling metadata from the session.
 
 Source snapshot SHA-256 (recheck after later source edits):
 
-- `app.js`: `34E80257B0AC280F4E7BC0B5B29C15DB7B32487EE0AE4869157285A05325EE62`
+- `app.js`: `A3C90A458CC45F93D4A05F8700DA97757DF4E5D976B9A49B4515C42CD2059FF0`
 - `styles.css`: `FDAC42AAF1463A1D416EC370262CFBB00282315AEBE5DEBDF84D50346747384F`
