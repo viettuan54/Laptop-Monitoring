@@ -27,6 +27,8 @@ from enforcement_core import EnforcementCore
 from pipe_server import PipeServer
 from blocked_web_monitor import BlockedWebAttemptMonitor
 from content_classifier import ContentClassifier, verify_packaged_content_assets
+from app_enforcement import AppEnforcer
+from windows_app_process import WindowsAppProcesses
 from watchdog import Watchdog
 from runtime_paths import agent_root
 
@@ -169,6 +171,17 @@ class ChildMonitorService(ServiceBaseClass):
         
         # Truyền reference của pipe_server vào Watchdog để tái tạo DACL khi đổi session
         self.watchdog = Watchdog(pipe_server=self.pipe_server)
+        self.pipe_server.app_processes = WindowsAppProcesses(
+            lambda: self.pipe_server.current_user_sid
+            if self.watchdog.session_available.is_set() else None
+        )
+        self.pipe_server.app_enforcer = AppEnforcer(
+            self.pipe_server.app_processes,
+            self.enforcement_core.load_cached_settings,
+            self.pipe_server.classify_app,
+            self.pipe_server._schedule_app_classification,
+            self.offline_queue.enqueue_app_enforcement,
+        )
 
         # Resolve the interactive user's SID before the blocking Pipe listener
         # exists. This avoids closing a synchronous ConnectNamedPipe operation

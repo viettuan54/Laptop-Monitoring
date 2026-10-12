@@ -30,6 +30,11 @@ Suite kiểm tra:
 - khởi tạo 9 chính sách phân loại mặc định cho mỗi trẻ và cô lập chúng bằng RLS;
 - retry batch idempotent và acknowledgement theo `client_record_id`;
 - kết nối Redis thật cho distributed rate limit.
+- kết quả chặn ứng dụng: xác thực thiết bị, retry không trùng và RLS giữa hai phụ huynh
+  (cần chạy migration v28 bằng `node scripts/migrate-app-enforcement.js --test`).
+- hạn mức 0: API phụ huynh giữ nguyên 0, config/heartbeat gửi 1440 kèm
+  `daily_limit_unlimited: true` để tương thích Agent cũ; hạn mức dương và các
+  điều khiển khóa thủ công/khung giờ được giữ nguyên.
 
 Mỗi lần chạy tạo dữ liệu có prefix ngẫu nhiên và xóa bằng cascade sau khi hoàn tất.
 
@@ -44,3 +49,8 @@ cd child-monitor-agent
 
 Suite xác nhận queue chỉ đánh dấu `synced` cho ID được backend xác nhận và giữ nguyên
 dữ liệu khi acknowledgement bị thiếu.
+
+Kiểm thử chính sách thời gian còn xác nhận 0 nghĩa là không giới hạn hạn mức
+ngày, không hiển thị đếm ngược hạn mức khi không giới hạn, vẫn khóa ngoài giờ
+hoặc theo lệnh phụ huynh, giữ chính sách khi chạy offline và xóa cờ không giới
+hạn cũ khi nhận một hạn mức hữu hạn từ backend phiên bản trước.

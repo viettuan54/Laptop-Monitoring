@@ -238,8 +238,36 @@ class ContentClassifierTest(unittest.TestCase):
             file_description="Learning application",
         )
         classifier.remember_app_label.assert_called_once_with(
-            "study.exe", "learning", source="gemini"
+            "study.exe", "learning", source="gemini",
+            product_name="Study Tool", file_description="Learning application",
         )
+
+    def test_cached_app_label_does_not_cross_executable_metadata(self):
+        with tempfile.TemporaryDirectory() as models_dir:
+            write_test_model(models_dir)
+            classifier = ContentClassifier(models_dir)
+            classifier.remember_app_label("custom.exe", "entertainment", product_name="A Game")
+            self.assertEqual(classifier.classify_app("custom.exe", product_name="A Game")["label"], "entertainment")
+            self.assertIsNone(classifier.classify_app("custom.exe")["label"])
+
+    def test_application_checks_require_the_monitored_pipe_client(self):
+        enforcement = Mock()
+        enforcement.load_cached_settings.return_value = {}
+        enforcement.get_screenshot_policy.return_value = {"enabled": False}
+        enforcement.check_policy_status.return_value = (False, "OK", 3600)
+        server = PipeServer(Mock(), enforcement)
+        server.app_processes = Mock()
+        server.app_enforcer = Mock()
+        server.app_enforcer.check.return_value = [{"request_id": "test"}]
+        message = json.dumps({"action": "CHECK_APPS", "processes": [{"pid": 200, "created_at": 1}]})
+        with patch("pipe_server.win32file.WriteFile") as write:
+            server.app_processes.client_allowed.return_value = False
+            with self.assertRaises(ValueError):
+                server._process_client_message(message, 123)
+            server.app_enforcer.check.assert_not_called()
+            server.app_processes.client_allowed.return_value = True
+            server._process_client_message(message, 123)
+            self.assertEqual(json.loads(write.call_args.args[1])["app_close_requests"], [{"request_id": "test"}])
 
     def test_low_confidence_uses_domain_only_gemini_fallback(self):
         enforcement = Mock()

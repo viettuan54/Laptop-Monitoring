@@ -51,6 +51,7 @@ const RLS_TABLES = [
   'child_category_policies',
   'text_moderation_events',
   'screenshots',
+  'app_enforcement_events',
 ];
 
 async function validateRlsConfiguration() {

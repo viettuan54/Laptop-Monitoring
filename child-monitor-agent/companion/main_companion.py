@@ -9,6 +9,7 @@ import win32event
 from logging.handlers import RotatingFileHandler
 from pipe_client import PipeClient
 from app_tracker import AppTracker
+from app_monitor import AppMonitor
 from web_tracker import WebTracker
 from ui_alerts import UIAlerts
 from edge_vision import EdgeVisionMonitor
@@ -124,6 +125,8 @@ def main():
     logging.info("UI Companion started in User Session.")
     pipe_client = PipeClient()
     tracker = AppTracker(pipe_client)
+    app_monitor = AppMonitor(pipe_client, UIAlerts.show_app_block_notice)
+    app_monitor.start()
     web_tracker = WebTracker(pipe_client)
     vision_monitor = EdgeVisionMonitor(
         pipe_client,
@@ -158,6 +161,7 @@ def main():
 
             time.sleep(3)
     finally:
+        app_monitor.stop()
         vision_monitor.stop()
         screen_monitor.stop()
         try:

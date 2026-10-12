@@ -111,6 +111,66 @@ class EnforcementCoreTest(unittest.TestCase):
 
         self.assertTrue(should_lock)
 
+    def _policy_at(self, hour, used_seconds=0):
+        class FakeDateTime(enforcement_core.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return cls(2026, 10, 10, hour, 30, 0)
+
+        with patch.object(enforcement_core, "datetime", FakeDateTime), patch.object(
+            self.core.offline_queue, "get_daily_usage", return_value=used_seconds
+        ):
+            return self.core.check_policy_status()
+
+    def test_zero_daily_quota_allows_usage_without_countdown(self):
+        self.core.save_settings_cache({"daily_limit_minutes": 0})
+        self.assertEqual(self._policy_at(12, used_seconds=90000), (False, "OK", -1))
+
+    def test_unlimited_compatibility_policy_survives_offline_restart(self):
+        self.core.save_settings_cache({
+            "daily_limit_minutes": 1440, "daily_limit_unlimited": True,
+        })
+        self.core = EnforcementCore(FakeQueue(), config_dir=self.temp_dir.name)
+        self.assertEqual(self._policy_at(12, used_seconds=90000), (False, "OK", -1))
+
+    def test_unlimited_quota_still_respects_parent_lock_and_allowed_hours(self):
+        for config in (
+            {"daily_limit_minutes": 0},
+            {"daily_limit_minutes": 1440, "daily_limit_unlimited": True},
+        ):
+            with self.subTest(config=config):
+                self.core.save_settings_cache({**config, "is_locked": False})
+                locked, reason, remaining = self._policy_at(22)
+                self.assertTrue(locked)
+                self.assertIn("Outside allowed usage hours", reason)
+                self.assertEqual(remaining, 0)
+                self.core.save_settings_cache({**config, "is_locked": True})
+                locked, reason, remaining = self._policy_at(12)
+                self.assertTrue(locked)
+                self.assertIn("manually locked", reason)
+                self.assertEqual(remaining, 0)
+
+    def test_positive_quota_keeps_countdown_and_locks_when_exhausted(self):
+        self.core.save_settings_cache({"daily_limit_minutes": 60})
+        self.assertEqual(self._policy_at(12, used_seconds=3480), (False, "OK", 120))
+        self.assertEqual(self._policy_at(12, used_seconds=3600),
+                         (True, "Daily limit of 60 minutes has been exceeded.", 0))
+
+    def test_new_finite_quota_clears_old_unlimited_flag(self):
+        self.core.save_settings_cache({
+            "daily_limit_minutes": 1440, "daily_limit_unlimited": True,
+        })
+        self.core.save_settings_cache({"daily_limit_minutes": 1440})
+        self.assertFalse(self.core.load_cached_settings()["daily_limit_unlimited"])
+        self.assertTrue(self._policy_at(12, used_seconds=86400)[0])
+
+    def test_partial_policy_refresh_preserves_unlimited_setting(self):
+        self.core.save_settings_cache({
+            "daily_limit_minutes": 1440, "daily_limit_unlimited": True,
+        })
+        self.core.save_settings_cache({"is_locked": False})
+        self.assertEqual(self._policy_at(12, used_seconds=90000), (False, "OK", -1))
+
     def test_classified_domain_is_blocked_and_unblocked_by_dashboard_policy(self):
         self.core.update_hosts_file = Mock()
         self.core.save_settings_cache({

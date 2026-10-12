@@ -12,6 +12,20 @@ class UIAlerts:
     """
     
     @staticmethod
+    def show_app_block_notice(app_name, grace_seconds=8):
+        def show():
+            try:
+                ctypes.windll.user32.MessageBoxTimeoutW(
+                    0,
+                    f"{app_name} thuộc nhóm bị phụ huynh chặn. Ứng dụng đang được đóng; "
+                    f"nếu còn mở, Agent sẽ buộc thoát sau {grace_seconds} giây.",
+                    "LaptopChildren · Chặn ứng dụng", 0x30, 0, 4000,
+                )
+            except Exception:
+                logging.warning("Could not display application block notice")
+        threading.Thread(target=show, daemon=True, name="AppBlockNotice").start()
+
+    @staticmethod
     def _display_toast(title, message):
         """Hiển thị thông báo Toast / Message Box đơn giản của Windows."""
         try:

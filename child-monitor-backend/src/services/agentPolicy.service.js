@@ -46,9 +46,15 @@ async function getAgentPolicyConfig(db, childId) {
   ]);
 
   const blocked = groupBlockedCategories(policyResult.rows);
+  const settings = { ...DEFAULT_AGENT_CONFIG, ...(settingsResult.rows[0] || {}) };
+  const unlimited = settings.daily_limit_minutes === 0;
   return {
-    ...DEFAULT_AGENT_CONFIG,
-    ...(settingsResult.rows[0] || {}),
+    ...settings,
+    // Agents through 1.0.20 interpret 0 as an exhausted quota. Their counter
+    // resets daily, so send a full day until they understand the explicit flag.
+    // Keep the parent's stored value at 0; hours and manual lock still apply.
+    daily_limit_minutes: unlimited ? 1440 : settings.daily_limit_minutes,
+    daily_limit_unlimited: unlimited,
     screenshot_interval_seconds: captureIntervalSeconds(),
     blocked_app_categories: blocked.app,
     blocked_web_categories: blocked.web,

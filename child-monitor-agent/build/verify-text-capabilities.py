@@ -17,7 +17,9 @@ from PyInstaller.archive.readers import CArchiveReader
 REQUIRED = {
     "service/ChildMonitorService.exe": {
         "api_client": {"post_text_moderation"},
-        "offline_queue": {"enqueue_text_moderation", "_sync_text_moderation"},
+        "offline_queue": {"enqueue_text_moderation", "_sync_text_moderation", "enqueue_app_enforcement", "_sync_app_enforcement"},
+        "app_enforcement": {"AppEnforcer", "check", "tick"},
+        "windows_app_process": {"WindowsAppProcesses", "WindowsAppTarget", "client_allowed", "terminate"},
         "enforcement_core": {"get_text_moderation_policy", "get_screenshot_policy"},
         "screenshot_upload": {"ScreenshotUploader", "enqueue", "upload"},
         "pipe_server": {"validate_text_moderation_record"},
@@ -25,7 +27,8 @@ REQUIRED = {
     },
     "companion/ChildMonitorCompanion.exe": {
         "screen_monitor": {"ScreenMonitor", "capture_desktop", "desktop_available", "last_request_expires_at", "check_capture_support", "GetDIBits"},
-        "pipe_client": {"send_screenshot"},
+        "pipe_client": {"send_screenshot", "check_applications"},
+        "app_monitor": {"AppMonitor", "application_windows", "poll"},
         "web_tracker": {"extract_search_query", "update_text_config"},
         "text_privacy": {"eligible_timestamp", "search_parameter"},
     },
@@ -61,7 +64,7 @@ def verify(root, version):
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "required_modules": sorted(required_modules)})
     return {"version": version, "text_capabilities_verified": True,
-        "screenshot_capabilities_verified": True, "binaries": checked,
+        "screenshot_capabilities_verified": True, "app_enforcement_capabilities_verified": True, "binaries": checked,
         "installed_agent_tested": False}
 
 

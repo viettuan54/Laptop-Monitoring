@@ -8,6 +8,7 @@ const deviceAuth = require('../middlewares/deviceAuth.middleware');
 const { parentLimiter, agentLimiter, screenshotReadLimiter } = require('../middlewares/rateLimit.middleware');
 const logsController = require('../controllers/logs.controller');
 const screenshotsController = require('../controllers/screenshots.controller');
+const appEnforcement = require('../controllers/appEnforcement.controller');
 
 // Authenticate before accepting an image body. This router precedes the global parser.
 router.post('/screenshots', agentLimiter, deviceAuth, expressJson1mb, screenshotsController.upload);
@@ -35,6 +36,7 @@ router.post('/web', agentLimiter, deviceAuth, logsController.logWebsite);
 // ?device_id=&start=&end=&limit=&offset=
 router.get('/usage-summary', parentLimiter, auth, requireRole('parent'), withRls, logsController.getUsageSummary);
 router.get('/app', parentLimiter, auth, requireRole('parent'), withRls, logsController.getAppLogs);
+router.get('/app-enforcement', parentLimiter, auth, requireRole('parent'), withRls, appEnforcement.list);
 router.get('/web', parentLimiter, auth, requireRole('parent'), withRls, logsController.getWebLogs);
 
 module.exports = router;

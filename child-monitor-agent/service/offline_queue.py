@@ -4,6 +4,7 @@ import uuid
 import time
 import logging
 import threading
+import json
 from datetime import datetime, timedelta, time as datetime_time
 
 from runtime_paths import agent_root
@@ -83,6 +84,15 @@ class OfflineQueue:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         with self.get_connection() as conn:
             cursor = conn.cursor()
+            cursor.execute("""CREATE TABLE IF NOT EXISTS app_classifications (
+                cache_key TEXT PRIMARY KEY, model_version TEXT NOT NULL,
+                payload TEXT NOT NULL, saved_at REAL NOT NULL
+            )""")
+            cursor.execute("""CREATE TABLE IF NOT EXISTS app_enforcement_events (
+                client_record_id TEXT PRIMARY KEY, payload TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                synced INTEGER NOT NULL DEFAULT 0
+            )""")
             
             # Bảng lưu app usage offline
             cursor.execute("""
@@ -784,11 +794,82 @@ class OfflineQueue:
             logging.warning("Offline sync aborted because API client is suspended.")
             return
 
+        self._sync_app_enforcement(api_client)
         self._sync_apps(api_client)
         self._sync_webs(api_client)
         self._sync_text_moderation(api_client)
         self._sync_vision_alerts(api_client)
         self.cleanup_synced_logs(days=7)
+
+    def get_app_classification(self, cache_key, model_version):
+        try:
+            with self.get_connection() as conn:
+                row = conn.execute(
+                    "SELECT payload FROM app_classifications WHERE cache_key = ? AND model_version = ? AND saved_at > ?",
+                    (cache_key, model_version, time.time() - 30 * 86400),
+                ).fetchone()
+            payload = json.loads(row[0]) if row else None
+            if (isinstance(payload, dict)
+                    and payload.get("category") in {"learning", "entertainment", "browsers", "unknown"}
+                    and payload.get("source") in {"exact_lookup", "trained_model", "gemini"}):
+                return payload
+        except (sqlite3.Error, ValueError):
+            logging.warning("Could not load cached app classification")
+        return None
+
+    def remember_app_classification(self, cache_key, model_version, result):
+        if result.get("source") not in {"exact_lookup", "trained_model", "gemini"}:
+            return
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO app_classifications VALUES (?, ?, ?, ?)",
+                    (cache_key, model_version, json.dumps(result), time.time()),
+                )
+                conn.execute("""DELETE FROM app_classifications WHERE cache_key IN (
+                    SELECT cache_key FROM app_classifications ORDER BY saved_at DESC LIMIT -1 OFFSET 2000
+                )""")
+        except sqlite3.Error:
+            logging.warning("Could not persist app classification")
+
+    def enqueue_app_enforcement(self, event):
+        try:
+            with self.get_connection() as conn:
+                conn.execute(
+                    "INSERT OR IGNORE INTO app_enforcement_events(client_record_id, payload) VALUES (?, ?)",
+                    (event["client_record_id"], json.dumps(event)),
+                )
+            return True
+        except sqlite3.Error:
+            logging.exception("Could not persist application enforcement result")
+            return False
+
+    def _sync_app_enforcement(self, api_client):
+        # Bounded work: other telemetry must still sync if a server rejects a receipt.
+        try:
+            with self.get_connection() as conn:
+                rows = conn.execute(
+                    "SELECT client_record_id, payload FROM app_enforcement_events WHERE synced = 0 ORDER BY created_at LIMIT 100"
+                ).fetchall()
+            if not rows:
+                return
+            response = api_client.post("/api/agent/app-enforcement/batch", data={
+                "records": [json.loads(row[1]) for row in rows],
+            })
+            if response is None or response.status_code != 201:
+                return
+            payload = response.json()
+            acknowledged = payload.get("accepted_client_record_ids", [])
+            if not isinstance(acknowledged, list):
+                return
+            accepted = set(acknowledged) & {row[0] for row in rows}
+            with self.get_connection() as conn:
+                conn.executemany(
+                    "UPDATE app_enforcement_events SET synced = 1 WHERE client_record_id = ?",
+                    [(record_id,) for record_id in accepted],
+                )
+        except (sqlite3.Error, ValueError, TypeError, AttributeError):
+            logging.exception("Could not sync application enforcement results")
 
     def _sync_apps(self, api_client):
         """Gửi batch app logs chưa sync."""
@@ -1069,6 +1150,7 @@ class OfflineQueue:
                 cursor.execute("DELETE FROM app_logs WHERE synced = 1 AND start_time < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM web_logs WHERE synced = 1 AND visit_time < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM vision_alerts WHERE synced = 1 AND created_at < datetime('now', '-' || ? || ' days')", (days,))
+                cursor.execute("DELETE FROM app_enforcement_events WHERE synced = 1 AND created_at < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute(
                     "DELETE FROM text_moderation_queue "
                     "WHERE datetime(created_at) < datetime('now', '-7 days')"

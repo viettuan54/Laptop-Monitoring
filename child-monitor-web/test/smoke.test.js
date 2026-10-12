@@ -222,7 +222,7 @@ test('policy UI exposes and submits all AI analysis toggles', () => {
   const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /Phân loại AI & truy cập/);
-  assert.match(source, /switchRow\('enable_app_classification', 'Phân loại ứng dụng'/);
+  assert.match(source, /switchRow\('enable_app_classification', 'Phân loại và chặn ứng dụng'/);
   assert.match(source, /switchRow\('enable_web_classification', 'Phân loại website'/);
   assert.match(source, /switchRow\('enable_text_moderation', 'Phân tích an toàn văn bản'/);
   assert.match(source, /Chưa phân tích nội dung trang hoặc chat/);

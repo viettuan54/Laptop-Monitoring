@@ -121,6 +121,39 @@ after(async () => {
   if (cleanupError) throw cleanupError;
 });
 
+test('app enforcement receipts authenticate devices, deduplicate retries and isolate parent history', async () => {
+  const event = {
+    client_record_id: crypto.randomUUID(), app_name: 'fixture-game.exe', category: 'entertainment',
+    classification_source: 'exact_lookup', outcome: 'closed', reason: 'terminated',
+    requested_at: new Date(Date.now() - 10000).toISOString(), occurred_at: new Date().toISOString(),
+    device_id: -123, // The authenticated device always wins over an untrusted payload.
+  };
+  const send = (secret, records = [event]) => request('/api/agent/app-enforcement/batch', {
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-device-secret': secret },
+    body: JSON.stringify({ records }),
+  });
+  assert.equal((await send('invalid')).status, 401);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const result = await send(plaintextDeviceSecret);
+    assert.equal(result.status, 201);
+    assert.deepEqual(result.body.accepted_client_record_ids, [event.client_record_id]);
+  }
+  assert.equal((await send(plaintextDeviceSecret, [{ ...event, classification_source: 'pending' }])).status, 400);
+  const stored = await adminPool.query('SELECT device_id FROM app_enforcement_events WHERE client_record_id=$1', [event.client_record_id]);
+  assert.deepEqual(stored.rows, [{ device_id: deviceOne }]);
+  for (const [index, userId] of [userOne, userTwo].entries()) {
+    const jwt = require('jsonwebtoken');
+    const user = await adminPool.query('SELECT token_version FROM users WHERE user_id=$1', [userId]);
+    const token = jwt.sign({ user_id: userId, role: 'parent', token_version: user.rows[0].token_version }, process.env.JWT_SECRET, { expiresIn: '5m' });
+    const result = await request(`/api/logs/app-enforcement?device_id=${deviceOne}`, {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    assert.equal(result.status, 200, result.body.message);
+    assert.equal(result.body.data.length, index === 0 ? 1 : 0);
+    if (index === 0) assert.equal(result.body.data[0].outcome, 'closed');
+  }
+});
+
 test('parent device list sees the first heartbeat and a reconnect after going offline', async () => {
   const login = await request('/api/auth/login', {
     method: 'POST',
@@ -501,6 +534,46 @@ test('parent classification APIs toggle settings and update only owned policies'
   ]);
   assert.equal(audit.rows[1].target_id, `${childOne}:web:social`);
   assert.equal(audit.rows[1].metadata.access_action, 'allow');
+});
+
+test('unlimited quota stays zero for parents and is compatible in config and heartbeat', async () => {
+  const login = await request('/api/auth/login', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ email: emails[0], password: 'Integration1!' }),
+  });
+  assert.equal(login.status, 200);
+  const owner = {
+    authorization: `Bearer ${login.body.accessToken}`, 'content-type': 'application/json',
+  };
+  const agent = { 'x-device-secret': plaintextDeviceSecret, 'content-type': 'application/json' };
+  for (const quota of [0, 60, 1440]) {
+    const saved = await request(`/api/settings/${childOne}`, {
+      method: 'PUT', headers: owner,
+      body: JSON.stringify({ daily_limit_minutes: quota, is_locked: true,
+        allowed_start_time: '07:00:00', allowed_end_time: '21:00:00' }),
+    });
+    assert.equal(saved.status, 200);
+    const parent = await request(`/api/settings/${childOne}`, { headers: owner });
+    assert.equal(parent.status, 200);
+    assert.equal(parent.body.daily_limit_minutes, quota);
+    const replies = await Promise.all([
+      request('/api/agent/config', { headers: agent }),
+      request('/api/agent/heartbeat', { method: 'POST', headers: agent, body: '{}' }),
+    ]);
+    for (const reply of replies) {
+      assert.equal(reply.status, 200);
+      assert.equal(reply.body.config.daily_limit_minutes, quota === 0 ? 1440 : quota);
+      assert.equal(reply.body.config.daily_limit_unlimited, quota === 0);
+      assert.equal(reply.body.config.is_locked, true);
+      assert.equal(reply.body.config.allowed_start_time, '07:00:00');
+      assert.equal(reply.body.config.allowed_end_time, '21:00:00');
+    }
+  }
+  const restored = await request(`/api/settings/${childOne}`, {
+    method: 'PUT', headers: owner,
+    body: JSON.stringify({ daily_limit_minutes: 120, is_locked: false }),
+  });
+  assert.equal(restored.status, 200);
 });
 
 test('Agent config exposes switches and web backfill becomes visible to parent activity API', async () => {

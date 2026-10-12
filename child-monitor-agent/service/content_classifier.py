@@ -361,6 +361,10 @@ class ContentClassifier:
         self.web_lookup = _validate_web_lookup(_load_verified_json(
             os.path.join(models_dir, "web_exact_lookup_v1.json")
         ))
+        self.app_cache_version = hashlib.sha256((
+            _sha256(os.path.join(models_dir, "app_content_model_v1.json"))
+            + _sha256(os.path.join(models_dir, "app_exact_lookup_v1.json"))
+        ).encode("ascii")).hexdigest()
         self._web_cache = {}
         self._app_cache = {}
         self._lock = threading.Lock()
@@ -397,8 +401,11 @@ class ContentClassifier:
         file_description: str | None = None,
     ) -> dict:
         app_name = normalize_app_name(app_name)
+        product_name = normalize_app_metadata(product_name)
+        file_description = normalize_app_metadata(file_description)
+        cache_key = (app_name, product_name, file_description)
         with self._lock:
-            cached = self._app_cache.get(app_name)
+            cached = self._app_cache.get(cache_key)
         if cached is not None:
             return dict(cached)
         exact_label = self.app_lookup["labels"].get(app_name)
@@ -422,11 +429,13 @@ class ContentClassifier:
             )
         if result["label"] is not None:
             with self._lock:
-                self._app_cache[app_name] = dict(result)
+                self._app_cache[cache_key] = dict(result)
         return result
 
-    def remember_app_label(self, app_name: str, label: str, source: str = "gemini") -> dict:
+    def remember_app_label(self, app_name: str, label: str, source: str = "gemini",
+                           product_name=None, file_description=None) -> dict:
         app_name = normalize_app_name(app_name)
+        cache_key = (app_name, normalize_app_metadata(product_name), normalize_app_metadata(file_description))
         if label not in APP_LABELS:
             raise ValueError("app label is outside taxonomy")
         result = {
@@ -440,7 +449,7 @@ class ContentClassifier:
             "probabilities": {},
         }
         with self._lock:
-            self._app_cache[app_name] = dict(result)
+            self._app_cache[cache_key] = dict(result)
         return result
 
     def remember_web_label(self, domain: str, label: str, source: str = "gemini") -> dict:

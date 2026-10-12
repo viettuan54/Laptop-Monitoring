@@ -387,14 +387,15 @@ function categoryBadge(value) {
   return `<span class="badge ${tone}">${escapeHtml(categoryLabel(normalized))}</span>`;
 }
 
-function accessStatusLabel(value) {
+function accessStatusLabel(value, resourceType) {
+  if (resourceType === 'app') return value === 'blocked' ? 'Yêu cầu chặn' : 'Cho phép';
   return accessStatusLabels[String(value || 'open').toLowerCase()] || accessStatusLabels.open;
 }
 
-function accessStatusBadge(value) {
+function accessStatusBadge(value, resourceType) {
   const normalized = String(value || 'open').toLowerCase();
   const tone = normalized === 'blocked' ? 'red' : '';
-  return `<span class="badge access-status-badge ${tone}">${escapeHtml(accessStatusLabel(normalized))}</span>`;
+  return `<span class="badge access-status-badge ${tone}">${escapeHtml(accessStatusLabel(normalized, resourceType))}</span>`;
 }
 
 function websiteActivityTitle(item) {
@@ -1562,7 +1563,7 @@ async function renderPolicies(content) {
         <form id="policy-form" class="form-grid" data-child-id="${settings.child_id}">
           <div class="field full">
             <section class="setting-section"><h3>Phân loại AI & truy cập</h3><p>Chỉ phân loại và áp dụng chính sách Cho phép/Chặn khi công tắc tương ứng được bật. Khi tắt, nội dung đó được truy cập bình thường.</p>
-              ${switchRow('enable_app_classification', 'Phân loại ứng dụng', 'Gán một trong 4 nhãn ứng dụng rồi áp dụng chính sách truy cập.', settings.enable_app_classification)}
+              ${switchRow('enable_app_classification', 'Phân loại và chặn ứng dụng', 'Ứng dụng thuộc nhóm chặn sẽ nhận yêu cầu đóng; Agent buộc thoát sau 8 giây nếu vẫn chạy. Nội dung chưa lưu có thể bị mất.', settings.enable_app_classification)}
               ${switchRow('enable_web_classification', 'Phân loại website', 'Gán một trong 5 nhãn website rồi áp dụng chính sách truy cập.', settings.enable_web_classification)}
               ${switchRow('enable_text_moderation', 'Phân tích an toàn văn bản', 'Phân tích câu tìm kiếm mới của bé: SAFE không tạo cảnh báo; RISK nhắc phụ huynh quan sát bé trong thời gian này; HIGH_RISK cảnh báo bé có dấu hiệu bị bạo lực. Chưa phân tích nội dung trang hoặc chat. Không lưu nguyên văn câu tìm kiếm trên máy chủ. Thay đổi cần thời gian đồng bộ tới thiết bị.', settings.enable_text_moderation)}
             </section>
@@ -1608,12 +1609,18 @@ async function renderActivity(content) {
   if (state.activityTab === 'screenshots') return renderScreenshotActivity(content, renderVersion);
   const filter = state.activityFilter || {};
   const path = state.activityTab === 'apps' ? '/logs/app' : '/logs/web';
-  const result = await api(path + queryString({
+  const isApps = state.activityTab === 'apps';
+  const activityQuery = queryString({
     device_id: filter.device_id,
     start: filter.start,
     end: filter.end,
     limit: 200,
-  }));
+  });
+  const [result, enforcement] = await Promise.all([
+    api(path + activityQuery),
+    isApps ? api('/logs/app-enforcement' + activityQuery)
+      .catch(() => ({ error: true, data: [] })) : Promise.resolve(null),
+  ]);
   if (renderVersion !== activityRenderVersion) return;
   if (state.activityTab === 'apps') state.appLogs = result.data || [];
   else state.webLogs = result.data || [];
@@ -1643,26 +1650,44 @@ async function renderActivity(content) {
     <section class="page-summary-strip" aria-label="Tóm tắt dữ liệu đang hiển thị">
       <div><span class="summary-icon">${icons.activity}</span><span><small>Kết quả phù hợp</small><strong>${filteredRows.length} bản ghi</strong></span></div>
       <div><span class="summary-icon">◷</span><span><small>Tổng thời lượng</small><strong>${duration(filteredDuration)}</strong></span></div>
-      <div><span class="summary-icon">${icons.policy}</span><span><small>Hiện đang bị chặn</small><strong>${blockedCount} lượt</strong></span></div>
+      <div><span class="summary-icon">${icons.policy}</span><span><small>${isApps ? 'Bản ghi thuộc nhóm chặn' : 'Hiện đang bị chặn'}</small><strong>${blockedCount} lượt</strong></span></div>
       <div><span class="summary-icon">${icons.device}</span><span><small>Thiết bị có dữ liệu</small><strong>${activeDeviceCount} thiết bị</strong></span></div>
     </section>
     <form id="activity-filter" class="filters activity-filters">
       <div class="field"><label>Tìm kiếm</label><input class="input" name="search" value="${escapeHtml(filter.search || '')}" placeholder="${state.activityTab === 'apps' ? 'Tên ứng dụng' : 'YouTube, tên miền hoặc URL'}"></div>
       <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
       <div class="field"><label>Danh mục</label><select class="select" name="category"><option value="">Tất cả danh mục</option>${categories.map(([value, label]) => `<option value="${value}" ${filter.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
-      <div class="field"><label>Trạng thái hiện tại</label><select class="select" name="access_status"><option value="">Tất cả trạng thái</option><option value="blocked" ${filter.access_status === 'blocked' ? 'selected' : ''}>Đã chặn</option><option value="open" ${filter.access_status === 'open' ? 'selected' : ''}>Đang mở</option></select></div>
+      <div class="field"><label>${isApps ? 'Chính sách hiện tại' : 'Trạng thái hiện tại'}</label><select class="select" name="access_status"><option value="">Tất cả trạng thái</option><option value="blocked" ${filter.access_status === 'blocked' ? 'selected' : ''}>${isApps ? 'Yêu cầu chặn' : 'Đã chặn'}</option><option value="open" ${filter.access_status === 'open' ? 'selected' : ''}>${isApps ? 'Cho phép' : 'Đang mở'}</option></select></div>
       <div class="field"><label>Từ thời điểm</label><input class="input" type="datetime-local" name="start" value="${escapeHtml(filter.start || '')}"></div>
       <div class="field"><label>Đến thời điểm</label><input class="input" type="datetime-local" name="end" value="${escapeHtml(filter.end || '')}"></div>
       <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-activity-filter">Xóa lọc</button><button class="btn" type="submit">Áp dụng</button></div>
     </form>
-    <section class="table-card"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Trạng thái hiện tại</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Trạng thái hiện tại</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
+    ${isApps ? appEnforcementMarkup(enforcement, filter) : ''}
+    <section class="table-card"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Chính sách hiện tại</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Trạng thái hiện tại</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
       if (state.activityTab === 'apps') {
-        return `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.start_time)}</td><td>${formatDate(item.end_time)}</td><td>${duration(item.duration_seconds)}</td></tr>`;
+        return `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status, 'app')}</td><td>${formatDate(item.start_time)}</td><td>${formatDate(item.end_time)}</td><td>${duration(item.duration_seconds)}</td></tr>`;
       }
       const externalUrl = safeExternalUrl(item.url);
       const subtitle = websiteActivitySubtitle(item);
       return `<tr><td class="cell-title website-cell"><strong>${escapeHtml(websiteActivityTitle(item))}</strong>${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ''}${externalUrl ? `<a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">Mở website ↗</a>` : ''}</td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.visit_time)}</td><td>${escapeHtml(deviceName(item.device_id))}</td><td>${duration(item.duration_seconds)}</td></tr>`;
     }).join('')}</tbody></table></div>${rows.length ? `<div class="table-footer"><span>Hiển thị ${state.activityOffset + 1}–${state.activityOffset + rows.length} / ${filteredRows.length} bản ghi gần nhất</span><div class="pagination"><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${Math.max(0, state.activityOffset - state.activityLimit)}" ${state.activityOffset === 0 ? 'disabled' : ''}>Trước</button><span>Trang ${pageNumber}/${pageCount}</span><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${state.activityOffset + state.activityLimit}" ${state.activityOffset + state.activityLimit >= filteredRows.length ? 'disabled' : ''}>Sau</button></div><span>Tổng ${duration(filteredDuration)}</span></div>` : emptyState('↗', 'Chưa có dữ liệu', 'Hãy đổi bộ lọc hoặc kiểm tra Agent đang hoạt động.')}</section>`;
+}
+
+function appEnforcementMarkup(result, filter = {}) {
+  const outcomes = { closed: 'Đã đóng ứng dụng', failed: 'Chặn thất bại', cancelled: 'Đã hủy yêu cầu' };
+  const reasons = {
+    graceful_exit: 'Ứng dụng đã thoát sau yêu cầu đóng', terminated: 'Agent đã buộc ứng dụng thoát',
+    access_denied: 'Không đủ quyền đóng ứng dụng', termination_timeout: 'Chưa xác nhận được ứng dụng đã thoát',
+    policy_changed: 'Chính sách đã thay đổi', session_changed: 'Phiên sử dụng đã thay đổi', service_stopped: 'Agent đã dừng',
+  };
+  const search = String(filter.search || '').trim().toLowerCase();
+  const rows = (result?.data || []).filter((item) =>
+    (!search || `${item.app_name} ${deviceName(item.device_id)}`.toLowerCase().includes(search))
+    && (!filter.category || item.category === filter.category)).slice(0, 10);
+  return `<section class="card" aria-labelledby="app-enforcement-title"><div class="card-head"><div><h2 id="app-enforcement-title">Kết quả chặn ứng dụng</h2><p>10 kết quả gần nhất Agent đã gửi, theo thiết bị, thời gian và danh mục đang lọc. Chính sách yêu cầu chặn chưa xác nhận ứng dụng đã đóng.</p></div><button class="btn btn-secondary btn-sm" data-action="refresh-app-enforcement">Làm mới</button></div>${result?.error
+    ? '<div class="card-body" role="status">Chưa tải được kết quả chặn. Nhấn Làm mới để thử lại.</div>'
+    : rows.length ? `<div class="table-scroll"><table><thead><tr><th>Ứng dụng</th><th>Danh mục</th><th>Kết quả Agent xác nhận</th><th>Thời điểm</th></tr></thead><tbody>${rows.map((item) => `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td><span class="badge ${item.outcome === 'failed' ? 'red' : item.outcome === 'closed' ? 'blue' : 'neutral'}">${escapeHtml(outcomes[item.outcome] || 'Chưa xác định')}</span><div class="muted">${escapeHtml(reasons[item.reason] || '')}</div></td><td>${formatDate(item.occurred_at)}</td></tr>`).join('')}</tbody></table></div>`
+      : '<div class="card-body">Chưa có kết quả chặn được gửi lên. Thiết bị cần chạy Agent hỗ trợ chặn ứng dụng và kết nối để đồng bộ kết quả.</div>'}</section>`;
 }
 
 function activityTabs() {
@@ -1892,10 +1917,10 @@ function csvCell(value) {
 function exportActivityCsv() {
   const isApps = state.activityTab === 'apps';
   const headers = isApps
-    ? ['Ứng dụng', 'Danh mục', 'Trạng thái hiện tại', 'Thiết bị', 'Bắt đầu', 'Kết thúc', 'Thời lượng (giây)']
+    ? ['Ứng dụng', 'Danh mục', 'Chính sách hiện tại', 'Thiết bị', 'Bắt đầu', 'Kết thúc', 'Thời lượng (giây)']
     : ['Tiêu đề', 'Tên miền', 'URL', 'Danh mục', 'Trạng thái hiện tại', 'Thiết bị', 'Truy cập', 'Thời lượng (giây)'];
   const records = state.activityViewRows.map((item) => isApps
-    ? [item.app_name, categoryLabel(item.category), accessStatusLabel(item.access_status), deviceName(item.device_id), item.start_time, item.end_time, item.duration_seconds]
+    ? [item.app_name, categoryLabel(item.category), accessStatusLabel(item.access_status, 'app'), deviceName(item.device_id), item.start_time, item.end_time, item.duration_seconds]
     : [websiteActivityTitle(item), item.domain, item.url, categoryLabel(item.category), accessStatusLabel(item.access_status), deviceName(item.device_id), item.visit_time, item.duration_seconds]);
   const csv = `\uFEFF${[headers, ...records].map((row) => row.map(csvCell).join(',')).join('\r\n')}`;
   const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
@@ -2562,7 +2587,7 @@ async function handleClick(event) {
       state.activityOffset = Math.max(0, Number(button.dataset.offset) || 0);
       return renderActivity(document.querySelector('#page-content'));
     }
-    if (action === 'refresh-screenshots') return renderActivity(document.querySelector('#page-content'));
+    if (action === 'refresh-screenshots' || action === 'refresh-app-enforcement') return renderActivity(document.querySelector('#page-content'));
     if (action === 'delete-screenshot') return confirmScreenshotDelete(id);
     if (action === 'clear-screenshots') return confirmClearScreenshots();
     if (action === 'confirm-delete-screenshot') return await deleteScreenshots(button);

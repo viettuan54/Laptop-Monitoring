@@ -7,6 +7,7 @@ import re
 import threading
 import uuid
 import ctypes
+import hashlib
 from ctypes import wintypes
 from datetime import datetime, timezone
 from urllib.parse import urlparse
@@ -86,6 +87,9 @@ class PipeServer:
         self.classification_pending = set()
         self.classification_lock = threading.Lock()
         self.screenshot_uploader = ScreenshotUploader(api_client, enforcement_core.get_screenshot_policy)
+        self.app_enforcer = None
+        self.app_processes = None
+        self.app_cache_version = getattr(content_classifier, "app_cache_version", "remote-v1")
 
     @staticmethod
     def validate_app_tracking_payload(message):
@@ -183,6 +187,14 @@ class PipeServer:
         if not self._app_classification_enabled():
             return {"category": "unknown", "source": "disabled", "confidence": None}
 
+        cache_key = hashlib.sha256(json.dumps(
+            [app_name.casefold(), product_name or "", file_description or ""],
+            ensure_ascii=True,
+        ).encode("utf-8")).hexdigest()
+        cached = self.offline_queue.get_app_classification(cache_key, self.app_cache_version)
+        if isinstance(cached, dict):
+            return cached
+
         if self.content_classifier is not None:
             try:
                 local_result = self.content_classifier.classify_app(
@@ -197,13 +209,15 @@ class PipeServer:
                         if decision_source in {"exact_lookup", "trained_model", "gemini"}
                         else "trained_model"
                     )
-                    return {
+                    result = {
                         "category": local_result["label"],
                         "source": source,
                         "confidence": (
                             None if source == "gemini" else local_result["confidence"]
                         ),
                     }
+                    self.offline_queue.remember_app_classification(cache_key, self.app_cache_version, result)
+                    return result
             except Exception as error:
                 logging.error("Local app classification failed: %s", error)
 
@@ -217,11 +231,14 @@ class PipeServer:
                 if self.content_classifier is not None:
                     try:
                         self.content_classifier.remember_app_label(
-                            app_name, category, source="gemini"
+                            app_name, category, source="gemini",
+                            product_name=product_name, file_description=file_description,
                         )
                     except Exception as error:
                         logging.warning("Could not cache Gemini app label: %s", error)
-                return {"category": category, "source": "gemini", "confidence": None}
+                result = {"category": category, "source": "gemini", "confidence": None}
+                self.offline_queue.remember_app_classification(cache_key, self.app_cache_version, result)
+                return result
 
         return {"category": "unknown", "source": "pending", "confidence": None}
 
@@ -602,6 +619,8 @@ class PipeServer:
     def start(self):
         """Khởi chạy luồng Named Pipe Server."""
         self.running = True
+        if self.app_enforcer:
+            self.app_enforcer.start()
         self.screenshot_uploader.start()
         thread = threading.Thread(target=self._server_loop, daemon=True)
         thread.start()
@@ -615,6 +634,8 @@ class PipeServer:
 
     def stop(self):
         self.running = False
+        if self.app_enforcer:
+            self.app_enforcer.stop()
         self.screenshot_uploader.stop()
         self.classification_queue.put(None)
         # ConnectNamedPipe/ReadFile are blocking. Cancel their pending I/O and
@@ -706,8 +727,17 @@ class PipeServer:
             action = msg.get("action")
             tracking_ack = None
             screenshot_accepted = None
+            app_close_requests = None
 
-            if action == "TRACK_APP":
+            if action == "CHECK_APPS":
+                if self.app_enforcer is None or self.app_processes is None:
+                    app_close_requests = []
+                elif not self.app_processes.client_allowed(pipe_handle):
+                    raise ValueError("Application check requires the monitored user session")
+                else:
+                    app_close_requests = self.app_enforcer.check(msg.get("processes"))
+
+            elif action == "TRACK_APP":
                 app_payload = self.validate_app_tracking_payload(msg)
                 classification = self.classify_app(
                     app_payload["app_name"],
@@ -860,6 +890,8 @@ class PipeServer:
             }
             if screenshot_accepted is not None:
                 response_payload["screenshot_queued"] = screenshot_accepted
+            if app_close_requests is not None:
+                response_payload["app_close_requests"] = app_close_requests
             if tracking_ack:
                 response_payload["tracking_ack"] = tracking_ack
             response_bytes = json.dumps(response_payload).encode('utf-8')

@@ -71,6 +71,9 @@ class PipeClient:
         }
         return self._send_and_receive(payload)
 
+    def check_applications(self, processes):
+        return self._send_and_receive({"action": "CHECK_APPS", "processes": processes})
+
     def send_screenshot(self, record):
         """Use the Service's device credential; keep all image bytes in memory."""
         return self._send_and_receive({"action": "SCREENSHOT", "record": record}, max_retries=3)

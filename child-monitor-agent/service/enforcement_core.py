@@ -190,6 +190,12 @@ class EnforcementCore:
                 cache_data = existing.copy()
                 if isinstance(config_data, dict):
                     cache_data.update(config_data)
+                    if "daily_limit_minutes" in config_data:
+                        # An older backend may omit the flag after a rollback.
+                        # Never retain a stale unlimited flag for a new quota.
+                        cache_data["daily_limit_unlimited"] = (
+                            config_data.get("daily_limit_unlimited") is True
+                        )
                 now = time.time()
                 old_policy = {
                     "enabled": existing.get("enable_text_moderation") is True,
@@ -415,9 +421,10 @@ class EnforcementCore:
         Kiểm tra các quy định chính sách:
         1. is_locked == True -> Khóa ngay lập tức.
         2. Thời gian hiện tại nằm ngoài khung giờ allowed_start_time - allowed_end_time -> Khóa.
-        3. Tổng thời gian dùng máy hôm nay (từ SQLite daily_usage) > daily_limit_minutes -> Khóa.
+        3. Hết hạn mức ngày dương -> Khóa; 0 nghĩa là không giới hạn hạn mức ngày.
         
         @returns tuple: (should_lock: bool, reason: str, seconds_remaining: int)
+            seconds_remaining == -1 means unlimited (no quota countdown).
         """
         settings = self.load_cached_settings()
 
@@ -450,6 +457,11 @@ class EnforcementCore:
 
         # 3. Kiểm tra tổng thời gian sử dụng trong ngày
         daily_limit_minutes = settings.get("daily_limit_minutes", 120)
+        if daily_limit_minutes == 0 or (
+            daily_limit_minutes == 1440
+            and settings.get("daily_limit_unlimited") is True
+        ):
+            return False, "OK", -1
         max_allowed_seconds = daily_limit_minutes * 60
 
         used_seconds = self.offline_queue.get_daily_usage()
