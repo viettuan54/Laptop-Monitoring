@@ -16,6 +16,7 @@ from PyInstaller.archive.readers import CArchiveReader
 
 REQUIRED = {
     "service/ChildMonitorService.exe": {
+        "break_reminders": {"BreakReminderEngine", "tick", "receipt"},
         "api_client": {"post_text_moderation"},
         "offline_queue": {"enqueue_text_moderation", "_sync_text_moderation", "enqueue_app_enforcement", "_sync_app_enforcement"},
         "app_enforcement": {"AppEnforcer", "check", "tick"},
@@ -26,6 +27,9 @@ REQUIRED = {
         "text_privacy": {"eligible_timestamp", "protect_text", "unprotect_text"},
     },
     "companion/ChildMonitorCompanion.exe": {
+        "break_monitor": {"BreakReminderMonitor", "idle_seconds", "GetLastInputInfo"},
+        "ui_alerts": {"show_break_reminder"},
+        "break_notice": {"show_break_notice", "check_break_notice_support", "CreateDialogIndirect"},
         "screen_monitor": {"ScreenMonitor", "capture_desktop", "desktop_available", "last_request_expires_at", "check_capture_support", "GetDIBits"},
         "pipe_client": {"send_screenshot", "check_applications"},
         "app_monitor": {"AppMonitor", "application_windows", "poll"},
@@ -64,7 +68,8 @@ def verify(root, version):
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
             "required_modules": sorted(required_modules)})
     return {"version": version, "text_capabilities_verified": True,
-        "screenshot_capabilities_verified": True, "app_enforcement_capabilities_verified": True, "binaries": checked,
+        "screenshot_capabilities_verified": True, "app_enforcement_capabilities_verified": True,
+        "break_reminder_capabilities_verified": True, "binaries": checked,
         "installed_agent_tested": False}
 
 

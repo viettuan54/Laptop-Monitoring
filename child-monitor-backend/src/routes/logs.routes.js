@@ -9,6 +9,7 @@ const { parentLimiter, agentLimiter, screenshotReadLimiter } = require('../middl
 const logsController = require('../controllers/logs.controller');
 const screenshotsController = require('../controllers/screenshots.controller');
 const appEnforcement = require('../controllers/appEnforcement.controller');
+const breakReminder = require('../controllers/breakReminder.controller');
 
 // Authenticate before accepting an image body. This router precedes the global parser.
 router.post('/screenshots', agentLimiter, deviceAuth, expressJson1mb, screenshotsController.upload);
@@ -37,6 +38,7 @@ router.post('/web', agentLimiter, deviceAuth, logsController.logWebsite);
 router.get('/usage-summary', parentLimiter, auth, requireRole('parent'), withRls, logsController.getUsageSummary);
 router.get('/app', parentLimiter, auth, requireRole('parent'), withRls, logsController.getAppLogs);
 router.get('/app-enforcement', parentLimiter, auth, requireRole('parent'), withRls, appEnforcement.list);
+router.get('/break-reminders', parentLimiter, auth, requireRole('parent'), withRls, breakReminder.list);
 router.get('/web', parentLimiter, auth, requireRole('parent'), withRls, logsController.getWebLogs);
 
 module.exports = router;

@@ -12,6 +12,11 @@ class UIAlerts:
     """
     
     @staticmethod
+    def show_break_reminder(reminder, on_event, cancel_event):
+        from break_notice import show_break_notice
+        return show_break_notice(reminder, on_event, cancel_event)
+
+    @staticmethod
     def show_app_block_notice(app_name, grace_seconds=8):
         def show():
             try:

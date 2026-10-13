@@ -1,4 +1,4 @@
-# Chặn ứng dụng theo danh mục — Agent 1.0.20
+# Chặn ứng dụng theo danh mục — Agent 1.0.21
 
 Phụ huynh bật **Phân loại và chặn ứng dụng**, rồi chọn **Chặn** cho danh mục
 Học tập (`learning`), Giải trí (`entertainment`), Trình duyệt (`browsers`) hoặc
@@ -56,7 +56,7 @@ dữ liệu trong các thiết bị thuộc tài khoản; credential thiết b�
    Với DB kiểm thử dùng `--test` và các biến `TEST_DB_*`; không fallback sang DB thật.
 
 2. Khởi động lại backend bằng cơ chế triển khai hiện có, cập nhật file Dashboard.
-3. Cài `build/output/ChildMonitorSetup-1.0.20.exe` bằng quyền quản trị trên máy trẻ.
+3. Cài `build/output/ChildMonitorSetup-1.0.21.exe` bằng quyền quản trị trên máy trẻ.
    Cần cập nhật cả Service và Companion; bộ cài cũ chưa có thực thi chặn ứng dụng.
 4. Chọn một ứng dụng thử nghiệm không có dữ liệu chưa lưu. Chặn danh mục của nó,
    mở ứng dụng, kiểm tra yêu cầu đóng và kết quả sau đồng bộ. Cho phép lại danh mục
@@ -130,3 +130,22 @@ Windows process adapter và queue đồng bộ trong executable đã đóng gói
   Máy tiếp tục gửi heartbeat; người dùng chưa thử đăng nhập lại để xác nhận.
   Khung giờ này chưa có lịch tự khôi phục: đặt lại 07:00–21:00 trên Dashboard
   sau khi kiểm tra xong.
+
+### Hoàn tất bộ cài 1.0.21 ngày 12/10/2026
+
+- Đã tạo `build/output/ChildMonitorSetup-1.0.21.exe` (71.471.152 byte), kèm
+  `ChildMonitorSetup-1.0.21.exe.sha256` và `ChildMonitorSetup-1.0.21.verification.json`.
+  SHA-256: `8ca41f594a84e32bcb0bac1498d2b1c29927e6771f337f0fa46b309f5f154f79`.
+- Service và Companion đã chạy `--self-test` thành công trên cùng các executable
+  đã tạo ngày 10/10. Lỗi Application Control trước đó không còn tái hiện; không
+  thay đổi chính sách bảo mật Windows. Chương trình provisioning chạy được `--help`.
+- Chạy lại toàn bộ 173 kiểm thử Agent đều đạt. Đối chiếu bytecode của 28 module,
+  gồm entry point Service, Companion và provisioning, khớp mã nguồn hiện tại.
+  Bản đóng gói có sửa hạn mức 0, chặn ứng dụng, thu thập truy vấn và chụp ảnh.
+- 13 file model giữ nguyên theo SHA-256 so với 1.0.20. Các thư mục cấu hình,
+  log, cơ sở dữ liệu và tệp tạm trong bản phát hành đều trống.
+- Chưa chạy cài đặt trên máy trẻ. Người dùng tự chép bộ cài sang máy Agent,
+  chạy bằng quyền Administrator, nhập Backend URL và Device Secret của thiết
+  bị hiện tại. Sau cài đặt kiểm tra hạn mức 0 trong khung giờ cho phép và kết
+  quả chặn ứng dụng trên Dashboard. Không giới hạn hạn mức ngày vẫn tuân theo
+  khung giờ cho phép và lệnh khóa thủ công.

@@ -19,6 +19,7 @@ const INITIAL_CHAT = Object.freeze([
 let refreshPromise = null;
 let screenshotRefreshTimer = null;
 let activityRenderVersion = 0;
+let controlRenderVersion = 0;
 
 let modalReturnFocus = null;
 let accessibleControlSequence = 0;
@@ -1478,18 +1479,45 @@ async function renderDevices(content) {
     }).join('') || emptyState('▣', 'Chưa có thiết bị', 'Đăng ký laptop và lưu secret để cài đặt Agent.', '<button class="btn" data-action="add-device">Đăng ký thiết bị</button>')}</section>`;
 }
 
+function breakReminderHistoryMarkup(result) {
+  const labels = { shown: 'Đã hiển thị lời nhắc', acknowledged: 'Trẻ chọn nghỉ ngay', snoozed: 'Nhắc lại sau 5 phút' };
+  const rows = Array.isArray(result?.data) ? result.data : [];
+  return `<div class="break-history-heading"><h3>Lịch sử nhắc nghỉ</h3><button class="btn btn-secondary btn-sm" type="button" data-action="refresh-break-reminders">Làm mới</button></div>
+    <p class="break-reminder-help">10 phản hồi gần nhất từ các thiết bị của trẻ. Chọn “Nghỉ ngay” là xác nhận lời nhắc, không xác nhận trẻ đã nghỉ.</p>
+    ${result === null ? '<p role="status">Chưa tải được lịch sử nhắc nghỉ. Hãy thử làm mới.</p>' : rows.length ? `<ul class="break-history-list">${rows.map(row => `<li><div><strong>${escapeHtml(labels[row.event_type] || 'Phản hồi khác')}</strong><span>${escapeHtml(row.device_name || 'Thiết bị')} · Nghỉ ${escapeHtml(row.duration_minutes)} phút</span></div><time>${escapeHtml(formatDate(row.occurred_at))}</time></li>`).join('')}</ul>` : '<p>Chưa có lời nhắc được Agent ghi nhận. Tính năng cần Agent 1.0.22 trở lên; lịch sử xuất hiện sau khi đồng bộ.</p>'}`;
+}
+
+async function refreshBreakReminderHistory() {
+  const panel = document.querySelector('#break-reminder-history');
+  if (!panel) return;
+  const childId = panel.dataset.childId;
+  const button = panel.querySelector('button');
+  if (button) button.disabled = true;
+  panel.setAttribute('aria-busy', 'true');
+  const result = await api(`/logs/break-reminders?child_id=${encodeURIComponent(childId)}`).catch(() => null);
+  if (panel !== document.querySelector('#break-reminder-history') || String(childId) !== String(state.selectedChildId)) return;
+  panel.innerHTML = breakReminderHistoryMarkup(result);
+  panel.removeAttribute('aria-busy');
+}
+
 async function renderDeviceControls(content) {
-  state.children = await api('/children?limit=200');
+  const renderVersion = ++controlRenderVersion;
+  const children = await api('/children?limit=200');
+  if (renderVersion !== controlRenderVersion || state.page !== 'controls') return;
+  state.children = children;
   state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
   if (!state.selectedChildId) {
     content.innerHTML = pageHead('controls') + emptyState('⌁', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi điều khiển các thiết bị liên kết.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
     return;
   }
 
-  const [settings, deviceResult] = await Promise.all([
-    api(`/settings/${state.selectedChildId}`),
+  const childId = state.selectedChildId;
+  const [settings, deviceResult, reminderHistory] = await Promise.all([
+    api(`/settings/${childId}`),
     api('/devices?limit=200'),
+    api(`/logs/break-reminders?child_id=${encodeURIComponent(childId)}`).catch(() => null),
   ]);
+  if (renderVersion !== controlRenderVersion || String(childId) !== String(state.selectedChildId) || state.page !== 'controls') return;
   state.devices = deviceResult.data || [];
   const selectedChild = state.children.find((child) => String(child.child_id) === String(state.selectedChildId));
   const linkedDevices = state.devices.filter((device) => String(device.child_id) === String(state.selectedChildId));
@@ -1498,7 +1526,7 @@ async function renderDeviceControls(content) {
     settings.is_locked,
     settings.enable_webcam_monitoring,
     settings.enable_screenshot_review,
-    settings.enable_keylog,
+    settings.enable_break_reminders,
   ].filter(Boolean).length;
   const startTime = String(settings.allowed_start_time).slice(0, 5);
   const endTime = String(settings.allowed_end_time).slice(0, 5);
@@ -1527,11 +1555,20 @@ async function renderDeviceControls(content) {
             <section class="control-switch-card control-lock-card">${switchRow('is_locked', 'Khóa thiết bị ngay', 'Chặn phiên sử dụng tiếp theo của tất cả thiết bị thuộc hồ sơ.', settings.is_locked)}</section>
             <section class="control-switch-card">${switchRow('enable_webcam_monitoring', 'Giám sát webcam', 'Bật tín hiệu Edge AI về tư thế và khoảng cách nhìn.', settings.enable_webcam_monitoring)}</section>
             <section class="control-switch-card">${switchRow('enable_screenshot_review', 'Xem xét ảnh chụp màn hình', 'Chụp định kỳ màn hình chính khi Agent đang hoạt động. Xem ảnh tại Hoạt động → Giám sát màn hình; ảnh được lưu 7 ngày.', settings.enable_screenshot_review)}</section>
-            <section class="control-switch-card control-sensitive-card">${switchRow('enable_keylog', 'Ghi nhận phím bấm', 'Tính năng nhạy cảm; chỉ bật khi thật sự cần và đã thông báo phù hợp.', settings.enable_keylog)}</section>
+            <section class="control-switch-card">${switchRow('enable_break_reminders', 'Nhắc nghỉ giải lao', 'Hiển thị lời nhắc khi trẻ sử dụng máy đến thời gian đã đặt.', settings.enable_break_reminders)}</section>
           </div>
-          <aside class="control-privacy-note field full"><span>${icons.policy}</span><div><strong>Ưu tiên quyền riêng tư</strong><p>Webcam, ảnh chụp màn hình và phím bấm đều mặc định tắt. Hãy chỉ kích hoạt trong phạm vi giám sát phù hợp với gia đình.</p></div></aside>
+          <fieldset id="break-reminder-options" class="break-reminder-options field full" ${settings.enable_break_reminders ? '' : 'disabled'}>
+            <legend>Thời gian nhắc nghỉ</legend>
+            <div class="break-reminder-fields">
+              <div class="field"><label for="break-interval">Nhắc sau (phút sử dụng)</label><input id="break-interval" class="input" type="number" name="break_interval_minutes" min="5" max="180" step="1" required value="${escapeHtml(settings.break_interval_minutes ?? 30)}"><small>Từ 5 đến 180 phút.</small></div>
+              <div class="field"><label for="break-duration">Thời gian nghỉ (phút)</label><input id="break-duration" class="input" type="number" name="break_duration_minutes" min="1" max="30" step="1" required value="${escapeHtml(settings.break_duration_minutes ?? 5)}"><small>Từ 1 đến 30 phút.</small></div>
+            </div>
+            <p class="break-reminder-help">Trẻ có thể chọn “Nghỉ ngay” hoặc “Nhắc lại sau 5 phút”. Máy và ứng dụng vẫn mở. Bộ đếm tạm dừng khi không hoạt động và bắt đầu lại sau khoảng nghỉ đủ dài.</p>
+          </fieldset>
+          <aside class="control-privacy-note field full"><span>${icons.policy}</span><div><strong>Ưu tiên quyền riêng tư</strong><p>Webcam và ảnh chụp màn hình mặc định tắt. Nhắc nghỉ giải lao chỉ dùng thời gian hoạt động, không đọc nội dung phím bấm.</p></div></aside>
           <div class="form-actions policy-save-bar field full"><span><strong>Sẵn sàng cập nhật điều khiển</strong><small>Cấu hình sẽ được Agent nhận ở heartbeat tiếp theo.</small></span><button class="btn" type="submit">Lưu điều khiển</button></div>
         </form>
+        <section id="break-reminder-history" class="break-reminder-history" data-child-id="${escapeHtml(childId)}" aria-live="polite">${breakReminderHistoryMarkup(reminderHistory)}</section>
       </article>
     </section>`;
 }
@@ -2267,10 +2304,17 @@ async function handleSubmit(event) {
         'is_locked',
         'enable_webcam_monitoring',
         'enable_screenshot_review',
-        'enable_keylog',
+        'enable_break_reminders',
       ];
       controlFields.forEach((name) => { data[name] = form.elements[name].checked; });
       data.daily_limit_minutes = Number(data.daily_limit_minutes);
+      if (data.enable_break_reminders) {
+        data.break_interval_minutes = Number(form.elements.break_interval_minutes.value);
+        data.break_duration_minutes = Number(form.elements.break_duration_minutes.value);
+      } else {
+        delete data.break_interval_minutes;
+        delete data.break_duration_minutes;
+      }
       await api(`/settings/${form.dataset.childId}`, { method: 'PUT', body: data });
       toast('Đã lưu điều khiển thiết bị', 'Agent sẽ nhận cấu hình mới ở heartbeat tiếp theo.');
       await renderDeviceControls(document.querySelector('#page-content'));
@@ -2792,3 +2836,12 @@ accessibilityObserver.observe(app, { childList: true, subtree: true });
 accessibilityObserver.observe(modalRoot, { childList: true, subtree: true });
 
 initialize();
+
+document.addEventListener('change', (event) => {
+  if (event.target.matches('#device-control-form [name="enable_break_reminders"]')) {
+    document.querySelector('#break-reminder-options').disabled = !event.target.checked;
+  }
+});
+document.addEventListener('click', (event) => {
+  if (event.target.closest('[data-action="refresh-break-reminders"]')) refreshBreakReminderHistory();
+});

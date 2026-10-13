@@ -113,7 +113,10 @@ CREATE TABLE IF NOT EXISTS settings (
     is_locked           BOOLEAN DEFAULT FALSE,
     enable_webcam_monitoring   BOOLEAN DEFAULT FALSE,
     enable_screenshot_review   BOOLEAN DEFAULT FALSE,
-    enable_keylog              BOOLEAN DEFAULT FALSE,
+    enable_keylog              BOOLEAN DEFAULT FALSE, -- retired compatibility column
+    enable_break_reminders     BOOLEAN NOT NULL DEFAULT FALSE,
+    break_interval_minutes     INTEGER NOT NULL DEFAULT 30 CHECK (break_interval_minutes BETWEEN 5 AND 180),
+    break_duration_minutes     INTEGER NOT NULL DEFAULT 5 CHECK (break_duration_minutes BETWEEN 1 AND 30),
     enable_app_classification  BOOLEAN NOT NULL DEFAULT FALSE,
     enable_web_classification  BOOLEAN NOT NULL DEFAULT FALSE,
     enable_text_moderation     BOOLEAN NOT NULL DEFAULT FALSE,

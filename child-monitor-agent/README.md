@@ -1,13 +1,17 @@
 # Child Monitor Agent
 
+Agent **1.0.22** bổ sung [Nhắc nghỉ giải lao](docs/break_reminders.md), thay
+điều khiển ghi nhận phím bấm. Xem tài liệu để cấu hình, nâng cấp và nghiệm thu.
+
 Windows Agent gồm một Service chạy dưới `LocalSystem` và Companion chạy trong
 phiên đăng nhập của trẻ. Bản phát hành được đóng thành một bộ cài `.exe`; máy
 được giám sát không cần cài Python hay tải package từ Internet.
 
-**Bản 1.0.21 (chưa hoàn tất bộ cài):** sửa hạn mức 0 thành không giới hạn tổng
-thời gian, vẫn áp dụng khung giờ và khóa thủ công. Backend đã có phần tương
-thích cho Agent cũ. Kiểm thử mã nguồn và Service đã qua; Windows Application
-Control hiện chặn self-test Companion nên chưa xác nhận bản phát hành này.
+**Bản 1.0.21:** Agent hiểu hạn mức 0 là không giới hạn tổng thời gian, vẫn áp
+dụng khung giờ và khóa thủ công. Giữ tính năng chặn ứng dụng của 1.0.20 và các
+model đã đóng gói. Bộ cài hoàn tất ngày 12/10/2026; 173 kiểm thử Agent, self-test
+Service/Companion và kiểm tra mã đóng gói đều đạt trên máy build. Chưa cài và
+nghiệm thu trên máy trẻ; xem [kết quả kiểm chứng](docs/app_enforcement.md).
 
 **Bản 1.0.20:** phát hiện ứng dụng có cửa sổ mỗi 2 giây, yêu cầu đóng khi danh mục
 bị chặn và buộc thoát sau 8 giây nếu còn chạy. Service xác minh tiến trình đã thoát,
@@ -80,7 +84,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.21"
+  -Version "1.0.22"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -88,14 +92,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.21.exe
+build\output\ChildMonitorSetup-1.0.22.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.19" `
+  -Version "1.0.22" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"

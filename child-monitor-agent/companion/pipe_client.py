@@ -74,6 +74,12 @@ class PipeClient:
     def check_applications(self, processes):
         return self._send_and_receive({"action": "CHECK_APPS", "processes": processes})
 
+    def send_break_tick(self, idle_seconds, desktop_active):
+        return self._send_and_receive({'action': 'BREAK_TICK', 'idle_seconds': idle_seconds, 'desktop_active': desktop_active})
+
+    def send_break_response(self, reminder_id, event_type):
+        return self._send_and_receive({'action': 'BREAK_RESPONSE', 'reminder_id': reminder_id, 'event_type': event_type})
+
     def send_screenshot(self, record):
         """Use the Service's device credential; keep all image bytes in memory."""
         return self._send_and_receive({"action": "SCREENSHOT", "record": record}, max_retries=3)

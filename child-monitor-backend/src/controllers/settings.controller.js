@@ -18,8 +18,8 @@ exports.getSettings = async (req, res) => {
     // 1. Tìm cấu hình hiện tại của đứa trẻ (được bảo vệ bởi RLS)
     let result = await req.db.query(
       `SELECT setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-              enable_app_classification, enable_web_classification, enable_text_moderation, updated_at
+              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+              enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at
        FROM settings WHERE child_id = $1`,
       [child_id]
     );
@@ -37,8 +37,8 @@ exports.getSettings = async (req, res) => {
         `INSERT INTO settings(child_id)
          VALUES($1)
          RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-                   is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-                   enable_app_classification, enable_web_classification, enable_text_moderation, updated_at`,
+                   is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+                   enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at`,
         [child_id]
       );
     }
@@ -59,11 +59,22 @@ exports.updateSettings = async (req, res) => {
     is_locked,
     enable_webcam_monitoring,
     enable_screenshot_review,
-    enable_keylog,
+    enable_break_reminders,
     enable_app_classification,
     enable_web_classification,
     enable_text_moderation,
+    break_interval_minutes,
+    break_duration_minutes,
   } = req.body;
+
+  for (const [key, value, min, max] of [
+    ['break_interval_minutes', break_interval_minutes, 5, 180],
+    ['break_duration_minutes', break_duration_minutes, 1, 30],
+  ]) {
+    if (value !== undefined && (!Number.isInteger(value) || value < min || value > max)) {
+      return res.status(400).json({ message: `${key} must be an integer between ${min} and ${max}` });
+    }
+  }
 
   // Validate daily_limit_minutes: số nguyên từ 0 đến 1440 (24 giờ)
   if (daily_limit_minutes !== undefined && daily_limit_minutes !== null) {
@@ -87,7 +98,7 @@ exports.updateSettings = async (req, res) => {
     is_locked,
     enable_webcam_monitoring,
     enable_screenshot_review,
-    enable_keylog,
+    enable_break_reminders,
     enable_app_classification,
     enable_web_classification,
     enable_text_moderation,
@@ -109,8 +120,9 @@ exports.updateSettings = async (req, res) => {
     const result = await req.db.query(
       `INSERT INTO settings (
          child_id, daily_limit_minutes, allowed_start_time, allowed_end_time, is_locked,
-         enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-         enable_app_classification, enable_web_classification, enable_text_moderation
+         enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+         enable_app_classification, enable_web_classification, enable_text_moderation,
+         break_interval_minutes, break_duration_minutes
        )
        VALUES (
          $1,
@@ -123,7 +135,9 @@ exports.updateSettings = async (req, res) => {
          COALESCE($8, FALSE),
          COALESCE($9, FALSE),
          COALESCE($10, FALSE),
-         COALESCE($11, FALSE)
+         COALESCE($11, FALSE),
+         COALESCE($12, 30),
+         COALESCE($13, 5)
        )
        ON CONFLICT (child_id)
        DO UPDATE SET
@@ -133,14 +147,16 @@ exports.updateSettings = async (req, res) => {
          is_locked                 = COALESCE($5, settings.is_locked),
          enable_webcam_monitoring  = COALESCE($6, settings.enable_webcam_monitoring),
          enable_screenshot_review  = COALESCE($7, settings.enable_screenshot_review),
-         enable_keylog             = COALESCE($8, settings.enable_keylog),
+         enable_break_reminders     = COALESCE($8, settings.enable_break_reminders),
          enable_app_classification = COALESCE($9, settings.enable_app_classification),
          enable_web_classification = COALESCE($10, settings.enable_web_classification),
          enable_text_moderation     = COALESCE($11, settings.enable_text_moderation),
+         break_interval_minutes    = COALESCE($12, settings.break_interval_minutes),
+         break_duration_minutes    = COALESCE($13, settings.break_duration_minutes),
          updated_at                = CURRENT_TIMESTAMP
        RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-                 is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
-                 enable_app_classification, enable_web_classification, enable_text_moderation, updated_at`,
+                 is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+                 enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at`,
       [
         child_id,
         daily_limit_minutes,
@@ -149,10 +165,12 @@ exports.updateSettings = async (req, res) => {
         is_locked,
         enable_webcam_monitoring,
         enable_screenshot_review,
-        enable_keylog,
+        enable_break_reminders,
         enable_app_classification,
         enable_web_classification,
         enable_text_moderation,
+        break_interval_minutes,
+        break_duration_minutes,
       ]
     );
 
@@ -163,10 +181,12 @@ exports.updateSettings = async (req, res) => {
       is_locked,
       enable_webcam_monitoring,
       enable_screenshot_review,
-      enable_keylog,
+      enable_break_reminders,
       enable_app_classification,
       enable_web_classification,
       enable_text_moderation,
+      break_interval_minutes,
+      break_duration_minutes,
     })
       .filter(([, value]) => value !== undefined && value !== null)
       .map(([field]) => field);

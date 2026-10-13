@@ -52,6 +52,7 @@ const RLS_TABLES = [
   'text_moderation_events',
   'screenshots',
   'app_enforcement_events',
+  'break_reminder_events',
 ];
 
 async function validateRlsConfiguration() {

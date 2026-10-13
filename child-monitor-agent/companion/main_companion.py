@@ -9,6 +9,7 @@ import win32event
 from logging.handlers import RotatingFileHandler
 from pipe_client import PipeClient
 from app_tracker import AppTracker
+from break_monitor import BreakReminderMonitor
 from app_monitor import AppMonitor
 from web_tracker import WebTracker
 from ui_alerts import UIAlerts
@@ -125,6 +126,8 @@ def main():
     logging.info("UI Companion started in User Session.")
     pipe_client = PipeClient()
     tracker = AppTracker(pipe_client)
+    break_monitor = BreakReminderMonitor(pipe_client, UIAlerts.show_break_reminder)
+    break_monitor.start()
     app_monitor = AppMonitor(pipe_client, UIAlerts.show_app_block_notice)
     app_monitor.start()
     web_tracker = WebTracker(pipe_client)
@@ -161,6 +164,7 @@ def main():
 
             time.sleep(3)
     finally:
+        break_monitor.stop()
         app_monitor.stop()
         vision_monitor.stop()
         screen_monitor.stop()
@@ -178,6 +182,8 @@ def run_self_test():
     from screen_monitor import check_capture_support
 
     check_capture_support()
+    from break_notice import check_break_notice_support
+    check_break_notice_support()
 
     mediapipe = load_mediapipe()
     models_dir = os.path.join(agent_root(), "models")

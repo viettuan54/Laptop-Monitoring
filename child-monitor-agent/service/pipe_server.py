@@ -20,6 +20,7 @@ import win32con
 from runtime_paths import agent_root
 from text_privacy import clean_text, eligible_timestamp, policy_enabled, safe_web_metadata
 from screenshot_upload import ScreenshotUploader
+from break_reminders import BreakReminderEngine
 
 # Cấu hình logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -87,6 +88,7 @@ class PipeServer:
         self.classification_pending = set()
         self.classification_lock = threading.Lock()
         self.screenshot_uploader = ScreenshotUploader(api_client, enforcement_core.get_screenshot_policy)
+        self.break_reminders = None
         self.app_enforcer = None
         self.app_processes = None
         self.app_cache_version = getattr(content_classifier, "app_cache_version", "remote-v1")
@@ -728,8 +730,27 @@ class PipeServer:
             tracking_ack = None
             screenshot_accepted = None
             app_close_requests = None
+            break_reminder = None
+            break_response_accepted = None
 
-            if action == "CHECK_APPS":
+            if action in {"BREAK_TICK", "BREAK_RESPONSE"}:
+                if self.app_processes is None or not self.app_processes.client_allowed(pipe_handle):
+                    raise ValueError("Break reminders require the monitored user session")
+                with self.lock:
+                    if self.break_reminders is None:
+                        self.break_reminders = BreakReminderEngine(self.offline_queue)
+                settings = self.enforcement_core.load_cached_settings()
+                blocked = self.enforcement_core.check_policy_status()[0]
+                if action == "BREAK_TICK":
+                    break_reminder = self.break_reminders.tick(
+                        settings, msg.get('idle_seconds'), msg.get('desktop_active'),
+                        list(self.app_processes.context() or ()), blocked=blocked)
+                else:
+                    if blocked:
+                        settings = dict(settings, enable_break_reminders=False)
+                    break_response_accepted = self.break_reminders.receipt(settings, msg.get('reminder_id'), msg.get('event_type'))
+
+            elif action == "CHECK_APPS":
                 if self.app_enforcer is None or self.app_processes is None:
                     app_close_requests = []
                 elif not self.app_processes.client_allowed(pipe_handle):
@@ -888,6 +909,10 @@ class PipeServer:
                 "text_moderation_config": self._get_text_moderation_config(),
                 "screenshot_config": self.enforcement_core.get_screenshot_policy(),
             }
+            if break_reminder is not None:
+                response_payload['break_reminder'] = break_reminder
+            if break_response_accepted is not None:
+                response_payload['break_response_accepted'] = break_response_accepted
             if screenshot_accepted is not None:
                 response_payload["screenshot_queued"] = screenshot_accepted
             if app_close_requests is not None:

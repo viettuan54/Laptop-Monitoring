@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.21",
+    [string]$Version = "1.0.22",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -204,8 +204,19 @@ if ($PostureProfilePath) {
     Copy-JsonAssetWithHash $PostureProfilePath "posture_profile_v1.json"
 }
 
-Invoke-Checked "$ReleaseRoot\service\ChildMonitorService.exe" "--self-test"
-Invoke-Checked "$ReleaseRoot\companion\ChildMonitorCompanion.exe" "--self-test"
+foreach ($component in @("service/ChildMonitorService", "companion/ChildMonitorCompanion")) {
+    # The Companion is a windowed executable: explicitly wait for its exit code.
+    $testName = [IO.Path]::GetFileName($component)
+    $testOut = Join-Path $WorkRoot "$testName-selftest.stdout.log"
+    $testErr = Join-Path $WorkRoot "$testName-selftest.stderr.log"
+    $selfTest = Start-Process -FilePath "$ReleaseRoot/$component.exe" `
+        -ArgumentList "--self-test" -WindowStyle Hidden -PassThru -Wait `
+        -RedirectStandardOutput $testOut -RedirectStandardError $testErr
+    if ($selfTest.ExitCode -ne 0) {
+        throw "$testName self-test failed ($($selfTest.ExitCode)); see $testErr"
+    }
+    Write-Host "$testName self-test passed."
+}
 Invoke-Checked $PythonExe "$BuildRoot\verify-text-capabilities.py" `
     "--release-root" $ReleaseRoot "--expected-version" $Version
 

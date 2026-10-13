@@ -15,7 +15,7 @@ from text_privacy import clean_text, eligible_timestamp, safe_web_metadata, sear
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-AGENT_VERSION = "1.0.21"
+AGENT_VERSION = "1.0.22"
 
 
 def extract_search_query(raw_url):

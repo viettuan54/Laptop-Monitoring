@@ -40,6 +40,15 @@ Mỗi lần chạy tạo dữ liệu có prefix ngẫu nhiên và xóa bằng ca
 
 ## Agent
 
+Nhắc nghỉ giải lao (Agent 1.0.22) dùng migration v29:
+`node scripts/migrate-break-reminders.js --test`. Tài khoản migration phải sở
+hữu bảng `settings`; đặt `TEST_DB_MIGRATION_USER/PASSWORD` khi role test không
+có quyền này. Test kiểm tra cấu hình qua heartbeat, retry và RLS lịch sử.
+
+Agent test thêm bộ đếm khi idle/khóa/ngủ, restart, đổi cấu hình/phiên, snooze,
+hủy cửa sổ và ACK từng UUID. Dashboard chạy `npm test`, gồm render lịch sử,
+lỗi API và phản hồi đến muộn khi đổi trẻ.
+
 Agent test sử dụng SQLite trong thư mục tạm và không thay đổi ACL hoặc database thật:
 
 ```powershell

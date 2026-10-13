@@ -6,7 +6,10 @@ const DEFAULT_AGENT_CONFIG = Object.freeze({
   is_locked: false,
   enable_webcam_monitoring: false,
   enable_screenshot_review: false,
-  enable_keylog: false,
+  enable_keylog: false, // Retired; old Agents must never receive an enabled value.
+  enable_break_reminders: false,
+  break_interval_minutes: 30,
+  break_duration_minutes: 5,
   enable_app_classification: false,
   enable_web_classification: false,
   enable_text_moderation: false,
@@ -30,7 +33,8 @@ async function getAgentPolicyConfig(db, childId) {
   const [settingsResult, policyResult] = await Promise.all([
     db.query(
       `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_keylog,
+              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+              break_interval_minutes, break_duration_minutes,
               enable_app_classification, enable_web_classification, enable_text_moderation, updated_at
        FROM settings
        WHERE child_id = $1`,
@@ -50,6 +54,7 @@ async function getAgentPolicyConfig(db, childId) {
   const unlimited = settings.daily_limit_minutes === 0;
   return {
     ...settings,
+    enable_keylog: false,
     // Agents through 1.0.20 interpret 0 as an exhausted quota. Their counter
     // resets daily, so send a full day until they understand the explicit flag.
     // Keep the parent's stored value at 0; hours and manual lock still apply.

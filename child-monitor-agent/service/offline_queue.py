@@ -94,6 +94,12 @@ class OfflineQueue:
                 synced INTEGER NOT NULL DEFAULT 0
             )""")
             
+            cursor.execute("""CREATE TABLE IF NOT EXISTS break_reminder_events (
+                client_record_id TEXT PRIMARY KEY, payload TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                synced INTEGER NOT NULL DEFAULT 0
+            )""")
+
             # Bảng lưu app usage offline
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS app_logs (
@@ -794,6 +800,7 @@ class OfflineQueue:
             logging.warning("Offline sync aborted because API client is suspended.")
             return
 
+        self._sync_break_reminders(api_client)
         self._sync_app_enforcement(api_client)
         self._sync_apps(api_client)
         self._sync_webs(api_client)
@@ -870,6 +877,24 @@ class OfflineQueue:
                 )
         except (sqlite3.Error, ValueError, TypeError, AttributeError):
             logging.exception("Could not sync application enforcement results")
+
+    def _sync_break_reminders(self, api_client):
+        try:
+            with self.get_connection() as conn:
+                rows = conn.execute("SELECT client_record_id, payload FROM break_reminder_events WHERE synced = 0 ORDER BY rowid LIMIT 100").fetchall()
+            if not rows:
+                return
+            response = api_client.post('/api/agent/break-reminders/batch', data={'records': [json.loads(row[1]) for row in rows]})
+            if response is None or response.status_code != 201:
+                return
+            accepted = response.json().get('accepted_client_record_ids', [])
+            if not isinstance(accepted, list):
+                return
+            ids = {value for value in accepted if isinstance(value, str)} & {row[0] for row in rows}
+            with self.get_connection() as conn:
+                conn.executemany('UPDATE break_reminder_events SET synced = 1 WHERE client_record_id = ?', [(value,) for value in ids])
+        except (sqlite3.Error, ValueError, TypeError, AttributeError):
+            logging.exception('Could not sync break reminder events')
 
     def _sync_apps(self, api_client):
         """Gửi batch app logs chưa sync."""
@@ -1150,6 +1175,7 @@ class OfflineQueue:
                 cursor.execute("DELETE FROM app_logs WHERE synced = 1 AND start_time < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM web_logs WHERE synced = 1 AND visit_time < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM vision_alerts WHERE synced = 1 AND created_at < datetime('now', '-' || ? || ' days')", (days,))
+                cursor.execute("DELETE FROM break_reminder_events WHERE synced = 1 AND created_at < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute("DELETE FROM app_enforcement_events WHERE synced = 1 AND created_at < datetime('now', '-' || ? || ' days')", (days,))
                 cursor.execute(
                     "DELETE FROM text_moderation_queue "

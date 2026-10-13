@@ -1,4 +1,4 @@
-const { test, before, after } = require('node:test');
+const { test, before, after, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
 const http = require('node:http');
@@ -119,6 +119,12 @@ after(async () => {
     await Promise.allSettled([adminPool.end(), backendPool.end(), closeRedis()]);
   }
   if (cleanupError) throw cleanupError;
+});
+
+beforeEach(async () => {
+  // All fixtures share one loopback IP. Reset only their parent bucket on
+  // the isolated Redis so independent cases do not exhaust each other's quota.
+  await require('../src/middlewares/rateLimit.middleware').parentLimiter.resetKey('127.0.0.1');
 });
 
 test('app enforcement receipts authenticate devices, deduplicate retries and isolate parent history', async () => {
@@ -1153,4 +1159,60 @@ test('screenshot metadata and deletion isolate parents, erase bytes and cannot r
   assert.equal((await request('/api/logs/screenshots', { headers: owner })).body.total, 0);
   assert.equal((await request('/api/logs/screenshots/' + foreignId, { headers: other })).status, 200);
   assert.equal((await clear('', { confirm_all: true, through_id: left.body.scope_latest_id })).body.deleted, 0);
+});
+
+test('break settings travel through heartbeat; receipts are idempotent and private to the owning parent', async () => {
+  const jwt = require('jsonwebtoken');
+  const owners = [];
+  for (const userId of [userOne, userTwo]) {
+    const user = await adminPool.query('SELECT token_version FROM users WHERE user_id=$1', [userId]);
+    owners.push({ authorization: `Bearer ${jwt.sign({ user_id: userId, role: 'parent', token_version: user.rows[0].token_version }, process.env.JWT_SECRET, { expiresIn: '5m' })}`, 'content-type': 'application/json' });
+  }
+  const agent = { 'x-device-secret': plaintextDeviceSecret, 'content-type': 'application/json' };
+  const initial = await request(`/api/settings/${childOne}`, { headers: owners[0] });
+  assert.equal(initial.body.enable_break_reminders, false);
+  for (const invalid of [{ break_interval_minutes: 4 }, { break_interval_minutes: '30' },
+    { break_duration_minutes: 31 }, { break_duration_minutes: null }, { enable_break_reminders: 'true' }]) {
+    assert.equal((await request(`/api/settings/${childOne}`, { method: 'PUT', headers: owners[0], body: JSON.stringify(invalid) })).status, 400);
+  }
+  assert.equal((await request(`/api/settings/${childOne}`, { method: 'PUT', headers: owners[1], body: JSON.stringify({ enable_break_reminders: true }) })).status, 404);
+  const saved = await request(`/api/settings/${childOne}`, { method: 'PUT', headers: owners[0],
+    body: JSON.stringify({ enable_break_reminders: true, break_interval_minutes: 45, break_duration_minutes: 10, enable_keylog: true }) });
+  assert.equal(saved.status, 200, saved.body.message);
+  assert.equal(saved.body.break_interval_minutes, 45);
+  assert.equal(saved.body.break_duration_minutes, 10);
+  for (const reply of [
+    await request('/api/agent/config', { headers: agent }),
+    await request('/api/agent/heartbeat', { method: 'POST', headers: agent, body: '{}' }),
+  ]) {
+    assert.equal(reply.status, 200, reply.body.message);
+    assert.equal(reply.body.config.enable_break_reminders, true);
+    assert.equal(reply.body.config.break_interval_minutes, 45);
+    assert.equal(reply.body.config.break_duration_minutes, 10);
+    assert.equal(reply.body.config.enable_keylog, false);
+  }
+  // Partial changes to classification must preserve the reminder configuration.
+  const partial = await request(`/api/settings/${childOne}`, { method: 'PUT', headers: owners[0], body: JSON.stringify({ enable_app_classification: true }) });
+  assert.equal(partial.body.break_interval_minutes, 45);
+  const reminderId = crypto.randomUUID();
+  const events = ['shown', 'acknowledged'].map(event_type => ({
+    client_record_id: crypto.randomUUID(), reminder_id: reminderId, event_type, interval_minutes: 45,
+    duration_minutes: 10, occurred_at: new Date().toISOString(), device_id: -123,
+  }));
+  const send = headers => request('/api/agent/break-reminders/batch', { method: 'POST', headers, body: JSON.stringify({ records: events }) });
+  assert.equal((await send({ 'content-type': 'application/json', 'x-device-secret': 'invalid' })).status, 401);
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const receipt = await send(agent);
+    assert.equal(receipt.status, 201, receipt.body.message);
+    assert.deepEqual(receipt.body.accepted_client_record_ids, events.map(e => e.client_record_id));
+  }
+  for (const [index, headers] of owners.entries()) {
+    const result = await request(`/api/logs/break-reminders?child_id=${childOne}`, { headers });
+    assert.equal(result.status, 200, result.body.message);
+    assert.equal(result.body.data.length, index === 0 ? 2 : 0);
+    if (index === 0) assert.ok(result.body.data.every(row => row.device_id === deviceOne));
+  }
+  const disabled = await request(`/api/settings/${childOne}`, { method: 'PUT', headers: owners[0], body: JSON.stringify({ enable_break_reminders: false }) });
+  assert.equal(disabled.body.enable_break_reminders, false);
+  assert.equal((await request('/api/agent/config', { headers: agent })).body.config.enable_break_reminders, false);
 });

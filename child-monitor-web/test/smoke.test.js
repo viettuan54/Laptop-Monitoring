@@ -268,7 +268,7 @@ test('device controls live on a dedicated page and save independently from polic
     'is_locked',
     'enable_webcam_monitoring',
     'enable_screenshot_review',
-    'enable_keylog',
+    'enable_break_reminders',
   ]) {
     assert.match(controlsSource, new RegExp(`switchRow\\('${field}'`), `${field} is missing from device controls`);
     assert.doesNotMatch(policiesSource, new RegExp(`switchRow\\('${field}'`), `${field} must not remain in policies`);

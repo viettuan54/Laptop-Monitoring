@@ -6286,3 +6286,25 @@ button.list-item:hover .list-arrow {
   .screen-monitor-policy { flex-shrink: 1; }
   .screenshot-modal .modal-body { padding: 12px; }
 }
+.break-reminder-options {
+  min-width: 0;
+  margin: 4px 0 0;
+  padding: 18px 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.break-reminder-options legend { padding: 0 10px 0 0; font-weight: 700; }
+.break-reminder-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.break-reminder-help { margin: 12px 0; font-size: 13px; line-height: 1.65; }
+.break-reminder-options:disabled input { background: var(--cream); color: var(--ink-soft); cursor: not-allowed; }
+.break-reminder-history { margin-top: 28px; padding-top: 22px; border-top: 1px solid var(--line); }
+.break-history-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.break-history-heading h3 { margin: 0; }
+.break-history-list { list-style: none; margin: 16px 0 0; padding: 0; }
+.break-history-list li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.break-history-list strong, .break-history-list span { display: block; overflow-wrap: anywhere; }
+.break-history-list span, .break-history-list time { margin-top: 4px; font-size: 12px; line-height: 1.5; }
+@media (max-width: 600px) {
+  .break-reminder-fields { grid-template-columns: 1fr; }
+  .break-history-list li { flex-direction: column; gap: 4px; }
+}
