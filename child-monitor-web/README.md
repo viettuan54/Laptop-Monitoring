@@ -43,8 +43,11 @@ Có thể dùng `npm start` nếu PowerShell cho phép chạy npm script. Chạy
   mở liên kết website an toàn và xuất CSV UTF-8.
 - Giám sát màn hình: tab bên cạnh Ứng dụng/Website, xem ảnh Agent chụp mỗi
   5 phút khi được bật, lọc thiết bị/thời gian, phân trang từ API và mở ảnh lớn.
-  Nút **Bắt đầu chụp ảnh** gửi yêu cầu đến thiết bị đang chọn và hiển thị trạng
-  thái chờ/ngoại tuyến, xóa từng ảnh hoặc xóa toàn bộ theo thiết bị/tài khoản với
+  Nút **Bắt đầu chụp ảnh** bật lại lịch chụp nếu đang tắt, yêu cầu ảnh mới từ
+  thiết bị đang chọn và hiển thị trạng thái chờ/ngoại tuyến. **Dừng chụp ảnh**
+  tắt lịch chụp cho các thiết bị cùng hồ sơ con, kể cả khi đang chờ ảnh;
+  Agent dừng khi nhận cấu hình mới. Ảnh đã lưu vẫn được giữ. Có thể xóa từng
+  ảnh hoặc xóa toàn bộ theo thiết bị/tài khoản với
   hộp xác nhận. Khi chờ, kiểm tra ảnh mới mỗi 2 giây qua metadata; chỉ tải lại
   thumbnail khi dữ liệu thay đổi. Ảnh giữ 7 ngày; xem [hướng dẫn cập nhật Agent 1.0.19](../child-monitor-agent/docs/screenshot_monitoring.md).
 - Admin: thống kê, người dùng, blacklist và audit log.

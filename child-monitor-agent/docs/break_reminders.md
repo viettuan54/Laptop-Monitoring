@@ -1,4 +1,4 @@
-# Nhắc nghỉ giải lao — Agent 1.0.22
+# Nhắc nghỉ giải lao — Agent 1.0.23
 
 Thay **Ghi nhận phím bấm** tại **Điều khiển thiết bị**. Tính năng mặc định tắt,
 độc lập với webcam, ảnh màn hình, hạn mức ngày và chính sách phân loại.
@@ -21,8 +21,10 @@ ngay** chỉ ghi nhận lựa chọn, không chứng minh trẻ đã nghỉ.
 - Companion đọc thời gian từ lần tương tác gần nhất qua `GetLastInputInfo`
   mỗi 5 giây, không cài hook bàn phím hoặc đọc nội dung gõ.
 - Tính thời gian trong desktop mở khóa, chưa có yêu cầu khóa từ chính sách,
-  lần tương tác gần nhất chưa quá 60 giây. Đọc/xem video không tương tác lâu
-  cũng có thể được tính là không hoạt động; đây không phải đo sự chú ý.
+  kể cả đọc nội dung/xem video không dùng chuột hoặc bàn phím. Từ 1.0.23,
+  thời gian không thao tác không dừng hoặc đưa bộ đếm về 0.
+  Nếu rời máy nhưng để phiên mở khóa, bộ đếm vẫn chạy; khóa máy khi nghỉ để
+  Agent nhận biết khoảng nghỉ. Đây là thời gian phiên mở khóa, không đo sự chú ý.
 - Không cộng thời gian ngủ, khóa máy, mất Companion hay khoảng lấy mẫu gián
   đoạn quá 15 giây. Khoảng nghỉ đủ thời gian cấu hình bắt đầu lại bộ đếm.
 - SQLite của Service giữ thời gian đã quan sát qua lần khởi động lại ngắn.
@@ -53,12 +55,44 @@ backend mới. Tài khoản phải sở hữu bảng settings; nếu cần đặ
 `DB_MIGRATION_USER/PASSWORD` trong `.env`. DB test dùng `--test` và
 `TEST_DB_MIGRATION_USER/PASSWORD`; đích kết nối luôn từ `TEST_DB_*`.
 
-Cập nhật Dashboard và cài `ChildMonitorSetup-1.0.22.exe` trên máy trẻ. Agent cũ
-bỏ qua cấu hình mới. Nghiệm thu với khoảng nhắc 5 phút: cả hai lựa chọn,
+Cập nhật Dashboard và cài `ChildMonitorSetup-1.0.23.exe` trên máy trẻ. Agent trước
+1.0.22 bỏ qua cấu hình mới; 1.0.22 có lỗi không nhắc khi ít thao tác.
+Nghiệm thu với khoảng nhắc 10 phút, nghỉ 2 phút: mở video/đọc nội dung và giữ
+phiên Windows mở khóa, lời nhắc xuất hiện sau khoảng 10 phút kể từ lúc Agent
+nhận cấu hình (kiểm tra mỗi 5 giây). Kiểm tra thêm cả hai lựa chọn,
 tắt/bật, khóa/ngủ máy, mất mạng/kết nối lại, và lịch sử sau đồng bộ (~60 giây).
 Kiểm thử tự động không thay thế bước cài/nghiệm thu trên máy trẻ.
 
-## Kiểm chứng ngày 12/10/2026
+## Sửa lỗi 1.0.23 — 14/10/2026
+
+- Tái hiện trên 1.0.22: cấu hình 10 phút, nghỉ 2 phút; không thao tác trong
+  600 giây khiến bộ đếm về 0 và không có lời nhắc. Bỏ điều kiện idle 60 giây;
+  vẫn bỏ qua khóa/ngủ máy, mất Companion và khoảng lấy mẫu gián đoạn.
+- Khi Named Pipe gián đoạn, hủy cửa sổ phải xóa trạng thái đang hiển thị để
+  cùng lời nhắc có thể mở lại lúc kết nối phục hồi. Nếu worker cửa sổ lỗi,
+  Companion thử lại; lời nhắc đã trả lời chờ ACK không bị mở lại.
+- Log Service có `Break reminder policy`, `Break reminder timer` mỗi phút và
+  `Break reminder due` khi đến hạn, giúp phân biệt chưa nhận cấu hình, đang
+  tạm dừng và đã tới lúc nhắc. Log không chứa nội dung bàn phím.
+- Không cần migration mới; dùng cấu hình và API của migration v29.
+- Đạt 192 kiểm thử Agent (19 ca cho nhắc nghỉ). Kiểm thử tích hợp qua Named
+  Pipe thật, xác minh phiên Windows thật và cửa sổ native thật đã đạt: với
+  đồng hồ mô phỏng 600 giây không thao tác, lời nhắc xuất hiện, nút nhắc lại
+  hoạt động và SQLite nhận đúng `shown`, `snoozed`. Không gửi dữ liệu thử lên
+  backend. Chạy lại trong phiên Windows mở khóa:
+
+  ```powershell
+  .\.venv-edge\Scripts\python.exe -B tests\native_break_reminder_smoke.py
+  ```
+
+- Service và Companion 1.0.23 đã qua self-test trên máy build. Chưa cài bản
+  sửa lên máy trẻ; cần nâng cấp bộ cài để thay logic của Agent đang chạy.
+- Bộ cài `build/output/ChildMonitorSetup-1.0.23.exe` kèm `.exe.sha256` và
+  `ChildMonitorSetup-1.0.23.verification.json`: 8 module đóng gói khớp nguồn,
+  13 file model giữ nguyên từ 1.0.22, các thư mục dữ liệu runtime trống.
+  SHA-256: `2eb722b03b7d7aa7c34122af2b5fcbc4955072f0434d13f7436c044aacf0ce66`.
+
+## Kiểm chứng bản 1.0.22 ngày 12/10/2026
 
 - Đạt 184 kiểm thử Agent, 82 kiểm thử đơn vị backend, 18 kiểm thử tích hợp
   PostgreSQL/Redis và 47 kiểm thử Dashboard.

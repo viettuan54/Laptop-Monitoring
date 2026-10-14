@@ -1,5 +1,6 @@
 """Session-local break reminders. No input content, screenshots or key hooks."""
 import json
+import logging
 import math
 import threading
 import time
@@ -8,7 +9,6 @@ from datetime import datetime, timezone
 
 
 class BreakReminderEngine:
-    IDLE_SECONDS = 60
     MAX_TICK_GAP = 15
 
     def __init__(self, offline_queue, clock=time.monotonic, wall_clock=time.time):
@@ -17,6 +17,7 @@ class BreakReminderEngine:
         self.wall_clock = wall_clock
         self.lock = threading.RLock()
         self.last_mono = None
+        self.last_progress_log = None
         with self.queue.get_connection() as conn:
             row = conn.execute("SELECT value FROM agent_metadata WHERE key = 'break_reminder_state'").fetchone()
         try:
@@ -54,6 +55,9 @@ class BreakReminderEngine:
             if self.state.get('policy') != signature:
                 self.state = {'policy': signature, 'active_seconds': 0}
                 self.last_mono = None
+                self.last_progress_log = None
+                logging.info('Break reminder policy: enabled=%s interval=%sm duration=%sm; timer restarted',
+                             enabled, interval, duration)
             previous_wall = self.state.get('last_tick', wall)
             wall_gap = wall - previous_wall
             delta = now - self.last_mono if self.last_mono is not None else 0
@@ -66,21 +70,20 @@ class BreakReminderEngine:
             # Keep time already observed through short locks/restarts, but never
             # count sleep, a missing Companion or a clock change as active use.
             continuous = 0 <= delta <= self.MAX_TICK_GAP and 0 <= wall_gap <= self.MAX_TICK_GAP
-            active = desktop_active and not blocked and idle_seconds < self.IDLE_SECONDS
+            # Reading and watching video are still screen use. Input inactivity
+            # is not evidence of a break; retain the sample only for IPC compatibility.
+            active = desktop_active and not blocked
             inactive_since = self.state.get('inactive_since')
-            if not desktop_active or blocked:
+            if not active:
                 inactive_since = inactive_since if inactive_since is not None else previous_wall
-            elif idle_seconds >= self.IDLE_SECONDS:
-                inactive_since = wall - idle_seconds
-            else:
-                inactive_since = None
             rest_elapsed = ((inactive_since is not None and wall - inactive_since >= duration * 60)
                             or wall_gap >= duration * 60)
             if wall_gap < 0 or rest_elapsed:
                 self.state.update(active_seconds=0, reminder=None, next_allowed=0)
             elif continuous and active and self.state.get('was_active'):
                 self.state['active_seconds'] = min(interval * 60, self.state.get('active_seconds', 0) + delta)
-            self.state.update(last_tick=wall, was_active=active, inactive_since=inactive_since)
+            self.state.update(last_tick=wall, was_active=active,
+                              inactive_since=None if active else inactive_since)
 
             pending = self.state.get('reminder')
             if pending and (blocked or not desktop_active or wall - pending['created_at'] > 125):
@@ -91,6 +94,11 @@ class BreakReminderEngine:
                 pending = {'reminder_id': str(uuid.uuid4()), 'interval_minutes': interval,
                            'duration_minutes': duration, 'created_at': wall}
                 self.state['reminder'] = pending
+                logging.info('Break reminder due after %.0fs of unlocked session use', self.state['active_seconds'])
+            if self.last_progress_log is None or now - self.last_progress_log >= 60:
+                logging.info('Break reminder timer: active=%s counted=%.0fs target=%ss',
+                             active, self.state.get('active_seconds', 0), interval * 60)
+                self.last_progress_log = now
             self._persist()
             return {'enabled': True, 'reminder': pending if active else None}
 

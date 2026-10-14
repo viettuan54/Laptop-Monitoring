@@ -14,6 +14,23 @@ tự chọn thiết bị đó. Trang hiển thị **Đang chờ ảnh…** và b
 vừa chụp không bị ẩn. Không còn nút dẫn về Điều khiển thiết bị ở trạng thái trống.
 Trang đọc cờ giám sát thật để phân biệt đang bật, chưa bật và đang chờ ảnh.
 
+## Bật và dừng từ dashboard (2026-10-13)
+
+- Chọn thiết bị tại **Hoạt động → Giám sát màn hình**, rồi nhấn **Dừng chụp ảnh**
+  để tắt chụp định kỳ, kể cả khi đang chờ ảnh. Không cần chờ hết chu kỳ 5 phút.
+- Cấu hình chụp dùng chung theo hồ sơ con: dừng hoặc bật sẽ áp dụng cho tất cả
+  thiết bị của cùng hồ sơ với thiết bị đang chọn. Phạm vi được ghi cạnh nút.
+  Thiết bị được chọn ở bộ lọc có hiệu lực cho nút ngay cả trước khi nhấn Áp dụng.
+- Agent dừng ở lần nhận cấu hình tắt kế tiếp; backend từ chối ảnh gửi lên sau
+  khi cấu hình tắt đã lưu. Khi mất mạng, Agent không nhận lệnh ngay và quyền
+  chụp cũ chỉ tồn tại đến khi hết thời hạn; không hiển thị xác nhận đã dừng trên
+  máy con khi dashboard mới chỉ lưu cấu hình.
+- Ảnh cũ và bộ lọc được giữ khi dừng. Xóa ảnh vẫn là thao tác riêng.
+- Nhấn **Bắt đầu chụp ảnh** để bật lại lịch chụp và yêu cầu một ảnh mới. Nếu đã
+  bật lịch nhưng yêu cầu ảnh ngay thất bại, trang báo rõ và vẫn cho phép dừng.
+- Đây là thay đổi dashboard dùng API cấu hình và cơ chế dừng đã có trong Agent;
+  không yêu cầu bộ cài Agent mới cho riêng chức năng này.
+
 ## Tăng tốc và xóa ảnh trong 1.0.19
 
 - Heartbeat giảm từ 60 xuống 5 giây; Companion kiểm tra từ 10 xuống 1 giây.
@@ -110,7 +127,8 @@ Select-String -LiteralPath (Join-Path ([Environment]::GetFolderPath('LocalApplic
 5. Để yêu cầu ảnh ngay, nhấn **Bắt đầu chụp ảnh**. Service nhận yêu cầu ở lần
    heartbeat tiếp theo (chu kỳ 5 giây trên 1.0.19), Companion kiểm tra mỗi giây,
    rồi Dashboard kiểm tra ảnh mới mỗi 2 giây. Nút cần Agent **1.0.17 trở lên**;
-   1.0.16 chỉ hỗ trợ chụp định kỳ. Nút không tự bật quyền giám sát đang tắt.
+   1.0.16 chỉ hỗ trợ chụp định kỳ. Dashboard hiện bật lại quyền giám sát nếu
+   đang tắt khi phụ huynh nhấn nút này, rồi gửi yêu cầu chụp ngay.
    Khi thiết bị ngoại tuyến, trang báo rõ; yêu cầu hết hiệu lực sau 3 phút và
    có thể thử lại. Nhấn lặp trong lúc chờ dùng cùng một yêu cầu, không tạo chụp
    trùng. Sau khi chụp theo yêu cầu, chu kỳ tự động tiếp tục mỗi 5 phút.

@@ -50,14 +50,46 @@ class BreakReminderTest(unittest.TestCase):
         self.settings['enable_break_reminders'] = True
         self.assertIsNone(self.tick(5)['reminder'])
 
-    def test_idle_pauses_and_actual_inactivity_resets(self):
+    def test_ten_minutes_reading_without_input_still_reminds(self):
+        self.settings['break_interval_minutes'] = 10
+        self.tick(idle=3600)
+        for elapsed in range(5, 600, 5):
+            self.assertIsNone(self.tick(5, idle=3600 + elapsed)['reminder'])
+        reminder = self.tick(5, idle=4200)['reminder']
+        self.assertEqual(reminder['interval_minutes'], 10)
+        self.assertEqual(reminder['duration_minutes'], 2)
+        self.assertEqual(self.engine.state['active_seconds'], 600)
+        self.assertEqual(self.tick(5, idle=4205)['reminder'], reminder)
+
+    def test_idle_after_typing_keeps_accumulated_time_and_visible_reminder(self):
         self.use(200)
         self.tick(5, idle=65)
-        self.assertEqual(self.engine.state['active_seconds'], 200)
+        self.assertEqual(self.engine.state['active_seconds'], 205)
         self.tick(5, idle=125)
+        self.assertEqual(self.engine.state['active_seconds'], 210)
+        reminder = self.use(90)['reminder']
+        self.assertEqual(self.tick(5, idle=600)['reminder'], reminder)
+
+    def test_full_break_on_locked_desktop_resets_on_unlock(self):
+        self.use(200)
+        for _ in range(23):
+            self.tick(5, desktop=False)
+        self.assertEqual(self.engine.state['active_seconds'], 200)
+        self.tick(5, idle=1000)
         self.assertEqual(self.engine.state['active_seconds'], 0)
-        self.tick(5)
         self.assertIsNone(self.use(295)['reminder'])
+        self.assertIsNotNone(self.tick(5)['reminder'])
+
+    def test_temporary_missing_ticks_do_not_count_unobserved_time(self):
+        self.use(200)
+        self.tick(20, idle=600)
+        self.assertEqual(self.engine.state['active_seconds'], 200)
+        self.assertIsNotNone(self.use(100)['reminder'])
+
+    def test_unrelated_settings_refresh_does_not_restart_timer(self):
+        self.use(200)
+        self.settings.update(updated_at='2026-10-14T07:00:00Z', enable_screenshot_review=True)
+        self.assertIsNotNone(self.use(100)['reminder'])
 
     def test_short_lock_pauses_long_sleep_resets(self):
         self.use(200)
@@ -146,6 +178,52 @@ class BreakMonitorTest(unittest.TestCase):
         self.pipe.send_break_tick.return_value = {'break_reminder': {'enabled': False}}
         self.monitor.poll()
         self.assertTrue(cancel.is_set())
+
+    def test_same_reminder_reopens_after_pipe_recovers(self):
+        self.monitor.poll()
+        first_cancel = self.notice.call_args.args[2]
+        good_response = self.pipe.send_break_tick.return_value
+        self.pipe.send_break_tick.return_value = None
+        with patch('break_monitor.time.monotonic', return_value=self.monitor.last_response + 16):
+            self.monitor.poll()
+        self.assertTrue(first_cancel.is_set())
+        self.pipe.send_break_tick.return_value = good_response
+        self.monitor.poll()
+        self.assertEqual(self.notice.call_count, 2)
+        self.assertFalse(self.notice.call_args.args[2].is_set())
+        self.monitor.poll()
+        self.assertEqual(self.notice.call_count, 2)
+
+    def test_failed_window_creation_retries_same_reminder(self):
+        self.notice.side_effect = OSError('dialog could not be created')
+        with self.assertRaises(OSError):
+            self.monitor.poll()
+        self.notice.side_effect = None
+        self.monitor.poll()
+        self.assertEqual(self.notice.call_count, 2)
+        self.assertFalse(self.notice.call_args.args[2].is_set())
+
+    def test_window_worker_failure_retries_but_completed_response_does_not(self):
+        worker = self.notice.return_value
+        worker.is_alive.return_value = False
+        self.monitor.poll()
+        self.monitor.poll()
+        self.assertEqual(self.notice.call_count, 2)
+        self.notice.call_args.args[1]('acknowledged')
+        self.pipe.send_break_response.return_value = None
+        self.monitor.poll()
+        self.assertEqual(self.notice.call_count, 2)
+        self.monitor._cancel_notice()  # Connection failed before the ACK arrived.
+        self.monitor.poll()
+        self.assertEqual(self.notice.call_count, 2)
+
+    def test_cancelled_window_cannot_enqueue_late_response(self):
+        self.monitor.poll()
+        callback = self.notice.call_args.args[1]
+        self.pipe.send_break_tick.return_value = {'break_reminder': {'enabled': False}}
+        self.monitor.poll()
+        callback('acknowledged')
+        self.assertTrue(self.monitor.events.empty())
 
     def test_display_is_not_reported_until_window_callback_and_retries_are_fifo(self):
         self.monitor.poll()

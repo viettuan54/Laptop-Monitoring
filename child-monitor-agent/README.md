@@ -1,7 +1,8 @@
 # Child Monitor Agent
 
-Agent **1.0.22** bổ sung [Nhắc nghỉ giải lao](docs/break_reminders.md), thay
-điều khiển ghi nhận phím bấm. Xem tài liệu để cấu hình, nâng cấp và nghiệm thu.
+Agent **1.0.23** sửa [Nhắc nghỉ giải lao](docs/break_reminders.md): xem video/đọc
+nội dung ít thao tác vẫn được tính thời gian, cửa sổ nhắc phục hồi khi kết nối
+Service trở lại. Tính năng thay điều khiển ghi nhận phím bấm từ bản 1.0.22.
 
 Windows Agent gồm một Service chạy dưới `LocalSystem` và Companion chạy trong
 phiên đăng nhập của trẻ. Bản phát hành được đóng thành một bộ cài `.exe`; máy
@@ -84,7 +85,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.22"
+  -Version "1.0.23"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -92,14 +93,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.22.exe
+build\output\ChildMonitorSetup-1.0.23.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.22" `
+  -Version "1.0.23" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"

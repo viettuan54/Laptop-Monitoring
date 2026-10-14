@@ -1,4 +1,4 @@
-"""Read only the time since the last input; never read which keys were pressed."""
+"""Poll session reminders without reading input content or installing hooks."""
 import ctypes
 from ctypes import wintypes
 import logging
@@ -32,7 +32,14 @@ class BreakReminderMonitor:
         self.events = queue.Queue()
         self.pending_event = None
         self.current_id = None
+        self.notice_worker = None
+        self.completed_id = None
         self.last_response = time.monotonic()
+
+    def _cancel_notice(self):
+        self.cancel_notice.set()
+        self.current_id = None
+        self.notice_worker = None
 
     def poll(self):
         # FIFO and stable IDs preserve shown-before-response, even after an IPC retry.
@@ -49,19 +56,35 @@ class BreakReminderMonitor:
         response = self.pipe.send_break_tick(self.activity_reader(), self.desktop_reader())
         if not isinstance(response, dict) or 'break_reminder' not in response:
             if time.monotonic() - self.last_response > 15:
-                self.cancel_notice.set()
+                self._cancel_notice()
             return
         self.last_response = time.monotonic()
         policy = response['break_reminder']
         reminder = policy.get('reminder') if policy.get('enabled') and not response.get('should_lock') else None
         reminder_id = reminder.get('reminder_id') if reminder else None
         if reminder_id == self.current_id:
+            if (self.notice_worker is None or self.notice_worker.is_alive()
+                    or reminder_id == self.completed_id):
+                return
+            logging.warning('Break reminder window closed before a response; retrying')
+        self._cancel_notice()
+        if reminder_id is None or reminder_id == self.completed_id:
             return
-        self.cancel_notice.set()
         self.current_id = reminder_id
         if reminder:
             self.cancel_notice = threading.Event()
-            self.notice(reminder, lambda event: self.events.put((reminder_id, event)), self.cancel_notice)
+            cancel = self.cancel_notice
+            def receive(event):
+                if cancel.is_set():
+                    return
+                if event in {'acknowledged', 'snoozed'}:
+                    self.completed_id = reminder_id
+                self.events.put((reminder_id, event))
+            try:
+                self.notice_worker = self.notice(reminder, receive, cancel)
+            except Exception:
+                self._cancel_notice()
+                raise
 
     def start(self):
         def run():
@@ -69,7 +92,7 @@ class BreakReminderMonitor:
                 try:
                     self.poll()
                 except Exception:
-                    self.cancel_notice.set()
+                    self._cancel_notice()
                     logging.exception('Break reminder update failed')
                 self.stop_event.wait(5)
         self.thread = threading.Thread(target=run, daemon=True, name='BreakReminders')
@@ -77,4 +100,4 @@ class BreakReminderMonitor:
 
     def stop(self):
         self.stop_event.set()
-        self.cancel_notice.set()
+        self._cancel_notice()

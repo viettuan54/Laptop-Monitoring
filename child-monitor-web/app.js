@@ -669,6 +669,7 @@ function clearSession() {
     screenshotDevices: [],
     screenshotSignature: null,
     screenshotPollError: false,
+    screenshotControlOperation: null,
     usageSummary: emptyUsageSummary(),
     adminStats: null,
     adminUsers: [],
@@ -1750,7 +1751,7 @@ function screenshotSignature(result) {
 }
 
 function screenshotInteractionActive(content) {
-  if (document.hidden || modalRoot.firstElementChild
+  if (document.hidden || modalRoot.firstElementChild || state.screenshotControlOperation
       || (content.contains(document.activeElement)
         && document.activeElement?.matches('input, select, textarea, button:focus-visible, a:focus-visible'))) return true;
   // Keep unapplied edits even after focus leaves the form. Pointer-focused
@@ -1823,18 +1824,9 @@ async function renderScreenshotActivity(content, renderVersion, background = fal
   state.screenshotDevices = result.devices || [];
   const monitor = state.screenshotDevices.find((device) => String(device.device_id) === String(filter.device_id))
     || (!filter.device_id && state.screenshotDevices.length === 1 ? state.screenshotDevices[0] : null);
-  const pending = Boolean(monitor?.pending_request_id);
-  const unavailable = !state.screenshotDevices.length || Boolean(monitor && !monitor.enabled);
-  const captureButton = `<button class="btn" data-action="start-screenshot" ${pending || unavailable ? 'disabled' : ''}>${pending ? 'Đang chờ ảnh…' : 'Bắt đầu chụp ảnh'}</button>`;
-  const captureStatus = !state.screenshotDevices.length ? 'Chưa có thiết bị để chụp ảnh.'
-    : !monitor ? 'Chọn một thiết bị ở bộ lọc để yêu cầu chụp ảnh.'
-      : !monitor.enabled ? 'Giám sát màn hình chưa bật cho thiết bị này. Hãy bật tại Điều khiển thiết bị.'
-        : pending ? (monitor.online ? 'Đã gửi yêu cầu. Đang chờ Agent chụp và gửi ảnh; trang kiểm tra mỗi 2 giây.'
-          : 'Đã gửi yêu cầu. Thiết bị đang ngoại tuyến; Agent cần kết nối lại trong 3 phút để nhận yêu cầu.')
-          : monitor.request_expired ? 'Chưa nhận được ảnh từ yêu cầu trước. Kiểm tra Agent đã cập nhật, có mạng và Windows đang mở khóa, rồi thử lại.'
-            : 'Giám sát đang bật. Nhấn Bắt đầu chụp ảnh để yêu cầu ảnh mới; Agent tiếp tục tự chụp mỗi 5 phút.';
+  const pending = Boolean(monitor?.enabled && monitor.pending_request_id);
   content.innerHTML = `
-    ${pageHead('activity', `<div class="activity-head-actions">${activityTabs()}${rows.length ? captureButton : ''}<button class="btn btn-secondary" data-action="refresh-screenshots">${icons.refresh} Làm mới</button><button class="btn btn-secondary" data-action="clear-screenshots" ${!state.screenshotDevices.length ? 'disabled' : ''}>Xóa tất cả ảnh</button></div>`)}
+    ${pageHead('activity', `<div class="activity-head-actions">${activityTabs()}<button class="btn btn-secondary" data-action="refresh-screenshots">${icons.refresh} Làm mới</button><button class="btn btn-secondary" data-action="clear-screenshots" ${!state.screenshotDevices.length ? 'disabled' : ''}>Xóa tất cả ảnh</button></div>`)}
     <section class="screen-monitor-intro"><div><h2>Giám sát màn hình</h2><p>Ảnh chụp màn hình chính từ thiết bị của con, mới nhất ở đầu danh sách.</p></div><p class="screen-monitor-policy">Chụp mỗi ${Math.round(Number(result.capture_interval_seconds || 300) / 60)} phút · Lưu ${Number(result.retention_days) || 7} ngày</p></section>
     <form id="activity-filter" class="filters screenshot-filters">
       <div class="field"><label for="screen-device">Thiết bị</label><select id="screen-device" class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((device) => `<option value="${device.device_id}" ${String(filter.device_id) === String(device.device_id) ? 'selected' : ''}>${escapeHtml(device.device_name)}</option>`).join('')}</select></div>
@@ -1842,13 +1834,13 @@ async function renderScreenshotActivity(content, renderVersion, background = fal
       <div class="field"><label for="screen-end">Đến thời điểm</label><input id="screen-end" class="input" type="datetime-local" name="end" value="${escapeHtml(filter.end || '')}"></div>
       <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-activity-filter">Xóa lọc</button><button class="btn" type="submit">Áp dụng</button></div>
     </form>
+    <section id="screenshot-capture-controls" tabindex="-1" aria-label="Điều khiển chụp ảnh">${screenshotCaptureControls(monitor)}</section>
     <div class="screen-monitor-summary"><span>${total} ảnh phù hợp</span><span>${pending ? 'Kiểm tra ảnh mới mỗi 2 giây' : 'Tự cập nhật ảnh mới'}</span></div>
-    <p id="screenshot-capture-status" role="status">${captureStatus}</p>
     ${rows.length ? `<section class="screenshot-grid" aria-label="Ảnh màn hình thiết bị">${rows.map((item) => `<figure class="screenshot-card">
       <button class="screenshot-preview" data-action="view-screenshot" data-id="${escapeHtml(item.screenshot_id)}" aria-label="Xem ảnh ${escapeHtml(deviceName(item.device_id))}, ${escapeHtml(formatDate(item.captured_at))}"><img src="${screenshotDataUrl(item.thumbnail_base64)}" alt="Ảnh màn hình ${escapeHtml(deviceName(item.device_id))}" width="${Number(item.width)}" height="${Number(item.height)}" loading="lazy" decoding="async"><span>Xem ảnh lớn</span></button>
       <figcaption><div><strong>${escapeHtml(deviceName(item.device_id))}</strong><time datetime="${escapeHtml(item.captured_at)}">${formatDate(item.captured_at)}</time></div><button class="btn btn-ghost btn-sm screenshot-delete" data-action="delete-screenshot" data-id="${escapeHtml(item.screenshot_id)}" aria-label="Xóa ảnh ${escapeHtml(deviceName(item.device_id))} lúc ${escapeHtml(formatDate(item.captured_at))}">Xóa ảnh</button></figcaption></figure>`).join('')}</section>
       <nav class="screenshot-pagination" aria-label="Phân trang ảnh màn hình"><span>${state.activityOffset + 1}–${state.activityOffset + rows.length} / ${total} ảnh</span><div><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${Math.max(0, state.activityOffset - 12)}" ${state.activityOffset === 0 ? 'disabled' : ''}>Trước</button><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${state.activityOffset + 12}" ${state.activityOffset + rows.length >= total ? 'disabled' : ''}>Sau</button></div></nav>`
-      : emptyState(icons.device, filter.start || filter.end ? 'Không có ảnh phù hợp bộ lọc' : 'Chưa có ảnh màn hình', 'Ảnh mới sẽ xuất hiện tại đây sau khi Agent gửi lên. Máy của con cần kết nối mạng và Windows đang mở khóa.', captureButton)}`;
+      : emptyState(icons.device, filter.start || filter.end ? 'Không có ảnh phù hợp bộ lọc' : 'Chưa có ảnh màn hình', 'Khi bật chụp ảnh, ảnh mới sẽ xuất hiện tại đây sau khi Agent gửi lên. Máy của con cần kết nối mạng và Windows đang mở khóa.')}`;
   scheduleScreenshotRefresh(content, renderVersion);
 }
 
@@ -1874,7 +1866,7 @@ async function confirmClearScreenshots() {
     }
     const scope = deviceId ? `thiết bị ${deviceName(deviceId)}` : 'tất cả thiết bị thuộc tài khoản của bạn';
     showModal('Xóa tất cả ảnh?',
-      `Xóa ${Number(result.scope_total)} ảnh của ${scope}, kể cả ảnh ngoài bộ lọc thời gian. Không thể hoàn tác. Ảnh mới chụp sau lúc mở hộp thoại này vẫn được giữ; lịch chụp tự động vẫn hoạt động.`,
+      `Xóa ${Number(result.scope_total)} ảnh của ${scope}, kể cả ảnh ngoài bộ lọc thời gian. Không thể hoàn tác. Ảnh mới chụp sau lúc mở hộp thoại này vẫn được giữ; thao tác xóa không thay đổi cài đặt chụp tự động.`,
       `<div class="form-actions"><button class="btn btn-secondary" data-action="close-modal">Hủy</button><button class="btn btn-danger" data-action="confirm-clear-screenshots" data-device-id="${escapeHtml(deviceId)}" data-through-id="${escapeHtml(result.scope_latest_id)}">Xóa tất cả ảnh</button></div>`);
   } catch (error) {
     if (version !== activityRenderVersion || modalRoot.firstElementChild !== modal) return;
@@ -1898,34 +1890,129 @@ async function deleteScreenshots(button, all = false) {
   await renderActivity(document.querySelector('#page-content'));
 }
 
-async function startScreenshotCapture(button) {
+function screenshotCaptureTarget() {
   // Read the visible selection even before Apply, so the action always targets
   // the device the parent sees in the filter, never another child's device.
-  const selected = document.querySelector('#screen-device')?.value || '';
+  const selected = document.querySelector('#screen-device')?.value ?? state.activityFilter?.device_id ?? '';
   const monitors = state.screenshotDevices || [];
-  const target = monitors.find((device) => String(device.device_id) === String(selected))
+  return monitors.find((device) => String(device.device_id) === String(selected))
     || (!selected && monitors.length === 1 ? monitors[0] : null);
+}
+
+function screenshotCaptureControls(monitor) {
+  const operation = state.screenshotControlOperation;
+  const pending = Boolean(monitor?.enabled && monitor.pending_request_id);
+  const captureStatus = operation ? (operation.enabled ? 'Đang gửi yêu cầu chụp ảnh…' : 'Đang gửi yêu cầu dừng chụp ảnh…')
+    : !(state.screenshotDevices || []).length ? 'Chưa có thiết bị để chụp ảnh.'
+      : !monitor ? 'Chọn một thiết bị ở bộ lọc để bắt đầu hoặc dừng chụp ảnh.'
+        : !monitor.enabled ? 'Chụp định kỳ đang tắt. Agent dừng khi nhận cấu hình này; ảnh đã lưu vẫn được giữ. Nhấn Bắt đầu chụp ảnh để bật lại.'
+          : pending ? (monitor.online ? 'Đã gửi yêu cầu. Đang chờ Agent chụp và gửi ảnh; trang kiểm tra mỗi 2 giây.'
+            : 'Đã gửi yêu cầu. Thiết bị đang ngoại tuyến; Agent cần kết nối lại trong 3 phút để nhận yêu cầu chụp ngay.')
+            : monitor.request_expired ? 'Chưa nhận được ảnh từ yêu cầu trước. Kiểm tra kết nối Agent hoặc nhấn Dừng chụp ảnh để tắt lịch chụp.'
+              : 'Giám sát đang bật. Agent tự chụp định kỳ; nhấn Dừng chụp ảnh để ngừng chụp và gửi ảnh mới.';
+  const scope = monitor ? `Bật hoặc dừng áp dụng cho tất cả thiết bị cùng hồ sơ con với ${deviceName(monitor.device_id)}. Agent nhận thay đổi khi kết nối; ảnh đã lưu không bị xóa.`
+    : 'Chọn thiết bị để xem phạm vi bật hoặc dừng chụp ảnh.';
+  return `<div class="form-actions form-actions-start" role="group" aria-label="Bật hoặc dừng chụp ảnh" aria-describedby="screenshot-capture-scope">
+    <button class="btn" data-action="start-screenshot" ${operation || pending || !monitor ? 'disabled' : ''}>${operation?.enabled ? 'Đang gửi yêu cầu…' : pending ? 'Đang chờ ảnh…' : 'Bắt đầu chụp ảnh'}</button>
+    <button class="btn btn-secondary" data-action="stop-screenshot" ${operation || !monitor?.enabled ? 'disabled' : ''}>${operation && !operation.enabled ? 'Đang dừng…' : 'Dừng chụp ảnh'}</button>
+    </div><p id="screenshot-capture-status" role="status">${captureStatus}</p><p id="screenshot-capture-scope" class="muted">${escapeHtml(scope)}</p>`;
+}
+
+function updateScreenshotCaptureControls() {
+  const controls = document.querySelector('#screenshot-capture-controls');
+  if (!controls) return;
+  const focusedAction = document.activeElement?.dataset?.action;
+  const keepFocus = controls.contains?.(document.activeElement);
+  controls.innerHTML = screenshotCaptureControls(screenshotCaptureTarget());
+  if (keepFocus) {
+    const previous = ['start-screenshot', 'stop-screenshot'].includes(focusedAction)
+      ? controls.querySelector(`[data-action="${focusedAction}"]:not(:disabled)`) : null;
+    (previous || controls.querySelector('button:not(:disabled)') || controls).focus({ preventScroll: true });
+  }
+}
+
+function updateScreenshotCapturePolicy(childId, enabled) {
+  for (const monitor of state.screenshotDevices || []) {
+    const device = state.devices.find((item) => String(item.device_id) === String(monitor.device_id));
+    if (String(device?.child_id) === String(childId)) {
+      monitor.enabled = enabled;
+      monitor.pending_request_id = null;
+      monitor.request_expired = false;
+    }
+  }
+}
+
+async function startScreenshotCapture(button) {
+  return setScreenshotCapture(button, true);
+}
+
+async function stopScreenshotCapture(button) {
+  return setScreenshotCapture(button, false);
+}
+
+async function setScreenshotCapture(button, enabled) {
+  if (state.screenshotControlOperation) return;
+  const target = screenshotCaptureTarget();
   if (!target) {
     document.querySelector('#screen-device')?.focus();
-    return toast('Chọn thiết bị cần chụp', 'Chọn một thiết bị trong bộ lọc rồi nhấn Bắt đầu chụp ảnh.', 'error');
+    return toast('Chọn thiết bị', 'Chọn một thiết bị trong bộ lọc để bắt đầu hoặc dừng chụp ảnh.', 'error');
   }
-  const version = activityRenderVersion;
-  button.disabled = true;
-  button.textContent = 'Đang gửi yêu cầu…';
+  const device = state.devices.find((item) => String(item.device_id) === String(target.device_id));
+  if (!device?.child_id) return toast('Chưa xác định được hồ sơ con', 'Hãy tải lại trang rồi thử lại.', 'error');
+  const version = ++activityRenderVersion;
+  const operation = { enabled };
+  state.screenshotControlOperation = operation;
+  stopScreenshotPolling();
+  updateScreenshotCaptureControls();
+  const ownsOperation = () => state.screenshotControlOperation === operation;
+  const onScreenshotPage = () => state.page === 'activity' && state.activityTab === 'screenshots';
+  let resumed = false;
   try {
+    if (!enabled || target.enabled !== true) {
+      await api(`/settings/${encodeURIComponent(device.child_id)}`, { method: 'PUT', body: { enable_screenshot_review: enabled } });
+      if (!ownsOperation()) return;
+      updateScreenshotCapturePolicy(device.child_id, enabled);
+      resumed = enabled;
+    }
+    if (!ownsOperation() || !onScreenshotPage()) return;
+    if (!enabled) {
+      toast('Đã tắt chụp định kỳ', 'Agent sẽ dừng khi nhận cấu hình mới. Ảnh đã lưu vẫn được giữ.');
+      return;
+    }
     const result = await api('/logs/screenshots/request', { method: 'POST', body: { device_id: target.device_id } });
-    if (version !== activityRenderVersion || state.page !== 'activity' || state.activityTab !== 'screenshots') return;
+    if (!ownsOperation() || !onScreenshotPage()) return;
+    const requested = state.screenshotDevices.find((monitor) => String(monitor.device_id) === String(target.device_id));
+    if (requested) requested.pending_request_id = result.request_id || null;
+    // A manual refresh or filter change must not strand disabled controls or
+    // let this completion reset the parent's newer selection.
+    if (version !== activityRenderVersion) return;
     // Clear date restrictions so the requested fresh image cannot be hidden.
     state.activityFilter = { device_id: String(target.device_id) };
     state.activityOffset = 0;
-    button.blur();
+    const controls = document.querySelector('#screenshot-capture-controls');
+    const keepFocus = controls?.contains(document.activeElement);
+    button.blur?.();
     toast('Đã gửi yêu cầu chụp ảnh', result.online ? 'Đang chờ Agent gửi ảnh lên.' : 'Thiết bị đang ngoại tuyến. Yêu cầu có hiệu lực 3 phút.');
+    state.screenshotControlOperation = null;
     await renderActivity(document.querySelector('#page-content'));
+    if (keepFocus && onScreenshotPage() && activityRenderVersion === version + 1
+        && document.activeElement === document.body) {
+      document.querySelector('#screenshot-capture-controls button:not(:disabled)')?.focus({ preventScroll: true });
+    }
   } catch (error) {
-    if (version !== activityRenderVersion) return;
+    if (!ownsOperation() || !onScreenshotPage()) return;
     button.disabled = false;
-    button.textContent = 'Bắt đầu chụp ảnh';
-    toast('Chưa bắt đầu chụp ảnh', error.message, 'error');
+    button.textContent = enabled ? 'Bắt đầu chụp ảnh' : 'Dừng chụp ảnh';
+    toast(resumed ? 'Đã bật chụp định kỳ, chưa yêu cầu được ảnh ngay' : enabled ? 'Chưa bắt đầu chụp ảnh' : 'Chưa dừng được chụp ảnh', error.message, 'error');
+  } finally {
+    if (ownsOperation()) {
+      state.screenshotControlOperation = null;
+      if (onScreenshotPage()) {
+        updateScreenshotCaptureControls();
+        const content = document.querySelector('#page-content');
+        if (content) scheduleScreenshotRefresh(content, activityRenderVersion);
+      }
+    }
   }
 }
 
@@ -2637,6 +2724,7 @@ async function handleClick(event) {
     if (action === 'confirm-delete-screenshot') return await deleteScreenshots(button);
     if (action === 'confirm-clear-screenshots') return await deleteScreenshots(button, true);
     if (action === 'start-screenshot') return startScreenshotCapture(button);
+    if (action === 'stop-screenshot') return stopScreenshotCapture(button);
     if (action === 'view-screenshot') return viewScreenshot(id);
     if (action === 'clear-activity-filter') {
       state.activityFilter = {};
@@ -2749,7 +2837,9 @@ document.addEventListener('submit', async (event) => {
 });
 document.addEventListener('click', handleClick);
 document.addEventListener('change', (event) => {
-  if (event.target.id === 'overview-child') {
+  if (event.target.id === 'screen-device') {
+    updateScreenshotCaptureControls();
+  } else if (event.target.id === 'overview-child') {
     state.overviewChildId = event.target.value;
     renderOverview(document.querySelector('#page-content')).catch((error) => toast('Không thể đổi phạm vi thống kê', localizeError(error.message), 'error'));
   } else if (event.target.id === 'ai-device') {

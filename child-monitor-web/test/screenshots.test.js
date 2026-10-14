@@ -11,7 +11,7 @@ function dashboard(api) {
   const timers = [];
   const timerDelays = [];
   const state = { page: 'activity', activityTab: 'screenshots', activityFilter: {}, activityOffset: 0,
-    accessToken: 'test-token', activityViewRows: [], devices: [{ device_id: 7, device_name: 'Máy <test>' }] };
+    accessToken: 'test-token', activityViewRows: [], devices: [{ device_id: 7, child_id: 3, device_name: 'Máy <test>' }] };
   const content = { innerHTML: '', isConnected: true, contains: () => true };
   const context = vm.createContext({ state, URLSearchParams, activityRenderVersion: 1,
     screenshotRefreshTimer: null, modalRoot: {}, icons: { refresh: '', device: '' },
@@ -24,6 +24,8 @@ function dashboard(api) {
   vm.runInContext(['escapeHtml', 'formatDate', 'deviceName', 'queryString', 'activityTabs', 'isDeviceOnline',
     'screenshotDataUrl', 'screenshotQuery', 'screenshotSignature', 'screenshotInteractionActive',
     'stopScreenshotPolling', 'scheduleScreenshotRefresh', 'renderScreenshotActivity', 'startScreenshotCapture',
+    'stopScreenshotCapture', 'setScreenshotCapture', 'screenshotCaptureTarget', 'screenshotCaptureControls',
+    'updateScreenshotCaptureControls', 'updateScreenshotCapturePolicy',
     'confirmScreenshotDelete', 'confirmClearScreenshots', 'deleteScreenshots']
     .map(name => functionSource(source, name)).join('\n'), context);
   context.showModal = (...args) => { calls.push(['modal', ...args]); context.modalRoot.firstElementChild = {}; };
@@ -76,20 +78,24 @@ test('enabled empty history starts capture instead of linking back to controls',
   assert.match(failed.content.innerHTML, /data-action="refresh-screenshots"/);
 });
 
-test('pending and disabled monitoring are distinguished from an enabled empty gallery', async () => {
+test('pending capture can be stopped and disabled monitoring can be resumed from the gallery', async () => {
   for (const device of [{ enabled: false }, { enabled: true, pending_request_id: 'request' }]) {
     const page = dashboard(async () => ({ data: [], total: 0, devices: [{ device_id: 7, ...device }] }));
     await page.context.renderScreenshotActivity(page.content, 1);
-    assert.match(page.content.innerHTML, /data-action="start-screenshot" disabled/);
-    assert.match(page.content.innerHTML, device.enabled ? /Đang chờ ảnh/ : /Giám sát màn hình chưa bật/);
+    assert.match(page.content.innerHTML, device.enabled ? /data-action="start-screenshot" disabled/ : /data-action="start-screenshot" >Bắt đầu chụp ảnh/);
+    assert.match(page.content.innerHTML, device.enabled ? /data-action="stop-screenshot" >Dừng chụp ảnh/ : /data-action="stop-screenshot" disabled/);
+    assert.match(page.content.innerHTML, device.enabled ? /Đang chờ ảnh/ : /Chụp định kỳ đang tắt/);
+    assert.match(page.content.innerHTML, /tất cả thiết bị cùng hồ sơ con/);
   }
 });
 
 test('capture targets visible device selection and clears dates that would hide new images', async () => {
   const page = dashboard(async () => ({ online: true }));
   page.state.screenshotDevices = [{ device_id: 7, enabled: true }, { device_id: 8, enabled: true }];
+  page.state.devices.push({ device_id: 8, child_id: 4 });
   page.state.activityFilter = { device_id: '7', start: '2026-10-01T00:00' };
-  page.context.document.querySelector = selector => selector === '#screen-device' ? { value: '8' } : page.content;
+  page.context.document.querySelector = selector => selector === '#screen-device' ? { value: '8' }
+    : selector === '#page-content' ? page.content : null;
   let rendered = false;
   page.context.renderActivity = async () => { rendered = true; };
   const button = { disabled: false, textContent: '', blur: () => {} };
@@ -103,7 +109,7 @@ test('capture targets visible device selection and clears dates that would hide 
 
 test('capture requires an explicit target with multiple devices and allows retry on failure', async () => {
   const page = dashboard(async () => { throw new Error('Agent unavailable'); });
-  page.state.screenshotDevices = [{ device_id: 7 }, { device_id: 8 }];
+  page.state.screenshotDevices = [{ device_id: 7, enabled: true }, { device_id: 8, enabled: true }];
   let focused = false;
   const select = { value: '', focus: () => { focused = true; } };
   page.context.document.querySelector = () => select;
@@ -116,6 +122,187 @@ test('capture requires an explicit target with multiple devices and allows retry
   assert.equal(button.disabled, false);
   assert.equal(button.textContent, 'Bắt đầu chụp ảnh');
   assert.equal(page.calls.at(-1)[2], 'Agent unavailable');
+});
+
+test('stop revokes only screenshot consent for the visible child and keeps images and filters', async () => {
+  const page = dashboard(async () => ({ enable_screenshot_review: false }));
+  page.state.devices.push({ device_id: 8, child_id: 4 }, { device_id: 9, child_id: 4 });
+  page.state.screenshotDevices = [7, 8, 9].map(device_id => ({ device_id, enabled: true, pending_request_id: 'request' }));
+  page.state.screenshotRows = [{ screenshot_id: '10' }];
+  page.state.activityFilter = { device_id: '7', start: '2026-10-01T00:00' };
+  page.state.activityOffset = 12;
+  const controls = { innerHTML: '' };
+  page.context.document.querySelector = selector => selector === '#screen-device' ? { value: '8' }
+    : selector === '#screenshot-capture-controls' ? controls : page.content;
+  await page.context.stopScreenshotCapture({ disabled: false });
+  const requests = page.calls.filter(call => call[0].startsWith('/'));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0][0], '/settings/4');
+  assert.equal(requests[0][1].method, 'PUT');
+  assert.deepEqual(JSON.parse(JSON.stringify(requests[0][1].body)), { enable_screenshot_review: false });
+  assert.equal(page.state.screenshotDevices[0].enabled, true);
+  for (const monitor of page.state.screenshotDevices.slice(1)) {
+    assert.equal(monitor.enabled, false);
+    assert.equal(monitor.pending_request_id, null);
+  }
+  assert.equal(page.state.screenshotRows[0].screenshot_id, '10');
+  assert.equal(page.state.activityFilter.device_id, '7');
+  assert.equal(page.state.activityFilter.start, '2026-10-01T00:00');
+  assert.equal(page.state.activityOffset, 12);
+  assert.match(controls.innerHTML, /Chụp định kỳ đang tắt/);
+  assert.match(controls.innerHTML, /data-action="start-screenshot" >Bắt đầu chụp ảnh/);
+});
+
+test('resume enables recurring capture before requesting a fresh image', async () => {
+  const page = dashboard(async () => ({ online: true }));
+  page.state.screenshotDevices = [{ device_id: 7, enabled: false }];
+  page.context.renderActivity = async () => {};
+  await page.context.startScreenshotCapture({ disabled: false });
+  const requests = page.calls.filter(call => call[0].startsWith('/'));
+  assert.equal(requests[0][0], '/settings/3');
+  assert.equal(requests[0][1].body.enable_screenshot_review, true);
+  assert.equal(requests[1][0], '/logs/screenshots/request');
+  assert.equal(page.state.screenshotDevices[0].enabled, true);
+});
+
+test('failed stop stays enabled and can be retried; failed resume never requests a screenshot', async () => {
+  const page = dashboard(async () => { throw new Error('offline'); });
+  page.state.screenshotDevices = [{ device_id: 7, enabled: true, pending_request_id: 'r' }];
+  const button = { disabled: false };
+  await page.context.stopScreenshotCapture(button);
+  assert.equal(button.disabled, false);
+  assert.equal(button.textContent, 'Dừng chụp ảnh');
+  assert.equal(page.state.screenshotDevices[0].enabled, true);
+  assert.equal(page.state.screenshotDevices[0].pending_request_id, 'r');
+  assert.equal(page.calls.at(-1)[1], 'Chưa dừng được chụp ảnh');
+  page.state.screenshotDevices[0].enabled = false;
+  await page.context.startScreenshotCapture(button);
+  assert.equal(page.state.screenshotDevices[0].enabled, false);
+  assert.equal(page.calls.some(call => call[0] === '/logs/screenshots/request'), false);
+});
+
+test('manual capture failure after enabling keeps stop available and reports partial success', async () => {
+  const page = dashboard(async endpoint => {
+    if (endpoint === '/logs/screenshots/request') throw new Error('offline');
+    return {};
+  });
+  page.state.screenshotDevices = [{ device_id: 7, enabled: false }];
+  await page.context.startScreenshotCapture({ disabled: false });
+  assert.equal(page.state.screenshotDevices[0].enabled, true);
+  assert.equal(page.calls.at(-1)[1], 'Đã bật chụp định kỳ, chưa yêu cầu được ảnh ngay');
+  assert.match(page.context.screenshotCaptureControls(page.state.screenshotDevices[0]), /data-action="stop-screenshot" >Dừng chụp ảnh/);
+});
+
+test('device selection updates capture controls without applying or losing date drafts', () => {
+  const page = dashboard(async () => ({}));
+  page.state.screenshotDevices = [{ device_id: 7, enabled: false }, { device_id: 8, enabled: true }];
+  page.state.activityFilter = { device_id: '7' };
+  const select = { value: '8' }, controls = { innerHTML: '' };
+  page.context.document.querySelector = selector => selector === '#screen-device' ? select : controls;
+  page.context.updateScreenshotCaptureControls();
+  assert.match(controls.innerHTML, /data-action="stop-screenshot" >Dừng chụp ảnh/);
+  assert.equal(page.state.activityFilter.device_id, '7');
+  select.value = '';
+  page.context.updateScreenshotCaptureControls();
+  assert.match(controls.innerHTML, /data-action="start-screenshot" disabled/);
+  assert.match(controls.innerHTML, /data-action="stop-screenshot" disabled/);
+});
+
+test('stop rejects ambiguous targets and concurrent actions; late completion cannot modify a new page', async () => {
+  let resolve;
+  const page = dashboard(() => new Promise(done => { resolve = done; }));
+  page.state.screenshotDevices = [{ device_id: 7, enabled: true }, { device_id: 8, enabled: true }];
+  await page.context.stopScreenshotCapture({});
+  assert.equal(page.calls[0][0], 'toast');
+  page.state.screenshotDevices.pop();
+  const stopping = page.context.stopScreenshotCapture({});
+  const calls = page.calls.length;
+  await page.context.startScreenshotCapture({});
+  assert.equal(page.calls.length, calls);
+  assert.equal(page.context.screenshotInteractionActive(page.content), true);
+  page.context.activityRenderVersion += 1;
+  page.state.page = 'overview';
+  resolve({});
+  await stopping;
+  assert.equal(page.calls.length, calls);
+  assert.equal(page.state.screenshotControlOperation, null);
+  assert.equal(page.timers.length, 0);
+});
+
+test('a failed stop after Refresh restores the current controls even when metadata is unchanged', async () => {
+  let rejectStop;
+  const result = { data: [], total: 0, devices: [{ device_id: 7, enabled: true }] };
+  const page = dashboard(endpoint => endpoint.startsWith('/settings/')
+    ? new Promise((_resolve, reject) => { rejectStop = reject; }) : Promise.resolve(result));
+  const controls = { innerHTML: '' };
+  page.context.document.querySelector = selector => selector === '#screenshot-capture-controls' ? controls
+    : selector === '#page-content' ? page.content : null;
+  await page.context.renderScreenshotActivity(page.content, 1);
+  const stopping = page.context.stopScreenshotCapture({});
+  const refreshedVersion = ++page.context.activityRenderVersion;
+  await page.context.renderScreenshotActivity(page.content, refreshedVersion);
+  assert.match(page.content.innerHTML, /data-action="stop-screenshot" disabled/);
+  rejectStop(new Error('offline'));
+  await stopping;
+  assert.equal(page.state.screenshotControlOperation, null);
+  assert.match(controls.innerHTML, /data-action="stop-screenshot" >Dừng chụp ảnh/);
+  assert.equal(page.calls.at(-1)[1], 'Chưa dừng được chụp ảnh');
+  await page.timers.pop()();
+  assert.match(controls.innerHTML, /data-action="stop-screenshot" >Dừng chụp ảnh/);
+});
+
+test('stop completion from a cleared session cannot modify the next session', async () => {
+  let resolve;
+  const page = dashboard(() => new Promise(done => { resolve = done; }));
+  page.state.screenshotDevices = [{ device_id: 7, enabled: true }];
+  const stopping = page.context.stopScreenshotCapture({});
+  page.state.screenshotControlOperation = null;
+  const nextSessionDevices = [{ device_id: 7, enabled: true }];
+  page.state.screenshotDevices = nextSessionDevices;
+  page.context.activityRenderVersion += 1;
+  resolve({});
+  await stopping;
+  assert.equal(nextSessionDevices[0].enabled, true);
+  assert.equal(page.calls.length, 1);
+  assert.equal(page.timers.length, 0);
+});
+
+test('control updates keep action focus and do not steal focus from the device filter', () => {
+  const page = dashboard(async () => ({}));
+  const focused = { dataset: { action: 'stop-screenshot' } };
+  let nextFocus = '';
+  const enabledButton = { focus: () => { nextFocus = 'start'; } };
+  const controls = { innerHTML: '', contains: element => element === focused,
+    querySelector: selector => selector === 'button:not(:disabled)' ? enabledButton : null };
+  page.context.document.activeElement = focused;
+  page.context.document.querySelector = selector => selector === '#screenshot-capture-controls' ? controls : null;
+  page.state.screenshotDevices = [{ device_id: 7, enabled: false }];
+  page.context.updateScreenshotCaptureControls();
+  assert.equal(nextFocus, 'start');
+  nextFocus = '';
+  page.context.document.activeElement = {};
+  page.context.updateScreenshotCaptureControls();
+  assert.equal(nextFocus, '');
+});
+
+test('successful start restores focus after reloading the gallery', async () => {
+  const page = dashboard(async () => ({ online: true, request_id: 'request' }));
+  page.state.screenshotDevices = [{ device_id: 7, enabled: true }];
+  const startButton = { dataset: { action: 'start-screenshot' } };
+  const stopButton = { focus: () => { page.context.document.activeElement = stopButton; } };
+  const controls = { innerHTML: '', contains: element => element === startButton || element === controls,
+    querySelector: () => null, focus: () => { page.context.document.activeElement = controls; } };
+  page.context.document.body = {};
+  page.context.document.activeElement = startButton;
+  page.context.document.querySelector = selector => selector === '#screenshot-capture-controls' ? controls
+    : selector === '#screenshot-capture-controls button:not(:disabled)' ? stopButton
+      : selector === '#page-content' ? page.content : null;
+  page.context.renderActivity = async () => {
+    page.context.activityRenderVersion += 1;
+    page.context.document.activeElement = page.context.document.body;
+  };
+  await page.context.startScreenshotCapture(startButton);
+  assert.equal(page.context.document.activeElement, stopButton);
 });
 
 test('late screenshot response cannot overwrite a new page or session', async () => {
