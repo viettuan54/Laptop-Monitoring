@@ -5,7 +5,7 @@ const auth = require('../middlewares/auth.middleware');
 const requireRole = require('../middlewares/role.middleware');
 const withRls = require('../middlewares/rls.middleware');
 const deviceAuth = require('../middlewares/deviceAuth.middleware');
-const { parentLimiter, agentLimiter, screenshotReadLimiter } = require('../middlewares/rateLimit.middleware');
+const { parentLimiter, agentLimiter, screenshotReadLimiter, breakReminderReadLimiter } = require('../middlewares/rateLimit.middleware');
 const logsController = require('../controllers/logs.controller');
 const screenshotsController = require('../controllers/screenshots.controller');
 const appEnforcement = require('../controllers/appEnforcement.controller');
@@ -38,7 +38,7 @@ router.post('/web', agentLimiter, deviceAuth, logsController.logWebsite);
 router.get('/usage-summary', parentLimiter, auth, requireRole('parent'), withRls, logsController.getUsageSummary);
 router.get('/app', parentLimiter, auth, requireRole('parent'), withRls, logsController.getAppLogs);
 router.get('/app-enforcement', parentLimiter, auth, requireRole('parent'), withRls, appEnforcement.list);
-router.get('/break-reminders', parentLimiter, auth, requireRole('parent'), withRls, breakReminder.list);
+router.get('/break-reminders', auth, requireRole('parent'), breakReminderReadLimiter, withRls, breakReminder.list);
 router.get('/web', parentLimiter, auth, requireRole('parent'), withRls, logsController.getWebLogs);
 
 module.exports = router;

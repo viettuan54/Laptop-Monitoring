@@ -214,7 +214,20 @@ const screenshotReadLimiter = rateLimit({
   message: { message: 'Đang tải ảnh quá thường xuyên. Vui lòng chờ một chút rồi thử lại.' },
 });
 
+// A controls page polls this small history every 15 seconds. Keep that traffic
+// outside the parent's shared navigation/settings budget and isolate accounts.
+const breakReminderReadLimiter = rateLimit({
+  store: createRateLimitStore('break-reminder-read'),
+  windowMs: 15 * 60 * 1000,
+  max: 180,
+  keyGenerator: (req) => String(req.user.user_id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Đang tải lịch sử quá thường xuyên. Vui lòng chờ một chút rồi thử lại.' },
+});
+
 module.exports = {
+  breakReminderReadLimiter,
   screenshotReadLimiter,
   loginLimiter,
   faceAuthLimiter,

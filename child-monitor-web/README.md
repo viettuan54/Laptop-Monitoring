@@ -39,6 +39,10 @@ Có thể dùng `npm start` nếu PowerShell cho phép chạy npm script. Chạy
   nhóm ứng dụng, website của mỗi hồ sơ trẻ.
 - Vận hành Agent: trạng thái thiết bị online, lần heartbeat gần nhất, hướng dẫn
   cài Agent 1.0.14 và trạng thái kết nối Backend ngay trên Dashboard.
+- Nhắc nghỉ giải lao: lịch sử tự cập nhật mỗi 15 giây trên trang Điều khiển,
+  giữ dữ liệu đã tải khi mạng lỗi và nhận các sự kiện Agent gửi bù sau kết nối
+  lại. Cập nhật lịch sử không làm mất cấu hình đang sửa. Bản sửa này dùng Agent
+  1.0.23 hiện có; cần khởi động lại backend và Ctrl+F5 Dashboard.
 - Hoạt động: tìm kiếm, lọc theo thiết bị/danh mục/thời gian, phân trang cục bộ,
   mở liên kết website an toàn và xuất CSV UTF-8.
 - Giám sát màn hình: tab bên cạnh Ứng dụng/Website, xem ảnh Agent chụp mỗi

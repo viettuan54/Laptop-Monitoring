@@ -125,6 +125,8 @@ beforeEach(async () => {
   // All fixtures share one loopback IP. Reset only their parent bucket on
   // the isolated Redis so independent cases do not exhaust each other's quota.
   await require('../src/middlewares/rateLimit.middleware').parentLimiter.resetKey('127.0.0.1');
+  const { breakReminderReadLimiter } = require('../src/middlewares/rateLimit.middleware');
+  await Promise.all([userOne, userTwo].map(id => breakReminderReadLimiter.resetKey(String(id))));
 });
 
 test('app enforcement receipts authenticate devices, deduplicate retries and isolate parent history', async () => {
@@ -1215,4 +1217,50 @@ test('break settings travel through heartbeat; receipts are idempotent and priva
   const disabled = await request(`/api/settings/${childOne}`, { method: 'PUT', headers: owners[0], body: JSON.stringify({ enable_break_reminders: false }) });
   assert.equal(disabled.body.enable_break_reminders, false);
   assert.equal((await request('/api/agent/config', { headers: agent })).body.config.enable_break_reminders, false);
+});
+
+test('snooze replay survives HTTP restart and history polling leaves parent settings usable', async () => {
+  const jwt = require('jsonwebtoken');
+  const owners = [];
+  for (const userId of [userOne, userTwo]) {
+    const user = await adminPool.query('SELECT token_version FROM users WHERE user_id=$1', [userId]);
+    owners.push({ authorization: `Bearer ${jwt.sign({ user_id: userId, role: 'parent', token_version: user.rows[0].token_version }, process.env.JWT_SECRET, { expiresIn: '5m' })}` });
+  }
+  const reminderId = crypto.randomUUID();
+  const records = ['shown', 'snoozed'].map((event_type, index) => ({
+    client_record_id: crypto.randomUUID(), reminder_id: reminderId, event_type,
+    interval_minutes: 10, duration_minutes: 5,
+    occurred_at: new Date(Date.now() - 180_000 + index * 5000).toISOString(),
+  }));
+  const headers = { 'x-device-secret': plaintextDeviceSecret, 'content-type': 'application/json' };
+  const send = () => request('/api/agent/break-reminders/batch', { method: 'POST', headers, body: JSON.stringify({ records }) });
+  const restart = async () => {
+    server = app.listen(0, '127.0.0.1');
+    await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
+    baseUrl = `http://127.0.0.1:${server.address().port}`;
+  };
+  await new Promise(resolve => server.close(resolve));
+  await assert.rejects(send(), /fetch failed/);
+  await restart();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const response = await send();
+    assert.equal(response.status, 201, response.body.message);
+    assert.deepEqual(response.body.accepted_client_record_ids, records.map(row => row.client_record_id));
+    assert.equal((await fetch(baseUrl)).status, 200, 'Backend remains responsive after snooze');
+  }
+  await new Promise(resolve => server.close(resolve));
+  await restart();
+  for (const [index, owner] of owners.entries()) {
+    const history = await request(`/api/logs/break-reminders?child_id=${childOne}`, { headers: owner });
+    assert.equal(history.status, 200);
+    const restored = history.body.data.filter(row => row.reminder_id === reminderId);
+    assert.deepEqual(restored.map(row => row.event_type), index === 0 ? ['snoozed', 'shown'] : []);
+  }
+  // Several minutes of polling must not exhaust the general parent budget.
+  for (let attempt = 0; attempt < 110; attempt++) {
+    const history = await request(`/api/logs/break-reminders?child_id=${childOne}`, { headers: owners[0] });
+    assert.equal(history.status, 200, `History poll ${attempt}`);
+  }
+  const settings = await request(`/api/settings/${childOne}`, { headers: owners[0] });
+  assert.equal(settings.status, 200, 'History polling must leave settings usable');
 });

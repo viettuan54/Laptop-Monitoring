@@ -41,7 +41,7 @@ function dashboard({ count = 0, page = 'devices', role = 'parent', request } = {
     decodeJwt: () => ({ user_id: 7 }),
     renderAuth: () => {}, renderStartupError: error => { throw error; },
     renderShell: () => {}, navigate: async page => { navigations.push(page); }, toast: () => {},
-    stopFaceCamera: () => {}, emptyUsageSummary: () => ({}),
+    stopFaceCamera: () => {}, stopBreakReminderPolling: () => {}, emptyUsageSummary: () => ({}),
     localMonthKey: () => '2026-10', loadOverviewUsageSummary: async () => ({}),
     api: async route => {
       calls.push(route);

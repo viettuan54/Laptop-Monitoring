@@ -11,6 +11,7 @@ Thay **Ghi nhận phím bấm** tại **Điều khiển thiết bị**. Tính n�
    Không khóa máy, đóng ứng dụng hoặc thay đổi hạn mức. Đóng cửa sổ hoặc hết
    thời gian hiển thị 2 phút tương đương nhắc lại sau 5 phút.
 3. **Lịch sử nhắc nghỉ** hiển thị 10 sự kiện mới nhất của các thiết bị thuộc trẻ.
+   Dashboard tự tải lại mỗi 15 giây khi trang điều khiển đang hiển thị.
    **Làm mới** chỉ tải lịch sử, không mất cấu hình đang sửa trong biểu mẫu.
 
 **Đã hiển thị lời nhắc** được ghi khi cửa sổ thực sự xuất hiện. **Trẻ chọn nghỉ
@@ -49,6 +50,37 @@ ngay** chỉ ghi nhận lựa chọn, không chứng minh trẻ đã nghỉ.
   device_id lấy từ credential. API đọc
   `GET /api/logs/break-reminders?child_id=...` dùng JWT và PostgreSQL RLS.
 - Sự kiện gồm `shown`, `acknowledged`, `snoozed`; không có nhãn “đã nghỉ”.
+
+### Lịch sử sau khi mất kết nối — sửa Dashboard ngày 14/10/2026
+
+Service giữ sự kiện trong SQLite cho đến khi backend xác nhận đã lưu. Luồng
+đồng bộ chạy khoảng mỗi 60 giây; mất kết nối có thể khiến lịch sử xuất hiện
+muộn hơn thông báo trên máy. Sau khi backend hoạt động lại, Agent gửi bù bằng
+cùng mã sự kiện để tránh tạo bản trùng.
+
+Dashboard trước đây chỉ tải lịch sử khi mở trang hoặc bấm **Làm mới**, nên dữ
+liệu gửi bù không tự xuất hiện. Bản sửa tự tải mỗi 15 giây, thử lại khi tab
+hiện lại/kết nối mạng phục hồi, giữ kết quả đã tải khi API lỗi và không thay
+đổi biểu mẫu đang sửa. Rời trang hoặc đăng xuất sẽ dừng vòng cập nhật; request
+cũ không thể đưa lịch sử của trẻ trước sang trẻ đang chọn.
+
+API lịch sử có giới hạn riêng 180 lượt/15 phút/tài khoản sau xác thực, không
+tiêu thụ hạn mức chung dùng cho lưu cấu hình và điều hướng. Mã HTTP 502/503/504
+được hiển thị là mất kết nối thay vì báo backend đang online.
+
+Bản sửa không đổi Agent, không cần bộ cài mới hoặc migration. Khởi động lại
+backend và tải lại Dashboard bằng Ctrl+F5. Kiểm chứng: 63 kiểm thử web, 82 kiểm
+thử đơn vị backend, 19 kiểm thử tích hợp PostgreSQL/Redis; có ca gửi bù
+`shown`/`snoozed` khi máy chủ HTTP dừng/chạy lại, chống trùng, phân quyền lịch
+sử và 110 lượt cập nhật liên tiếp không chặn API cấu hình. Không có trình
+duyệt kết nối cho kiểm tra giao diện trực quan trong phiên này.
+
+Trong sự cố được báo, dữ liệu nhắc và nhắc lại đã được gửi bù thành công;
+log tunnel xác nhận backend có khoảng không lắng nghe trên cổng 3000. Không
+có stack trace của tiến trình cũ để kết luận nguyên nhân dừng hoặc quy cho nút
+nhắc lại. Backend local hiện ghi stdout/stderr vào
+`.runtime/backend/break-history-fix.stdout.log` và `.runtime/backend/break-history-fix.stderr.log`
+(tính từ thư mục gốc workspace) để có bằng chứng nếu sự cố lặp lại.
 
 Chạy `node scripts/migrate-break-reminders.js` trong backend trước khi chạy
 backend mới. Tài khoản phải sở hữu bảng settings; nếu cần đặt riêng

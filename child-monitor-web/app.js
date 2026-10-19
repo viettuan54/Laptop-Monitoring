@@ -20,6 +20,9 @@ let refreshPromise = null;
 let screenshotRefreshTimer = null;
 let activityRenderVersion = 0;
 let controlRenderVersion = 0;
+let breakReminderRefreshTimer = null;
+let breakReminderRefreshVersion = 0;
+const breakReminderHistoryState = new WeakMap();
 
 let modalReturnFocus = null;
 let accessibleControlSequence = 0;
@@ -571,7 +574,7 @@ async function api(path, options = {}, retry = true) {
           ? JSON.stringify(options.body)
           : options.body,
     });
-    updateConnectionIndicator('online');
+    updateConnectionIndicator([502, 503, 504].includes(response.status) ? 'offline' : 'online');
   } catch (error) {
     updateConnectionIndicator('offline');
     const connectionError = new Error('Không thể kết nối tới Backend. Hãy kiểm tra Backend và Cloudflare Tunnel.');
@@ -646,6 +649,7 @@ function stopScreenshotPolling() {
 
 function clearSession() {
   stopScreenshotPolling();
+  stopBreakReminderPolling();
   activityRenderVersion += 1;
   stopAlertPolling();
   stopFaceCamera();
@@ -1151,6 +1155,7 @@ function renderShell() {
 
 async function navigate(page) {
   stopScreenshotPolling();
+  stopBreakReminderPolling();
   activityRenderVersion += 1;
   state.page = page;
   state.sidebarOpen = false;
@@ -1367,8 +1372,7 @@ async function renderOverview(content) {
     { done: onlineDevices > 0, label: 'Kết nối Agent', page: 'devices' },
     { done: hasActivity, label: 'Nhận dữ liệu hoạt động', page: 'activity' },
   ];
-  // Danh mục chỉ minh họa phân bổ của các bản ghi gần đây. Metric và hai biểu đồ
-  // thời gian bên dưới luôn dùng endpoint aggregate, không phụ thuộc giới hạn log.
+  // Category shares still use recent app logs; usage totals and charts use the aggregate.
   const categories = state.appLogs.reduce((map, item) => {
     const key = item.category || 'unknown';
     map[key] = (map[key] || 0) + (Number(item.duration_seconds) || 0);
@@ -1376,67 +1380,96 @@ async function renderOverview(content) {
   }, {});
   const categorySampleSeconds = Object.values(categories).reduce((sum, seconds) => sum + seconds, 0);
   const sortedCategories = Object.entries(categories).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  const partialNotice = state.parentLoadErrors.length
-    ? `<section class="card card-pad" role="status"><strong>Một phần dữ liệu chưa tải được</strong><p class="muted">Dashboard vẫn hiển thị dữ liệu khả dụng. Hãy thử làm mới: ${escapeHtml(state.parentLoadErrors.join(', '))}.</p></section>`
+  const loadErrors = state.parentLoadErrors;
+  const usageUnavailable = loadErrors.some((label) => label.startsWith('tổng hợp sử dụng'));
+  const alertsUnavailable = loadErrors.includes('cảnh báo');
+  const unreadUnavailable = loadErrors.includes('cảnh báo chưa đọc');
+  const activityUnavailable = loadErrors.includes('hoạt động ứng dụng') || loadErrors.includes('hoạt động website');
+  const recentAlerts = state.alerts.filter((item) => !item.is_read).slice(0, 5);
+  const recentActivity = [...state.appLogs.map((item) => ({ ...item, type: 'app', at: item.start_time, title: item.app_name })),
+    ...state.webLogs.map((item) => ({ ...item, type: 'web', at: item.visit_time, title: websiteActivityTitle(item) }))]
+    .sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6);
+  const partialNotice = loadErrors.length
+    ? `<div class="overview-notice" role="status"><strong>Một phần dữ liệu chưa cập nhật được</strong><p>Hãy chọn Làm mới để thử lại: ${escapeHtml(loadErrors.join(', '))}. Các danh sách đã tải trước đó được giữ lại nếu có.</p></div>`
     : '';
   const usageQualityNotice = usageSummary.ignored_segment_count > 0
-    ? `<aside class="usage-quality-note" role="note"><span aria-hidden="true">i</span><div><strong>Đã bỏ qua ${usageSummary.ignored_segment_count} đoạn thời gian bất thường khi tính thống kê</strong><p>Các đoạn có thể phát sinh khi máy khóa hoặc ngủ${usageSummary.max_valid_agent_segment_seconds ? ` và dài hơn ${duration(usageSummary.max_valid_agent_segment_seconds)}` : ''}. Bản ghi gốc vẫn được giữ nguyên để kiểm tra và đối chiếu.</p></div></aside>`
+    ? `<details class="usage-quality-note"><summary>Đã bỏ qua ${usageSummary.ignored_segment_count} đoạn thời gian bất thường</summary><p>Các đoạn có thể phát sinh khi máy khóa hoặc ngủ${usageSummary.max_valid_agent_segment_seconds ? ` và dài hơn ${duration(usageSummary.max_valid_agent_segment_seconds)}` : ''}. Bản ghi gốc vẫn được giữ nguyên để kiểm tra và đối chiếu.</p></details>`
     : '';
+  const restoreScopeFocus = document.activeElement?.id === 'overview-child';
+  const monthExpanded = content.querySelector('.overview-month')?.open;
+  const weekDescription = recentDays.map((day) => `${day.label}: ${duration(day.seconds)}`).join('; ');
+  const monthDescription = monthDays.map((day) => `Ngày ${day.label}: ${duration(day.seconds)}`).join('; ');
+
   content.innerHTML = `
-    ${pageHead('overview', `<label class="overview-scope-control"><span>Thời gian sử dụng của</span><select class="select" id="overview-child"><option value="">Toàn gia đình</option>${state.children.map((child) => `<option value="${child.child_id}" ${String(child.child_id) === String(state.overviewChildId) ? 'selected' : ''}>${escapeHtml(child.name)}</option>`).join('')}</select></label><button class="btn btn-secondary" data-action="refresh-overview">${icons.refresh} Làm mới</button><button class="btn" data-page="ai">✦ Phân tích AI</button>`)}
-    <section class="dashboard-hero family-dashboard-hero">
-      <div class="dashboard-hero-copy">
-        <span class="hero-status"><i></i>${onlineDevices ? `${onlineDevices} thiết bị đang kết nối` : 'Sẵn sàng đồng hành cùng gia đình'}</span>
-        <p class="eyebrow">Không gian số lành mạnh</p>
-        <h2>Hiểu thói quen hôm nay,<br>cùng con tiến bộ ngày mai.</h2>
-        <p>Theo dõi tín hiệu quan trọng, đặt giới hạn phù hợp và bắt đầu những cuộc trò chuyện tích cực từ một nơi duy nhất.</p>
-        <div class="hero-actions"><button class="btn" data-page="activity">Xem hoạt động</button><button class="btn btn-secondary" data-page="policies">Điều chỉnh chính sách</button></div>
+    <div class="overview-page">
+      <header class="overview-header">
+        <div><h1>Tổng quan gia đình</h1><p>${escapeHtml(currentDateLabel())}</p></div>
+        <button class="btn btn-secondary" data-action="refresh-overview">${icons.refresh} Làm mới</button>
+      </header>
+      ${partialNotice}
+      <div class="overview-family-status" aria-label="Thiết bị và hồ sơ toàn gia đình">
+        <p><strong>${loadErrors.includes('thiết bị') ? 'Chưa cập nhật được kết nối thiết bị' : onlineDevices ? `${onlineDevices} thiết bị đang trực tuyến` : state.devices.length ? 'Không có thiết bị đang trực tuyến' : 'Chưa có thiết bị kết nối'}</strong></p>
+        <div class="overview-family-links">
+          <button class="link-button" data-page="devices">${loadErrors.includes('thiết bị') ? 'Xem thiết bị' : `${state.devices.length} thiết bị`}</button>
+          <button class="link-button" data-page="children">${loadErrors.includes('hồ sơ trẻ') ? 'Xem hồ sơ trẻ' : `${state.children.length} hồ sơ trẻ`}</button>
+          <button class="link-button" data-page="policies">Điều chỉnh chính sách</button>
+        </div>
       </div>
-      <figure class="dashboard-hero-media"><img src="/assets/family-digital-wellbeing.jpg" alt="Gia đình cùng xây dựng thói quen sử dụng thiết bị lành mạnh" width="1200" height="800" decoding="async" fetchpriority="high"><figcaption class="hero-media-insight"><span class="hero-insight-icon">${icons.activity}</span><span><small>Thời gian hôm nay</small><strong>${duration(usageSummary.today_seconds)}</strong><em>${onlineDevices} thiết bị đang trực tuyến</em></span></figcaption></figure>
-    </section>
-    ${partialNotice}
-    ${usageQualityNotice}
-    <section class="metrics usage-metrics" aria-label="Chỉ số gia đình nổi bật">
-      ${metric(`${usageScopeName} hôm nay`, todayUsage.value, todayUsage.unit, 'activity', true)}
-      ${metric('Tổng trong tháng', monthUsage.value, monthUsage.unit, 'activity')}
-      ${metric('Hồ sơ trẻ', state.children.length, 'đang quản lý', 'child')}
-      ${metric('Thiết bị', state.devices.length, `${onlineDevices} đang online`, 'device')}
-      ${metric('Cảnh báo chưa đọc', unread, risky ? `${risky} rủi ro cao` : 'cần xem', 'alert')}
-    </section>
-    ${setupSteps.every((step) => step.done) ? '' : `<section class="setup-progress card"><div><p class="eyebrow">Thiết lập hệ thống</p><h2>Hoàn tất kết nối gia đình</h2><p>Thực hiện lần lượt để Dashboard nhận đầy đủ ứng dụng và website từ Agent.</p></div><div class="setup-steps">${setupSteps.map((step, index) => `<button class="setup-step ${step.done ? 'done' : ''}" data-page="${step.page}"><span>${step.done ? '✓' : index + 1}</span><strong>${step.label}</strong></button>`).join('')}</div></section>`}
-    <section class="dashboard-grid">
-      <div class="stack">
-        <article class="card">
-          <div class="card-head"><div><h2>Nhịp sử dụng trong 7 ngày</h2><p>${escapeHtml(usageScopeName)} · Dữ liệu tổng hợp đầy đủ từ Agent, không phụ thuộc số bản ghi đang hiển thị.</p></div><span class="badge">${duration(recentTotalSeconds)}</span></div>
-          <div class="card-body"><div class="chart-wrap usage-week-chart" role="img" aria-label="Biểu đồ thời gian sử dụng ứng dụng trong bảy ngày gần nhất">${recentDays
-            .map((day) => `<div class="bar-column"><span class="bar-value">${Math.round(day.seconds / 60)}p</span><div class="bar-track" title="${escapeHtml(day.date)}: ${duration(day.seconds)}"><div class="bar-fill ${day.seconds ? '' : 'is-empty'}" style="height:${day.seconds ? Math.max(4, Math.round((day.seconds / recentMaxSeconds) * 100)) : 0}%"></div></div><small>${escapeHtml(day.label)}</small></div>`)
-            .join('')}</div></div>
-        </article>
-        <article class="card usage-month-card">
-          <div class="card-head"><div><h2>Từng ngày trong ${escapeHtml(usageMonthLabel(usageSummary.month))}</h2><p>${usageSummary.timezone ? `Múi giờ tổng hợp: ${escapeHtml(usageSummary.timezone)}.` : 'Tổng hợp theo múi giờ của hệ thống.'} Ngày hôm nay được đánh dấu nổi bật.</p></div><span class="badge blue">${duration(usageSummary.month_total_seconds)}</span></div>
-          <div class="card-body usage-month-scroll"><div class="usage-month-chart" style="--usage-day-count:${monthDays.length}" role="img" aria-label="Biểu đồ thời gian sử dụng theo từng ngày trong tháng">${monthDays
-            .map((day) => `<div class="usage-month-day ${day.isToday ? 'is-today' : ''}"><span>${day.seconds ? `${Math.round(day.seconds / 60)}p` : ''}</span><div class="usage-month-track" title="Ngày ${day.label}: ${duration(day.seconds)}"><div class="usage-month-fill" style="height:${day.seconds ? Math.max(3, Math.round((day.seconds / monthMaxSeconds) * 100)) : 0}%"></div></div><small>${day.label}</small></div>`)
-            .join('')}</div></div>
-        </article>
-        <article class="card">
-          <div class="card-head"><div><h2>Hoạt động gần đây</h2><p>Các ứng dụng và website mới nhất.</p></div><button class="link-button" data-page="activity">Xem tất cả</button></div>
-          <div class="card-body list">${[...state.appLogs.map((x) => ({ ...x, type: 'app', at: x.start_time, title: x.app_name })), ...state.webLogs.map((x) => ({ ...x, type: 'web', at: x.visit_time, title: websiteActivityTitle(x) }))].sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 6).map(activityListItem).join('') || emptyState('↗', 'Chưa có hoạt động', 'Agent sẽ gửi dữ liệu sau khi được cài đặt.')}</div>
-        </article>
-      </div>
-      <aside class="stack">
-        <article class="card card-pad">
-          <p class="eyebrow">Phân bổ bản ghi gần đây</p>
-          <div class="donut-row">
-            <div class="donut" role="img" aria-label="Tỷ lệ danh mục ứng dụng được sử dụng nhiều nhất trong các bản ghi gần đây" style="--value:${categorySampleSeconds ? Math.round(((sortedCategories[0]?.[1] || 0) / categorySampleSeconds) * 100) : 0}"><strong>${categorySampleSeconds ? Math.round(((sortedCategories[0]?.[1] || 0) / categorySampleSeconds) * 100) : 0}%</strong></div>
-            <div class="legend">${sortedCategories.map(([name, seconds]) => `<div class="legend-row"><i class="legend-dot"></i><span>${escapeHtml(categoryLabel(name))}</span><b>${duration(seconds)}</b></div>`).join('') || '<span class="muted">Chưa đủ dữ liệu</span>'}</div>
+      <div class="overview-priority">
+        <section class="overview-alerts" aria-labelledby="overview-alerts-title">
+          <div class="overview-section-heading">
+            <div><h2 id="overview-alerts-title">Cảnh báo cần chú ý</h2><p>Toàn gia đình · <strong class="overview-alert-count">${unreadUnavailable ? 'Chưa cập nhật được số chưa đọc' : `${unread} cảnh báo chưa đọc`}</strong></p></div>
+            <button class="link-button" data-page="alerts">Xem tất cả cảnh báo</button>
           </div>
-        </article>
-        <article class="card">
-          <div class="card-head"><div><h2>Cảnh báo mới</h2><p>Ưu tiên những tín hiệu chưa được đọc.</p></div><span class="badge coral">${unread} mới</span></div>
-          <div class="card-body list">${state.alerts.filter((x) => !x.is_read).slice(0, 5).map(alertListItem).join('') || emptyState('✓', 'Mọi thứ ổn', 'Không có cảnh báo mới cần xử lý.')}</div>
-        </article>
-      </aside>
-    </section>`;
+          ${alertsUnavailable ? '<p class="overview-inline-status" role="status">Chưa cập nhật được danh sách cảnh báo. Dữ liệu bên dưới, nếu có, là lần tải trước.</p>' : ''}
+          ${recentAlerts.length ? `<ul class="overview-alert-list">${recentAlerts.map((item) => {
+            const presentation = alertPresentation(item.alert_type);
+            return `<li><span class="overview-alert-type ${presentation.tone}">${escapeHtml(presentation.label)}</span><strong>${escapeHtml(item.message)}</strong><small>${escapeHtml(deviceName(item.device_id))} · ${relativeTime(item.created_at)}</small></li>`;
+          }).join('')}</ul>` : alertsUnavailable || unreadUnavailable ? '<p class="overview-empty">Chưa đủ dữ liệu để xác định cảnh báo mới. Hãy thử làm mới.</p>' : unread ? '<p class="overview-empty">Mở tất cả cảnh báo để xem các mục chưa đọc.</p>' : '<p class="overview-empty">Chưa có cảnh báo mới.</p>'}
+          <div class="overview-analysis-link">
+            <button class="link-button" data-page="ai">Xem phân tích AI</button>
+            ${loadErrors.includes('phân tích AI') ? '<span>Chưa cập nhật được phân tích.</span>' : risky ? `<span>${risky} kết quả phân tích có rủi ro cao · thống kê riêng.</span>` : ''}
+          </div>
+        </section>
+        <section class="overview-usage-summary" aria-labelledby="overview-usage-title">
+          <h2 id="overview-usage-title">Thời gian sử dụng</h2>
+          <label class="overview-scope-control"><span>Thời gian sử dụng của</span><select class="select" id="overview-child" aria-describedby="overview-scope-help"><option value="">Toàn gia đình</option>${state.children.map((child) => `<option value="${child.child_id}" ${String(child.child_id) === String(state.overviewChildId) ? 'selected' : ''}>${escapeHtml(child.name)}</option>`).join('')}</select></label>
+          <p class="overview-scope-help" id="overview-scope-help">Chỉ áp dụng cho thời gian sử dụng và các biểu đồ thời gian.</p>
+          ${usageUnavailable ? '<p class="overview-inline-status" role="status">Chưa tải được thời gian sử dụng cho phạm vi này. Hãy thử làm mới.</p>' : `<dl class="overview-usage-totals"><div><dt>Hôm nay</dt><dd>${todayUsage.value}<span>${todayUsage.unit}</span></dd></div><div><dt>Tổng trong tháng</dt><dd>${monthUsage.value}<span>${monthUsage.unit}</span></dd></div></dl>`}
+        </section>
+      </div>
+      ${setupSteps.every((step) => step.done) ? '' : `<section class="overview-setup" aria-labelledby="overview-setup-title"><h2 id="overview-setup-title">Hoàn tất kết nối gia đình</h2><ol>${setupSteps.map((step) => `<li><button class="link-button" data-page="${step.page}">${step.label}</button><span>${step.done ? 'Đã hoàn tất' : 'Chưa hoàn tất'}</span></li>`).join('')}</ol></section>`}
+      <div class="overview-detail-grid">
+        <section class="overview-activity" aria-labelledby="overview-activity-title">
+          <div class="overview-section-heading"><div><h2 id="overview-activity-title">Hoạt động gần đây</h2><p>Ứng dụng và website · Toàn gia đình</p></div><button class="link-button" data-page="activity">Xem tất cả</button></div>
+          ${activityUnavailable ? '<p class="overview-inline-status" role="status">Một phần hoạt động chưa cập nhật được. Các mục đã tải trước đó được giữ lại.</p>' : ''}
+          ${recentActivity.length ? `<ul class="overview-activity-list">${recentActivity.map((item) => `<li><strong>${escapeHtml(item.title || 'Không có tiêu đề')}</strong><div class="overview-activity-meta"><span>${item.type === 'app' ? 'Ứng dụng' : 'Website'} · ${escapeHtml(categoryLabel(item.category))}</span><small>${escapeHtml(deviceName(item.device_id))} · ${relativeTime(item.at)}</small></div></li>`).join('')}</ul>` : `<p class="overview-empty">${activityUnavailable ? 'Chưa tải được hoạt động. Hãy thử làm mới.' : 'Chưa có hoạt động. Dữ liệu sẽ xuất hiện sau khi thiết bị gửi về.'}</p>`}
+        </section>
+        <section class="overview-time-detail" aria-labelledby="overview-week-title">
+          <div class="overview-section-heading"><div><h2 id="overview-week-title">7 ngày gần nhất</h2><p>${escapeHtml(usageScopeName)}${usageUnavailable ? '' : ` · Tổng ${duration(recentTotalSeconds)}`}</p></div></div>
+          ${usageUnavailable ? '<p class="overview-empty">Biểu đồ sẽ hiển thị khi tải được dữ liệu thời gian sử dụng.</p>' : `
+            <div class="chart-wrap usage-week-chart" role="img" aria-label="${escapeHtml(`Thời gian sử dụng của ${usageScopeName} trong 7 ngày gần nhất. ${weekDescription}`)}">${recentDays
+              .map((day) => `<div class="bar-column"><span class="bar-value">${Math.round(day.seconds / 60)}p</span><div class="bar-track" title="${escapeHtml(day.date)}: ${duration(day.seconds)}"><div class="bar-fill ${day.seconds ? '' : 'is-empty'}" style="height:${day.seconds ? Math.max(4, Math.round((day.seconds / recentMaxSeconds) * 100)) : 0}%;"></div></div><small>${escapeHtml(day.label)}</small></div>`)
+              .join('')}</div>
+            <p class="overview-chart-note">Đơn vị: phút · Thời gian tổng hợp từ thiết bị.</p>
+            ${usageQualityNotice}
+            <details class="overview-month" ${monthExpanded ? 'open' : ''}>
+              <summary>Chi tiết từng ngày trong ${escapeHtml(usageMonthLabel(usageSummary.month))}</summary>
+              <p>${escapeHtml(usageScopeName)} · ${usageSummary.timezone ? `Múi giờ: ${escapeHtml(usageSummary.timezone)}.` : 'Theo múi giờ của hệ thống.'} Ngày hôm nay được đánh dấu.</p>
+              <div class="usage-month-scroll" tabindex="0" role="region" aria-label="Biểu đồ từng ngày trong tháng, có thể cuộn ngang"><div class="usage-month-chart" style="--usage-day-count:${monthDays.length}" role="img" aria-label="${escapeHtml(monthDescription)}">${monthDays
+                .map((day) => `<div class="usage-month-day ${day.isToday ? 'is-today' : ''}"><span>${day.seconds ? `${Math.round(day.seconds / 60)}p` : ''}</span><div class="usage-month-track" title="Ngày ${day.label}: ${duration(day.seconds)}"><div class="usage-month-fill" style="height:${day.seconds ? Math.max(3, Math.round((day.seconds / monthMaxSeconds) * 100)) : 0}%"></div></div><small>${day.label}</small></div>`)
+                .join('')}</div></div>
+              <table class="overview-month-table"><caption>Thời gian sử dụng từng ngày · ${escapeHtml(usageScopeName)}</caption><thead><tr><th scope="col">Ngày</th><th scope="col">Thời gian</th></tr></thead><tbody>${monthDays.map((day) => `<tr ${day.isToday ? 'class="is-today"' : ''}><th scope="row">${day.label}${day.isToday ? ' · Hôm nay' : ''}</th><td>${duration(day.seconds)}</td></tr>`).join('')}</tbody></table>
+            </details>`}
+        </section>
+      </div>
+      <section class="overview-categories" aria-labelledby="overview-categories-title">
+        <div class="overview-section-heading"><div><h2 id="overview-categories-title">Phân bổ ứng dụng gần đây</h2><p>Toàn gia đình · 3 danh mục có thời lượng cao nhất. Tỷ lệ tính trên toàn bộ thời lượng ứng dụng trong các bản ghi gần đây.</p></div></div>
+        ${loadErrors.includes('hoạt động ứng dụng') ? '<p class="overview-inline-status" role="status">Chưa cập nhật được phân bổ. Dữ liệu bên dưới, nếu có, là lần tải trước.</p>' : ''}
+        ${sortedCategories.length ? `<table class="overview-category-table"><thead><tr><th scope="col">Danh mục</th><th scope="col">Thời lượng</th><th scope="col">Tỷ lệ</th></tr></thead><tbody>${sortedCategories.map(([name, seconds]) => `<tr><th scope="row">${escapeHtml(categoryLabel(name))}</th><td>${duration(seconds)}</td><td>${categorySampleSeconds ? Math.round((seconds / categorySampleSeconds) * 100) : 0}%</td></tr>`).join('')}</tbody></table>` : `<p class="overview-empty">${loadErrors.includes('hoạt động ứng dụng') ? 'Chưa tải được dữ liệu phân bổ.' : 'Chưa đủ dữ liệu để hiển thị phân bổ.'}</p>`}
+      </section>
+    </div>`;
+  if (restoreScopeFocus) content.querySelector('#overview-child')?.focus({ preventScroll: true });
 }
 
 function metric(label, value, suffix, icon, highlight = false) {
@@ -1480,28 +1513,78 @@ async function renderDevices(content) {
     }).join('') || emptyState('▣', 'Chưa có thiết bị', 'Đăng ký laptop và lưu secret để cài đặt Agent.', '<button class="btn" data-action="add-device">Đăng ký thiết bị</button>')}</section>`;
 }
 
-function breakReminderHistoryMarkup(result) {
+function breakReminderHistoryMarkup(result, stale = false) {
   const labels = { shown: 'Đã hiển thị lời nhắc', acknowledged: 'Trẻ chọn nghỉ ngay', snoozed: 'Nhắc lại sau 5 phút' };
   const rows = Array.isArray(result?.data) ? result.data : [];
   return `<div class="break-history-heading"><h3>Lịch sử nhắc nghỉ</h3><button class="btn btn-secondary btn-sm" type="button" data-action="refresh-break-reminders">Làm mới</button></div>
     <p class="break-reminder-help">10 phản hồi gần nhất từ các thiết bị của trẻ. Chọn “Nghỉ ngay” là xác nhận lời nhắc, không xác nhận trẻ đã nghỉ.</p>
-    ${result === null ? '<p role="status">Chưa tải được lịch sử nhắc nghỉ. Hãy thử làm mới.</p>' : rows.length ? `<ul class="break-history-list">${rows.map(row => `<li><div><strong>${escapeHtml(labels[row.event_type] || 'Phản hồi khác')}</strong><span>${escapeHtml(row.device_name || 'Thiết bị')} · Nghỉ ${escapeHtml(row.duration_minutes)} phút</span></div><time>${escapeHtml(formatDate(row.occurred_at))}</time></li>`).join('')}</ul>` : '<p>Chưa có lời nhắc được Agent ghi nhận. Tính năng cần Agent 1.0.22 trở lên; lịch sử xuất hiện sau khi đồng bộ.</p>'}`;
+    <p class="break-reminder-help">Tự cập nhật mỗi 15 giây. Khi mất kết nối, Agent gửi bù lịch sử sau khi kết nối lại.</p>
+    ${stale && result !== null ? '<p role="status">Chưa cập nhật được lịch sử. Đang giữ dữ liệu lần tải thành công gần nhất và sẽ tự thử lại.</p>' : ''}
+    ${result === null ? '<p role="status">Chưa tải được lịch sử nhắc nghỉ. Hệ thống sẽ tự thử lại; bạn cũng có thể chọn Làm mới.</p>' : rows.length ? `<ul class="break-history-list">${rows.map(row => `<li><div><strong>${escapeHtml(labels[row.event_type] || 'Phản hồi khác')}</strong><span>${escapeHtml(row.device_name || 'Thiết bị')} · Nghỉ ${escapeHtml(row.duration_minutes)} phút</span></div><time>${escapeHtml(formatDate(row.occurred_at))}</time></li>`).join('')}</ul>` : '<p>Chưa nhận được lịch sử từ Agent. Nếu lời nhắc vừa hiện trên máy, hãy chờ đồng bộ; danh sách sẽ tự cập nhật.</p>'}`;
 }
 
-async function refreshBreakReminderHistory() {
+function stopBreakReminderPolling() {
+  clearTimeout(breakReminderRefreshTimer);
+  breakReminderRefreshTimer = null;
+  breakReminderRefreshVersion += 1;
+}
+
+function startBreakReminderPolling(panel, initialResult) {
+  stopBreakReminderPolling();
+  if (!panel) return;
+  breakReminderHistoryState.set(panel, { result: initialResult, pending: null });
+  const version = breakReminderRefreshVersion;
+  const current = () => version === breakReminderRefreshVersion && state.page === 'controls'
+    && state.accessToken && panel === document.querySelector('#break-reminder-history');
+  const tick = async () => {
+    if (!current()) return;
+    try { await refreshBreakReminderHistory({ background: true }); }
+    finally {
+      if (current()) breakReminderRefreshTimer = setTimeout(tick, 15_000);
+    }
+  };
+  breakReminderRefreshTimer = setTimeout(tick, 15_000);
+}
+
+async function refreshBreakReminderHistory({ background = false } = {}) {
+  if (state.page !== 'controls' || !state.accessToken || (background && document.hidden)) return;
   const panel = document.querySelector('#break-reminder-history');
   if (!panel) return;
   const childId = panel.dataset.childId;
-  const button = panel.querySelector('button');
-  if (button) button.disabled = true;
-  panel.setAttribute('aria-busy', 'true');
-  const result = await api(`/logs/break-reminders?child_id=${encodeURIComponent(childId)}`).catch(() => null);
-  if (panel !== document.querySelector('#break-reminder-history') || String(childId) !== String(state.selectedChildId)) return;
-  panel.innerHTML = breakReminderHistoryMarkup(result);
-  panel.removeAttribute('aria-busy');
+  if (String(childId) !== String(state.selectedChildId)) return;
+  const record = breakReminderHistoryState.get(panel) || { result: null, pending: null };
+  breakReminderHistoryState.set(panel, record);
+  if (record.pending) return record.pending;
+  const version = breakReminderRefreshVersion;
+  const request = (async () => {
+    const button = panel.querySelector('button');
+    if (button) button.disabled = true;
+    panel.setAttribute('aria-busy', 'true');
+    try {
+      const result = await api(`/logs/break-reminders?child_id=${encodeURIComponent(childId)}`,
+        { signal: AbortSignal.timeout(10_000) }).catch(() => null);
+      if (version !== breakReminderRefreshVersion || state.page !== 'controls' || !state.accessToken
+          || panel !== document.querySelector('#break-reminder-history') || String(childId) !== String(state.selectedChildId)) return;
+      if (result !== null) record.result = result;
+      const markup = breakReminderHistoryMarkup(record.result, result === null);
+      if (panel.innerHTML !== markup) {
+        const restoreFocus = document.activeElement === button;
+        panel.innerHTML = markup;
+        if (restoreFocus) panel.querySelector('button')?.focus({ preventScroll: true });
+      }
+    } finally {
+      panel.removeAttribute('aria-busy');
+      const button = panel.querySelector('button');
+      if (button) button.disabled = false;
+    }
+  })();
+  record.pending = request;
+  try { await request; }
+  finally { if (record.pending === request) record.pending = null; }
 }
 
 async function renderDeviceControls(content) {
+  stopBreakReminderPolling();
   const renderVersion = ++controlRenderVersion;
   const children = await api('/children?limit=200');
   if (renderVersion !== controlRenderVersion || state.page !== 'controls') return;
@@ -1516,7 +1599,7 @@ async function renderDeviceControls(content) {
   const [settings, deviceResult, reminderHistory] = await Promise.all([
     api(`/settings/${childId}`),
     api('/devices?limit=200'),
-    api(`/logs/break-reminders?child_id=${encodeURIComponent(childId)}`).catch(() => null),
+    api(`/logs/break-reminders?child_id=${encodeURIComponent(childId)}`, { signal: AbortSignal.timeout(10_000) }).catch(() => null),
   ]);
   if (renderVersion !== controlRenderVersion || String(childId) !== String(state.selectedChildId) || state.page !== 'controls') return;
   state.devices = deviceResult.data || [];
@@ -1564,7 +1647,7 @@ async function renderDeviceControls(content) {
               <div class="field"><label for="break-interval">Nhắc sau (phút sử dụng)</label><input id="break-interval" class="input" type="number" name="break_interval_minutes" min="5" max="180" step="1" required value="${escapeHtml(settings.break_interval_minutes ?? 30)}"><small>Từ 5 đến 180 phút.</small></div>
               <div class="field"><label for="break-duration">Thời gian nghỉ (phút)</label><input id="break-duration" class="input" type="number" name="break_duration_minutes" min="1" max="30" step="1" required value="${escapeHtml(settings.break_duration_minutes ?? 5)}"><small>Từ 1 đến 30 phút.</small></div>
             </div>
-            <p class="break-reminder-help">Trẻ có thể chọn “Nghỉ ngay” hoặc “Nhắc lại sau 5 phút”. Máy và ứng dụng vẫn mở. Bộ đếm tạm dừng khi không hoạt động và bắt đầu lại sau khoảng nghỉ đủ dài.</p>
+            <p class="break-reminder-help">Trẻ có thể chọn “Nghỉ ngay” hoặc “Nhắc lại sau 5 phút”. Máy và ứng dụng vẫn mở. Xem video hoặc đọc nội dung vẫn được tính khi Windows mở khóa; bộ đếm tạm dừng khi khóa hoặc ngủ máy.</p>
           </fieldset>
           <aside class="control-privacy-note field full"><span>${icons.policy}</span><div><strong>Ưu tiên quyền riêng tư</strong><p>Webcam và ảnh chụp màn hình mặc định tắt. Nhắc nghỉ giải lao chỉ dùng thời gian hoạt động, không đọc nội dung phím bấm.</p></div></aside>
           <div class="form-actions policy-save-bar field full"><span><strong>Sẵn sàng cập nhật điều khiển</strong><small>Cấu hình sẽ được Agent nhận ở heartbeat tiếp theo.</small></span><button class="btn" type="submit">Lưu điều khiển</button></div>
@@ -1572,6 +1655,7 @@ async function renderDeviceControls(content) {
         <section id="break-reminder-history" class="break-reminder-history" data-child-id="${escapeHtml(childId)}" aria-live="polite">${breakReminderHistoryMarkup(reminderHistory)}</section>
       </article>
     </section>`;
+  startBreakReminderPolling(document.querySelector('#break-reminder-history'), reminderHistory);
 }
 
 async function renderPolicies(content) {
@@ -2912,6 +2996,8 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('visibilitychange', refreshAlertIndicatorInBackground);
 window.addEventListener('focus', refreshAlertIndicatorInBackground);
 window.addEventListener('online', refreshAlertIndicatorInBackground);
+document.addEventListener('visibilitychange', () => refreshBreakReminderHistory({ background: true }));
+window.addEventListener('online', () => refreshBreakReminderHistory({ background: true }));
 
 window.addEventListener('hashchange', () => {
   const page = location.hash.slice(1);
