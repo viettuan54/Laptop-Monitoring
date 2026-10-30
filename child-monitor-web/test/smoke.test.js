@@ -233,7 +233,7 @@ test('policy UI exposes and submits all AI analysis toggles', () => {
 test('policy UI manages allow and block rules for every app and website category', () => {
   const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
-  assert.match(source, /\/settings\/\$\{state\.selectedChildId\}\/policies/);
+  assert.match(source, /\/settings\/\$\{childId\}\/policies/);
   assert.match(source, /policies\/\$\{resourceType\}\/\$\{category\}/);
   for (const category of [
     'learning',
@@ -279,7 +279,7 @@ test('device controls live on a dedicated page and save independently from polic
     assert.ok(!policiesSource.includes(`name="${field}"`), `${field} must not remain in policies`);
   }
 
-  for (const className of ['control-command-hero', 'control-switch-grid', 'control-panel-card', 'control-privacy-note']) {
+  for (const className of ['control-child-picker', 'control-scope-summary', 'control-section', 'control-save-bar', 'control-privacy-note']) {
     assert.ok(controlsSource.includes(className), `Device-control markup is missing ${className}`);
     assert.ok(styles.includes(`.${className}`), `Device-control styles are missing .${className}`);
   }
@@ -287,7 +287,8 @@ test('device controls live on a dedicated page and save independently from polic
   assert.doesNotMatch(policiesSource, /Kiểm soát thiết bị/);
   assert.doesNotMatch(policiesSource, /<h3>Thời gian sử dụng<\/h3>/);
   assert.match(source, /form\.id === 'device-control-form'[\s\S]*?data\.daily_limit_minutes = Number\(data\.daily_limit_minutes\);[\s\S]*?form\.id === 'policy-form'/);
-  assert.match(styles, /@media \(max-width:\s*820px\)[\s\S]*?\.control-command-hero\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  assert.doesNotMatch(controlsSource, /control-command-hero|control-command-visual|control-switch-card|policy-summary-banner/);
+  assert.match(styles, /@media \(max-width:\s*610px\)[\s\S]*?\.control-time-fields\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0, 1fr\)/);
 });
 
 test('activity UI displays and exports blocked or open access status', () => {
@@ -407,7 +408,6 @@ test('dashboard sections include optimized and accessible illustration assets', 
   const assets = [
     'section-child-profiles.jpg',
     'section-managed-devices.jpg',
-    'section-usage-policies.jpg',
     'section-digital-activity.jpg',
     'section-safety-alerts.jpg',
     'section-ai-insights.jpg',

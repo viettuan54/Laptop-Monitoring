@@ -20,6 +20,7 @@ let refreshPromise = null;
 let screenshotRefreshTimer = null;
 let activityRenderVersion = 0;
 let controlRenderVersion = 0;
+let policySaveSequence = 0;
 let breakReminderRefreshTimer = null;
 let breakReminderRefreshVersion = 0;
 const breakReminderHistoryState = new WeakMap();
@@ -71,6 +72,12 @@ const state = {
   selectedChildId: null,
   selectedDeviceId: null,
   categoryPolicies: {},
+  policyRenderVersion: 0,
+  policyDrafts: {},
+  policyBaselinesByChild: {},
+  policyPendingByChild: {},
+  policyDataVersions: {},
+  policySaveErrors: {},
   connectionStatus: 'checking',
   lastApiAt: null,
   parentLoadErrors: [],
@@ -100,8 +107,8 @@ const icons = {
 const pageTitles = {
   overview: ['Tổng quan gia đình', 'Góc nhìn rõ ràng, không phán xét về thói quen số của con.'],
   children: ['Hồ sơ trẻ', 'Quản lý hồ sơ và liên kết thiết bị theo từng trẻ.'],
-  devices: ['Thiết bị', 'Đăng ký laptop, quản lý định danh và secret cài đặt.'],
-  controls: ['Điều khiển thiết bị', 'Giới hạn thời gian, khóa máy và quản lý các khả năng giám sát của Agent.'],
+  devices: ['Thiết bị', 'Quản lý thiết bị của trẻ, trạng thái kết nối và mã kết nối.'],
+  controls: ['Điều khiển thiết bị', 'Giới hạn thời gian, yêu cầu khóa và cài đặt giám sát theo hồ sơ trẻ.'],
   policies: ['Chính sách sử dụng', 'Thiết lập phân loại AI và quyền truy cập nội dung cho từng hồ sơ.'],
   activity: ['Hoạt động số', 'Theo dõi ứng dụng và website theo thiết bị, thời gian.'],
   alerts: ['Cảnh báo', 'Những tín hiệu phụ huynh cần xem xét và phản hồi.'],
@@ -657,6 +664,7 @@ function clearSession() {
   app.inert = false;
   toastRoot.innerHTML = '';
   modalReturnFocus = null;
+  state.policyRenderVersion = (state.policyRenderVersion || 0) + 1;
   Object.assign(state, {
     accessToken: '',
     refreshToken: '',
@@ -696,6 +704,11 @@ function clearSession() {
     selectedChildId: null,
     selectedDeviceId: null,
     categoryPolicies: {},
+    policyDrafts: {},
+    policyBaselinesByChild: {},
+    policyPendingByChild: {},
+    policyDataVersions: {},
+    policySaveErrors: {},
     connectionStatus: 'checking',
     lastApiAt: null,
     parentLoadErrors: [],
@@ -732,7 +745,8 @@ function toast(title, message = '', type = 'success') {
   setTimeout(() => node.remove(), 4800);
 }
 
-function showModal(title, subtitle, body) {
+function showModal(title, subtitle, body, { initialFocus } = {}) {
+  if (deviceModalDismissBlocked()) return;
   if (!modalRoot.firstElementChild) modalReturnFocus = document.activeElement;
   app.inert = true;
   const describedBy = subtitle ? ' aria-describedby="modal-description"' : '';
@@ -752,13 +766,16 @@ function showModal(title, subtitle, body) {
   });
   requestAnimationFrame(() => {
     const modal = modalRoot.querySelector('.modal');
-    const firstControl = modal?.querySelector('[autofocus], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])');
+    const firstControl = (initialFocus && modal?.querySelector(initialFocus))
+      || modal?.querySelector('[autofocus], input:not([type="hidden"]):not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled])');
     (firstControl || modal)?.focus();
   });
 }
 
 function closeModal() {
-  const returnTarget = modalReturnFocus;
+  if (deviceModalDismissBlocked()) return;
+  const returnTarget = modalReturnFocus?.isConnected ? modalReturnFocus
+    : modalRoot.querySelector('#secret-value') ? document.querySelector('[data-action="add-device"]') : modalReturnFocus;
   modalRoot.innerHTML = '';
   app.inert = false;
   modalReturnFocus = null;
@@ -1167,7 +1184,13 @@ async function navigate(page) {
     location.hash = page;
   }
   const content = document.querySelector('#page-content');
-  content.innerHTML = loading();
+  content.innerHTML = page === 'devices'
+    ? '<div class="loading devices-loading" role="status"><div class="spinner" aria-hidden="true"></div><p>Đang tải thiết bị…</p></div>'
+    : page === 'controls'
+      ? '<div class="loading controls-loading" role="status"><div class="spinner" aria-hidden="true"></div><p>Đang tải điều khiển thiết bị...</p></div>'
+      : page === 'policies'
+        ? '<div class="loading policies-loading" role="status" aria-live="polite" aria-atomic="true"><div class="spinner" aria-hidden="true"></div><p>Đang tải chính sách...</p></div>'
+      : loading();
   content.setAttribute('aria-busy', 'true');
   document.querySelector('#topbar-title').textContent = pageTitles[page]?.[0] || 'SafeNest';
   document.title = `${pageTitles[page]?.[0] || 'Dashboard'} — SafeNest`;
@@ -1202,7 +1225,9 @@ async function navigate(page) {
 
 function pageHead(page, actions = '') {
   const [title, subtitle] = pageTitles[page];
-  return `<header class="page-head"><div class="page-head-copy"><div class="page-context"><p class="eyebrow">${state.role === 'admin' ? 'Điều hành hệ thống' : 'Đồng hành cùng gia đình'}</p><span>${escapeHtml(currentDateLabel())}</span></div><h1>${title}</h1><p>${subtitle}</p></div><div class="head-actions">${actions}</div></header>`;
+  const pageClass = page === 'policies' ? ' page-head-policies' : '';
+  const context = page === 'policies' ? '' : `<div class="page-context"><p class="eyebrow">${state.role === 'admin' ? 'Điều hành hệ thống' : 'Đồng hành cùng gia đình'}</p><span>${escapeHtml(currentDateLabel())}</span></div>`;
+  return `<header class="page-head${pageClass}"><div class="page-head-copy">${context}<h1>${title}</h1><p>${subtitle}</p></div><div class="head-actions">${actions}</div></header>`;
 }
 
 const sectionVisuals = {
@@ -1218,14 +1243,7 @@ const sectionVisuals = {
     alt: 'Laptop học tập được kết nối an toàn với hệ thống gia đình',
     eyebrow: 'Kết nối an toàn',
     title: 'Quản lý mọi laptop từ một nơi duy nhất.',
-    text: 'Theo dõi trạng thái Agent, lần kết nối gần nhất và thông tin cấp quyền của từng thiết bị.',
-  },
-  policies: {
-    src: '/assets/section-usage-policies.jpg',
-    alt: 'Lịch, đồng hồ và thiết bị minh họa thời gian sử dụng cân bằng',
-    eyebrow: 'Thói quen lành mạnh',
-    title: 'Quy tắc rõ ràng, đồng hành nhẹ nhàng.',
-    text: 'Thiết lập phân loại ứng dụng, website và quyền truy cập nội dung phù hợp cho từng trẻ.',
+    text: 'Xem lần liên lạc gần nhất và quản lý mã kết nối của từng thiết bị. Agent là phần mềm được cài trên máy của trẻ.',
   },
   activity: {
     src: '/assets/section-digital-activity.jpg',
@@ -1499,18 +1517,51 @@ async function renderChildren(content) {
     }).join('') || emptyState('＋', 'Chưa có hồ sơ trẻ', 'Tạo hồ sơ đầu tiên để liên kết laptop và thiết lập chính sách.', '<button class="btn" data-action="add-child">Thêm hồ sơ</button>')}</section>`;
 }
 
+function deviceRegistrationAction() {
+  return state.children.length
+    ? `<button class="btn" type="button" data-action="add-device">${icons.plus} Đăng ký thiết bị</button>`
+    : `<button class="btn" type="button" data-action="add-child">${icons.plus} Tạo hồ sơ trẻ</button>`;
+}
+
 async function renderDevices(content) {
   const [children, devices] = await Promise.all([api('/children?limit=200'), api('/devices?limit=200')]);
   state.children = children;
   state.devices = devices.data || [];
   const onlineCount = state.devices.filter(isDeviceOnline).length;
   content.innerHTML = `
-    ${pageHead('devices', '<button class="btn btn-secondary" data-action="agent-guide">Hướng dẫn cài Agent</button><button class="btn" data-action="add-device">' + icons.plus + ' Đăng ký thiết bị</button>')}
-    ${sectionVisual('devices', `<span class="section-visual-stat online"><b>${onlineCount}</b> trực tuyến</span><span class="section-visual-stat"><b>${Math.max(0, state.devices.length - onlineCount)}</b> ngoại tuyến</span>`)}
-    <section class="entity-grid">${state.devices.map((device) => {
+    <section class="devices-page" aria-labelledby="devices-title">
+      <header class="devices-header">
+        <div><h1 id="devices-title">Thiết bị</h1><p>Máy của trẻ và trạng thái kết nối.</p></div>
+        <div class="devices-header-actions"><button class="btn btn-secondary" type="button" data-action="agent-guide">Hướng dẫn kết nối</button>${state.devices.length ? deviceRegistrationAction() : ''}</div>
+      </header>
+      ${state.devices.length ? `<div class="devices-summary"><p><strong>${state.devices.length} thiết bị</strong> · ${onlineCount} đang kết nối · ${Math.max(0, state.devices.length - onlineCount)} ngoại tuyến hoặc chưa từng kết nối</p><p>Trạng thái ghi nhận khi tải danh sách, không xác nhận các chức năng giám sát đang hoạt động.</p></div>` : ''}
+      <div class="device-list">${state.devices.map((device) => {
       const online = isDeviceOnline(device);
-      return `<article class="entity-card device-card"><div class="entity-top"><div class="entity-avatar">${icons.device}</div><div class="device-badges"><span class="badge ${online ? '' : 'neutral'}"><i class="status-dot ${online ? 'online' : ''}"></i>${online ? 'Đang online' : 'Ngoại tuyến'}</span><span class="badge blue">ID #${device.device_id}</span></div></div><h3>${escapeHtml(device.device_name)}</h3><p class="entity-subtitle">${escapeHtml(childName(device.child_id))}<span>UID ${escapeHtml(device.device_uid)}</span></p><div class="device-last-seen"><strong>${online ? 'Agent đang kết nối' : device.last_seen_at ? `Lần cuối ${relativeTime(device.last_seen_at)}` : 'Agent chưa kết nối lần nào'}</strong><small>${device.last_seen_at ? formatDate(device.last_seen_at) : 'Cài Agent bằng Device Secret để bắt đầu.'}</small></div><div class="entity-meta"><small>Thêm ngày ${formatDate(device.created_at, false)}</small><div class="entity-actions"><button class="kebab" aria-label="Xoay secret của ${escapeHtml(device.device_name)}" title="Xoay secret" data-action="rotate-secret" data-id="${device.device_id}">↻</button><button class="kebab" aria-label="Đổi tên ${escapeHtml(device.device_name)}" title="Đổi tên" data-action="edit-device" data-id="${device.device_id}">✎</button><button class="kebab danger" aria-label="Xóa ${escapeHtml(device.device_name)}" title="Xóa" data-action="delete-device" data-id="${device.device_id}">×</button></div></div></article>`;
-    }).join('') || emptyState('▣', 'Chưa có thiết bị', 'Đăng ký laptop và lưu secret để cài đặt Agent.', '<button class="btn" data-action="add-device">Đăng ký thiết bị</button>')}</section>`;
+      const connectionLabel = !device.last_seen_at ? 'Chưa từng kết nối' : online ? 'Đang kết nối' : 'Ngoại tuyến';
+      return `<article class="device-row" aria-labelledby="device-name-${escapeHtml(device.device_id)}">
+        <div class="device-row-main">
+          <div class="device-identity"><h2 id="device-name-${escapeHtml(device.device_id)}">${escapeHtml(device.device_name)}</h2><p>Hồ sơ trẻ: ${escapeHtml(childName(device.child_id))}</p></div>
+          <div class="device-connection">
+            <p class="device-status${online ? ' is-online' : ''}">${connectionLabel}</p>
+            ${device.last_seen_at
+              ? `<p class="device-contact"><span>Lần liên lạc gần nhất</span><strong>${formatDate(device.last_seen_at)}</strong></p>`
+              : '<p class="device-contact">Cài Agent bằng mã kết nối để bắt đầu.</p>'}
+          </div>
+          <div class="device-row-actions">
+            <button class="device-action" type="button" aria-label="Đổi tên thiết bị ${escapeHtml(device.device_name)}" data-action="edit-device" data-id="${device.device_id}">Đổi tên</button>
+            <button class="device-action" type="button" aria-label="Đổi mã kết nối cho ${escapeHtml(device.device_name)}" data-action="rotate-secret" data-id="${device.device_id}">Đổi mã kết nối</button>
+            <button class="device-action device-action-danger" type="button" aria-label="Xóa thiết bị ${escapeHtml(device.device_name)}" data-action="delete-device" data-id="${device.device_id}">Xóa</button>
+          </div>
+        </div>
+        <details class="device-metadata">
+          <summary aria-label="Mã và ngày đăng ký của ${escapeHtml(device.device_name)}">Mã và ngày đăng ký</summary>
+          <dl><div><dt>Mã định danh (Device UID)</dt><dd>${escapeHtml(device.device_uid)}</dd></div><div><dt>ID thiết bị</dt><dd>#${escapeHtml(device.device_id)}</dd></div><div><dt>Ngày đăng ký</dt><dd>${formatDate(device.created_at, false)}</dd></div></dl>
+        </details>
+      </article>`;
+    }).join('') || `<div class="devices-empty"><h2>${state.children.length ? 'Chưa có thiết bị' : 'Tạo hồ sơ trẻ để bắt đầu'}</h2><p>${state.children.length
+      ? 'Đăng ký máy để nhận mã kết nối, rồi dùng mã khi cài Agent trên máy của trẻ.'
+      : 'Mỗi máy cần gắn với một hồ sơ trẻ. Tạo hồ sơ, rồi quay lại đây để đăng ký thiết bị.'}</p>${deviceRegistrationAction()}</div>`}</div>
+    </section>`;
 }
 
 function breakReminderHistoryMarkup(result, stale = false) {
@@ -1592,6 +1643,7 @@ async function renderDeviceControls(content) {
   state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
   if (!state.selectedChildId) {
     content.innerHTML = pageHead('controls') + emptyState('⌁', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi điều khiển các thiết bị liên kết.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
+    content.querySelector('.page-head').classList.add('controls-empty-head');
     return;
   }
 
@@ -1606,112 +1658,630 @@ async function renderDeviceControls(content) {
   const selectedChild = state.children.find((child) => String(child.child_id) === String(state.selectedChildId));
   const linkedDevices = state.devices.filter((device) => String(device.child_id) === String(state.selectedChildId));
   const onlineDevices = linkedDevices.filter(isDeviceOnline).length;
-  const enabledControlCount = [
-    settings.is_locked,
-    settings.enable_webcam_monitoring,
-    settings.enable_screenshot_review,
-    settings.enable_break_reminders,
-  ].filter(Boolean).length;
+  const controlScope = linkedDevices.length
+    ? `Áp dụng cho tất cả ${linkedDevices.length} thiết bị của ${selectedChild?.name || 'hồ sơ đã chọn'}`
+    : `Chưa có thiết bị liên kết với ${selectedChild?.name || 'hồ sơ đã chọn'}`;
+  const connectionNote = !linkedDevices.length
+    ? 'Bạn vẫn có thể lưu cấu hình, nhưng hiện chưa có thiết bị để áp dụng.'
+    : !onlineDevices
+      ? 'Tất cả thiết bị hiện ngoại tuyến. Bạn vẫn có thể lưu; thiết bị chỉ có thể nhận cấu hình khi kết nối lại.'
+      : 'Lưu cấu hình không có nghĩa thiết bị đã áp dụng. Thiết bị cần Agent nhận cấu hình trước.';
   const startTime = String(settings.allowed_start_time).slice(0, 5);
   const endTime = String(settings.allowed_end_time).slice(0, 5);
-  const crossesMidnight = startTime > endTime;
-  const dailyLimitLabel = settings.daily_limit_minutes ? `${settings.daily_limit_minutes} phút` : 'Không giới hạn';
 
   content.innerHTML = `
-    ${pageHead('controls', '<button class="btn btn-secondary" data-page="devices">' + icons.device + ' Quản lý thiết bị</button>')}
-    <section class="control-command-hero" aria-labelledby="control-command-title">
-      <div class="control-command-copy">
-        <p class="eyebrow">Trung tâm điều khiển Agent</p>
-        <h2 id="control-command-title">Phản hồi nhanh, kiểm soát rõ ràng.</h2>
-        <p>Giới hạn thời gian và các điều khiển Agent được quản lý tại đây, tách biệt khỏi chính sách phân loại nội dung.</p>
-        <div class="control-command-stats"><span><b>${linkedDevices.length}</b><small>Thiết bị liên kết</small></span><span><b>${onlineDevices}</b><small>Đang trực tuyến</small></span><span><b>${dailyLimitLabel}</b><small>Giới hạn mỗi ngày</small></span><span><b>${enabledControlCount}</b><small>Điều khiển đang bật</small></span></div>
-      </div>
-      <div class="control-command-visual" aria-hidden="true"><span class="control-device-orbit">${icons.device}</span><span class="control-shield-orbit">${icons.policy}</span><i class="control-signal signal-one"></i><i class="control-signal signal-two"></i></div>
-    </section>
-    <section class="policy-summary-banner control-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Đang điều khiển thiết bị của</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${dailyLimitLabel} mỗi ngày · ${startTime}–${endTime}${crossesMidnight ? ' (qua ngày hôm sau)' : ''}</p></div><span class="badge ${settings.is_locked ? 'red' : 'blue'}">${settings.is_locked ? 'Đang khóa thiết bị' : 'Cho phép sử dụng'}</span></section>
-    <section class="policy-layout control-layout">
-      <aside class="card child-picker" aria-label="Chọn hồ sơ cần điều khiển">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" data-action="select-control-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi</small></span></button>`).join('')}</aside>
-      <article class="card card-pad control-panel-card">
-        <form id="device-control-form" class="form-grid" data-child-id="${settings.child_id}">
-          <header class="control-panel-heading field full"><span>${icons.control}</span><div><p class="eyebrow">Cấu hình thiết bị</p><h3>Quản lý thời gian và khả năng của Agent</h3><p>Các thiết lập tại đây được lưu độc lập và không thay đổi quy tắc phân loại nội dung.</p></div></header>
-          <section class="control-time-section field full"><div class="policy-section-heading"><span>${icons.activity}</span><div><h3>Thời gian sử dụng</h3><p>Giới hạn được tính lại theo từng ngày tại múi giờ Việt Nam.</p></div></div><div class="policy-time-grid"><div class="field"><label>Giới hạn mỗi ngày (phút)</label><input class="input" type="number" name="daily_limit_minutes" min="0" max="1440" value="${settings.daily_limit_minutes}"><small>Nhập 0 nếu không giới hạn tổng thời gian.</small></div><div class="field"><label>Cho phép từ</label><input class="input" type="time" name="allowed_start_time" step="60" value="${startTime}"></div><div class="field"><label>Cho phép đến</label><input class="input" type="time" name="allowed_end_time" step="60" value="${endTime}"><small>Khung giờ qua đêm, ví dụ 20:00–06:00, được hỗ trợ.</small></div></div></section>
-          <div class="control-switch-grid field full">
-            <section class="control-switch-card control-lock-card">${switchRow('is_locked', 'Khóa thiết bị ngay', 'Chặn phiên sử dụng tiếp theo của tất cả thiết bị thuộc hồ sơ.', settings.is_locked)}</section>
-            <section class="control-switch-card">${switchRow('enable_webcam_monitoring', 'Giám sát webcam', 'Bật tín hiệu Edge AI về tư thế và khoảng cách nhìn.', settings.enable_webcam_monitoring)}</section>
-            <section class="control-switch-card">${switchRow('enable_screenshot_review', 'Xem xét ảnh chụp màn hình', 'Chụp định kỳ màn hình chính khi Agent đang hoạt động. Xem ảnh tại Hoạt động → Giám sát màn hình; ảnh được lưu 7 ngày.', settings.enable_screenshot_review)}</section>
-            <section class="control-switch-card">${switchRow('enable_break_reminders', 'Nhắc nghỉ giải lao', 'Hiển thị lời nhắc khi trẻ sử dụng máy đến thời gian đã đặt.', settings.enable_break_reminders)}</section>
-          </div>
-          <fieldset id="break-reminder-options" class="break-reminder-options field full" ${settings.enable_break_reminders ? '' : 'disabled'}>
-            <legend>Thời gian nhắc nghỉ</legend>
-            <div class="break-reminder-fields">
-              <div class="field"><label for="break-interval">Nhắc sau (phút sử dụng)</label><input id="break-interval" class="input" type="number" name="break_interval_minutes" min="5" max="180" step="1" required value="${escapeHtml(settings.break_interval_minutes ?? 30)}"><small>Từ 5 đến 180 phút.</small></div>
-              <div class="field"><label for="break-duration">Thời gian nghỉ (phút)</label><input id="break-duration" class="input" type="number" name="break_duration_minutes" min="1" max="30" step="1" required value="${escapeHtml(settings.break_duration_minutes ?? 5)}"><small>Từ 1 đến 30 phút.</small></div>
+    <div class="controls-workspace">
+      ${pageHead('controls', '<button class="btn btn-secondary" data-page="devices">' + icons.device + ' Quản lý thiết bị</button>')}
+      <article class="control-panel">
+        <section class="control-child-picker" aria-labelledby="control-child-heading">
+          <h2 id="control-child-heading">Chọn hồ sơ trẻ</h2>
+          <div class="control-child-options">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" type="button" aria-pressed="${String(child.child_id) === String(state.selectedChildId)}" data-action="select-control-child" data-id="${child.child_id}"><span class="mini-avatar" aria-hidden="true">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${String(child.child_id) === String(state.selectedChildId) ? '<span class="control-child-current">Đang chọn</span> · ' : ''}${child.age == null ? 'Chưa có thông tin tuổi' : `${escapeHtml(child.age)} tuổi`}</small></span></button>`).join('')}</div>
+        </section>
+        <form id="device-control-form" data-child-id="${settings.child_id}" data-render-version="${renderVersion}" data-saved-locked="${Boolean(settings.is_locked)}">
+          <header class="control-scope-summary">
+            <h2>${escapeHtml(controlScope)}</h2>
+            ${linkedDevices.length ? `<p class="control-device-names">Thiết bị: ${linkedDevices.map((device) => escapeHtml(device.device_name)).join(', ')}.</p>` : ''}
+            <p class="control-connection-note">${connectionNote}</p>
+            <p>Thay đổi chỉ được lưu khi bạn bấm “Lưu điều khiển”. Agent, ứng dụng trên máy của trẻ, cần nhận cấu hình trước khi thiết bị áp dụng.</p>
+          </header>
+          <section class="control-section" aria-labelledby="control-time-heading">
+            <h3 id="control-time-heading">Thời gian sử dụng</h3>
+            <p class="control-section-help">Giới hạn được tính lại theo từng ngày tại múi giờ Việt Nam.</p>
+            <div class="control-time-fields"><div class="field"><label>Giới hạn mỗi ngày (phút)</label><input class="input" type="number" name="daily_limit_minutes" min="0" max="1440" value="${settings.daily_limit_minutes}"><small>Nhập 0 nếu không giới hạn tổng thời gian.</small></div><div class="field"><label>Cho phép từ</label><input class="input" type="time" name="allowed_start_time" step="60" value="${startTime}"></div><div class="field"><label>Cho phép đến</label><input class="input" type="time" name="allowed_end_time" step="60" value="${endTime}"><small>Khung giờ qua đêm, ví dụ 20:00–06:00, được hỗ trợ.</small></div></div>
+            <div class="control-break-settings">
+              ${switchRow('enable_break_reminders', 'Nhắc nghỉ giải lao', 'Hiển thị lời nhắc khi trẻ sử dụng máy đến thời gian đã đặt.', settings.enable_break_reminders)}
+              <fieldset id="break-reminder-options" class="break-reminder-options field full" ${settings.enable_break_reminders ? '' : 'disabled'}>
+                <legend>Thời gian nhắc nghỉ</legend>
+                <div class="break-reminder-fields">
+                  <div class="field"><label for="break-interval">Nhắc sau (phút sử dụng)</label><input id="break-interval" class="input" type="number" name="break_interval_minutes" min="5" max="180" step="1" required value="${escapeHtml(settings.break_interval_minutes ?? 30)}"><small>Từ 5 đến 180 phút.</small></div>
+                  <div class="field"><label for="break-duration">Thời gian nghỉ (phút)</label><input id="break-duration" class="input" type="number" name="break_duration_minutes" min="1" max="30" step="1" required value="${escapeHtml(settings.break_duration_minutes ?? 5)}"><small>Từ 1 đến 30 phút.</small></div>
+                </div>
+                <p class="break-reminder-help">Trẻ có thể chọn “Nghỉ ngay” hoặc “Nhắc lại sau 5 phút”. Máy và ứng dụng vẫn mở. Xem video hoặc đọc nội dung vẫn được tính khi Windows mở khóa; bộ đếm tạm dừng khi khóa hoặc ngủ máy.</p>
+              </fieldset>
             </div>
-            <p class="break-reminder-help">Trẻ có thể chọn “Nghỉ ngay” hoặc “Nhắc lại sau 5 phút”. Máy và ứng dụng vẫn mở. Xem video hoặc đọc nội dung vẫn được tính khi Windows mở khóa; bộ đếm tạm dừng khi khóa hoặc ngủ máy.</p>
-          </fieldset>
-          <aside class="control-privacy-note field full"><span>${icons.policy}</span><div><strong>Ưu tiên quyền riêng tư</strong><p>Webcam và ảnh chụp màn hình mặc định tắt. Nhắc nghỉ giải lao chỉ dùng thời gian hoạt động, không đọc nội dung phím bấm.</p></div></aside>
-          <div class="form-actions policy-save-bar field full"><span><strong>Sẵn sàng cập nhật điều khiển</strong><small>Cấu hình sẽ được Agent nhận ở heartbeat tiếp theo.</small></span><button class="btn" type="submit">Lưu điều khiển</button></div>
+          </section>
+          <section class="control-section" aria-labelledby="control-safety-heading">
+            <h3 id="control-safety-heading">An toàn và giám sát</h3>
+            <div class="control-lock-setting">
+              ${switchRow('is_locked', 'Yêu cầu khóa thiết bị', 'Áp dụng cho tất cả thiết bị thuộc hồ sơ đã chọn, không riêng một máy. Sau khi lưu, thiết bị có thể bị khóa khi Agent nhận và áp dụng cấu hình.', settings.is_locked)}
+              <p class="control-lock-state ${settings.is_locked ? 'is-locked' : ''}">Đã lưu: ${settings.is_locked ? 'Cấu hình khóa đang bật' : 'Cấu hình khóa đang tắt'}</p>
+            </div>
+            ${switchRow('enable_webcam_monitoring', 'Theo dõi tư thế qua webcam', 'Dùng camera trên máy để nhận biết tư thế và khoảng cách nhìn màn hình.', settings.enable_webcam_monitoring)}
+            ${switchRow('enable_screenshot_review', 'Bật chụp màn hình định kỳ', 'Chụp màn hình chính theo định kỳ khi Agent đang hoạt động. Xem ảnh tại Hoạt động → Giám sát màn hình; ảnh được lưu 7 ngày.', settings.enable_screenshot_review)}
+          </section>
+          <div class="form-actions control-save-bar"><span><strong>${escapeHtml(controlScope)}</strong><small data-control-save-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1">Thay đổi chỉ được lưu khi bấm “Lưu điều khiển”.</small></span><button class="btn" type="submit">Lưu điều khiển</button></div>
         </form>
+        <aside class="control-privacy-note"><strong>Ưu tiên quyền riêng tư</strong><p>Webcam và ảnh chụp màn hình mặc định tắt. Nhắc nghỉ giải lao chỉ dùng thời gian hoạt động, không đọc nội dung phím bấm.</p><p>Các thiết lập này không thay đổi quy tắc phân loại nội dung.</p></aside>
         <section id="break-reminder-history" class="break-reminder-history" data-child-id="${escapeHtml(childId)}" aria-live="polite">${breakReminderHistoryMarkup(reminderHistory)}</section>
       </article>
-    </section>`;
+    </div>`;
   startBreakReminderPolling(document.querySelector('#break-reminder-history'), reminderHistory);
 }
 
-async function renderPolicies(content) {
-  state.children = await api('/children?limit=200');
+function isCurrentControlForm(form) {
+  return form.isConnected && state.page === 'controls'
+    && String(state.selectedChildId) === form.dataset.childId
+    && Number(form.dataset.renderVersion) === controlRenderVersion
+    && document.querySelector('#device-control-form') === form;
+}
+
+function showControlLockConfirmation(form, data) {
+  if (!isCurrentControlForm(form) || form.dataset.controlPending === 'true' || modalRoot.firstElementChild) return;
+  const child = state.children.find((item) => String(item.child_id) === form.dataset.childId);
+  const devices = state.devices.filter((item) => String(item.child_id) === form.dataset.childId);
+  const name = child?.name || 'Hồ sơ đã chọn';
+  showModal(`Lưu yêu cầu khóa cho “${name}”?`, `Áp dụng cho tất cả ${devices.length} thiết bị của ${name}.`, `
+    <div class="control-lock-confirmation">
+      ${devices.length ? `<p>Thiết bị chịu tác động:</p><ul>${devices.map((device) => `<li>${escapeHtml(device.device_name)}</li>`).join('')}</ul>` : '<p>Hồ sơ hiện chưa có thiết bị. Bạn vẫn có thể lưu cấu hình để áp dụng khi có thiết bị liên kết.</p>'}
+      <p>Thiết bị có thể bị khóa khi Agent kết nối, nhận và áp dụng cấu hình đã lưu. Thiết bị ngoại tuyến cần kết nối lại để nhận cấu hình.</p>
+      <p>Các thay đổi khác trên form cũng được lưu cùng yêu cầu này.</p>
+      <div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal" data-control-lock-cancel>Hủy</button><button class="btn btn-danger" type="button" data-control-lock-save>Lưu yêu cầu khóa</button></div>
+    </div>`, { initialFocus: '[data-control-lock-cancel]' });
+  const modal = modalRoot.querySelector('.modal');
+  modal?.querySelector('[data-control-lock-save]')?.addEventListener('click', () => {
+    // A dismissed/replaced confirmation cannot submit an old form or payload.
+    if (modal !== modalRoot.querySelector('.modal')) return;
+    if (!isCurrentControlForm(form) || form.dataset.controlPending === 'true') {
+      closeModal();
+      return;
+    }
+    closeModal();
+    return saveDeviceControls(form, data);
+  });
+}
+
+async function saveDeviceControls(form, data) {
+  if (!isCurrentControlForm(form) || form.dataset.controlPending === 'true') return;
+  const childId = form.dataset.childId;
+  const submit = form.querySelector('[type="submit"]');
+  const saveStatus = form.querySelector('[data-control-save-status]');
+  const controls = [...form.querySelectorAll('input, select, textarea, button')].map((control) => [control, control.disabled]);
+  form.dataset.controlPending = 'true';
+  controls.forEach(([control]) => { control.disabled = true; });
+  if (submit) submit.textContent = 'Đang lưu điều khiển...';
+  if (saveStatus) {
+    saveStatus.textContent = 'Đang lưu điều khiển... Các trường tạm thời bị khóa để giữ đúng dữ liệu đã gửi.';
+    saveStatus.focus();
+  }
+  try {
+    await api(`/settings/${childId}`, { method: 'PUT', body: data });
+    form.dataset.savedLocked = String(data.is_locked);
+    if (!isCurrentControlForm(form)) return;
+    if (saveStatus) saveStatus.textContent = 'Đã lưu cấu hình. Chưa có xác nhận thiết bị đã áp dụng.';
+    toast('Đã lưu cấu hình điều khiển', 'Thiết bị cần Agent nhận cấu hình trước khi áp dụng. Chưa có xác nhận từ thiết bị.');
+    const restoreFocus = document.activeElement === saveStatus;
+    const refreshVersion = controlRenderVersion + 1;
+    try {
+      await renderDeviceControls(document.querySelector('#page-content'));
+      const refreshedForm = document.querySelector('#device-control-form');
+      if (restoreFocus && refreshedForm && isCurrentControlForm(refreshedForm)
+        && refreshedForm.dataset.childId === childId && controlRenderVersion === refreshVersion
+        && document.activeElement === document.body && !modalRoot.firstElementChild) {
+        refreshedForm.querySelector('[type="submit"]')?.focus();
+      }
+    } catch (error) {
+      // Saving succeeded. A failed refresh must not masquerade as a failed PUT.
+      if (form.isConnected && document.querySelector('#device-control-form') === form
+        && state.page === 'controls' && String(state.selectedChildId) === childId
+        && controlRenderVersion === refreshVersion) {
+        form.dataset.renderVersion = String(refreshVersion);
+        if (saveStatus) saveStatus.textContent = 'Đã lưu cấu hình nhưng chưa tải lại được dữ liệu. Chưa có xác nhận thiết bị đã áp dụng.';
+        toast('Đã lưu cấu hình, chưa tải lại được dữ liệu', localizeError(error.message), 'error');
+      }
+    }
+  } catch (error) {
+    if (isCurrentControlForm(form)) {
+      if (saveStatus) saveStatus.textContent = 'Chưa xác nhận được cấu hình đã lưu. Các trường đã mở lại; kiểm tra thông báo lỗi và thử lại.';
+      toast('Không thể lưu điều khiển', localizeError(error.message), 'error');
+    }
+  } finally {
+    delete form.dataset.controlPending;
+    controls.forEach(([control, disabled]) => { control.disabled = disabled; });
+    if (submit) submit.textContent = 'Lưu điều khiển';
+    if (isCurrentControlForm(form) && document.activeElement === saveStatus) submit?.focus();
+  }
+}
+
+const policyClassificationFields = [
+  'enable_app_classification',
+  'enable_web_classification',
+  'enable_text_moderation',
+];
+
+function policySnapshotFromForm(form) {
+  const settings = Object.fromEntries(policyClassificationFields.map((name) => [name, Boolean(form.elements[name]?.checked)]));
+  const categories = {};
+  Object.entries(policyCategoryGroups).forEach(([resourceType, categoryList]) => {
+    categoryList.forEach(([category]) => {
+      categories[`${resourceType}:${category}`] = form.elements[`policy_${resourceType}_${category}`]?.value || 'allow';
+    });
+  });
+  return { settings, categories };
+}
+
+function policySnapshotsEqual(left, right) {
+  if (!left || !right) return false;
+  return policyClassificationFields.every((name) => Boolean(left.settings?.[name]) === Boolean(right.settings?.[name]))
+    && Object.entries(policyCategoryGroups).every(([resourceType, categories]) => categories.every(([category]) => {
+      const key = `${resourceType}:${category}`;
+      return (left.categories?.[key] || 'allow') === (right.categories?.[key] || 'allow');
+    }));
+}
+
+function updatePolicyDraftStatus(form, message) {
+  const status = form?.querySelector('[data-policy-draft-status]');
+  if (status) status.textContent = message;
+  const syncGuidance = form?.querySelector('[data-policy-sync-guidance]');
+  if (syncGuidance) syncGuidance.textContent = policySyncGuidanceForChild(String(form.dataset.childId));
+}
+
+function capturePolicyDraft(form) {
+  if (!form || form.id !== 'policy-form') return null;
+  const childId = String(form.dataset.childId);
+  const snapshot = policySnapshotFromForm(form);
+  const pending = state.policyPendingByChild[childId];
+  const baseline = pending?.snapshot || state.policyBaselinesByChild[childId];
+  if (!baseline) return null;
+
+  if (policySnapshotsEqual(snapshot, baseline)) {
+    delete state.policyDrafts[childId];
+  } else {
+    const existing = state.policyDrafts[childId];
+    const revision = existing?.revision
+      + (existing && policySnapshotsEqual(existing.snapshot, snapshot) ? 0 : 1) || 1;
+    state.policyDrafts[childId] = { snapshot, revision };
+  }
+
+  if (String(state.selectedChildId) === childId) state.categoryPolicies = { ...snapshot.categories };
+  if (pending) {
+    updatePolicyDraftStatus(form, state.policyDrafts[childId]
+      ? 'Đang lưu phiên bản đã gửi; bản nháp hiện tại chưa được lưu.'
+      : 'Đang lưu chính sách...');
+  } else {
+    updatePolicyDraftStatus(form, policyStatusForChild(childId));
+  }
+  syncPolicyClassificationUI(form);
+  return state.policyDrafts[childId] || null;
+}
+
+function policyStatusForChild(childId) {
+  if (state.policyPendingByChild[childId]) {
+    return state.policyDrafts[childId]
+      ? 'Đang lưu phiên bản đã gửi; bản nháp hiện tại chưa được lưu.'
+      : 'Đang lưu chính sách...';
+  }
+  const saveOutcome = state.policySaveErrors[childId];
+  if (saveOutcome?.requiresRefresh) {
+    return saveOutcome.kind === 'partial'
+      ? 'Một phần thay đổi có thể đã được lưu. Hãy kiểm tra trạng thái đã lưu trước khi tiếp tục.'
+      : 'Chưa xác nhận được kết quả lưu. Bản nháp vẫn được giữ; hãy kiểm tra trạng thái trước khi thử lại.';
+  }
+  if (saveOutcome) {
+    return state.policyDrafts[childId]
+      ? 'Không lưu được. Bản nháp vẫn được giữ.'
+      : 'Lần lưu trước không thành công';
+  }
+  if (state.policyDrafts[childId]) return 'Bản nháp chưa lưu';
+  return 'Chính sách đã lưu';
+}
+
+function policySyncGuidanceForChild(childId) {
+  const pending = state.policyPendingByChild[childId];
+  const draft = state.policyDrafts[childId];
+  const saveOutcome = state.policySaveErrors[childId];
+
+  if (pending) {
+    const hasNewDraft = draft && !policySnapshotsEqual(draft.snapshot, pending.snapshot);
+    return hasNewDraft
+      ? 'Đang lưu thay đổi đã gửi. Bản nháp hiện tại chưa được lưu; chưa thể coi là cấu hình sẽ được đồng bộ.'
+      : 'Đang lưu chính sách. Chưa xác nhận cấu hình đã lưu hoặc thiết bị đã nhận.';
+  }
+  if (saveOutcome?.requiresRefresh) {
+    return saveOutcome.kind === 'partial'
+      ? 'Một phần thay đổi có thể đã được lưu. Hãy chọn “Kiểm tra trạng thái đã lưu” trước khi tiếp tục.'
+      : 'Chưa xác nhận được kết quả lưu. Hãy chọn “Kiểm tra trạng thái đã lưu” trước khi tiếp tục.';
+  }
+  if (saveOutcome) return 'Lần lưu trước chưa thành công. Hãy kiểm tra trạng thái đã lưu trước khi tiếp tục.';
+  if (draft) return 'Bản nháp chưa được lưu, vì vậy chưa thể coi đây là cấu hình sẽ được đồng bộ.';
+  if (!state.policyBaselinesByChild[childId]) return 'Chưa tải được trạng thái đã lưu; chưa thể xác nhận cấu hình nào sẽ được đồng bộ.';
+  return 'Chính sách đã lưu sẽ được đồng bộ tới thiết bị ở lần đồng bộ tiếp theo. Ứng dụng chưa xác nhận thiết bị đã nhận.';
+}
+
+function policySaveRequiresRefresh(childId) {
+  return Boolean(state.policySaveErrors[childId]?.requiresRefresh);
+}
+
+function policySettingHasUncertainResult(childId, name) {
+  const outcome = state.policySaveErrors[childId];
+  return Boolean(outcome?.requiresRefresh && outcome.failedOperations?.some((operation) => operation.kind === 'settings'));
+}
+
+function policyGroupHasUncertainResult(childId, resourceType) {
+  const outcome = state.policySaveErrors[childId];
+  if (!outcome?.requiresRefresh) return false;
+  if (outcome.failedOperations?.some((operation) => operation.kind === 'settings')) return true;
+  const groupKeys = new Set(policyCategoryGroups[resourceType].map(([category]) => `${resourceType}:${category}`));
+  return Boolean(outcome.failedOperations?.some((operation) => operation.kind === 'category' && groupKeys.has(operation.key)));
+}
+
+function policyClassificationSaveState(childId, name, value) {
+  const pending = state.policyPendingByChild[childId];
+  if (pending) return Boolean(pending.snapshot.settings?.[name]) === Boolean(value) ? 'Đang lưu' : 'Chưa lưu';
+  if (policySettingHasUncertainResult(childId, name)) return 'Chưa xác định';
+  const baseline = state.policyBaselinesByChild[childId];
+  if (!baseline || baseline.settings?.[name] == null) return 'Chưa xác định';
+  if (Boolean(baseline.settings[name]) === Boolean(value)) return 'Đã lưu';
+  return state.policySaveErrors[childId] ? 'Lưu chưa thành công' : 'Chưa lưu';
+}
+
+function policyClassificationSaveNote(childId, name, value, saveState) {
+  if (saveState === 'Đang lưu') return 'Đang lưu cấu hình; chưa xác nhận thiết bị đã nhận.';
+  if (saveState === 'Chưa lưu') {
+    return state.policyPendingByChild[childId]
+      ? 'Thay đổi này chưa nằm trong lần lưu đang xử lý.'
+      : 'Thay đổi này chưa được lưu.';
+  }
+  if (saveState === 'Lưu chưa thành công') return 'Bản nháp vẫn được giữ.';
+  if (saveState === 'Chưa xác định') {
+    return policySaveRequiresRefresh(childId)
+      ? 'Chưa xác nhận kết quả lưu. Hãy kiểm tra lại trạng thái.'
+      : 'Chưa tải được trạng thái đã lưu.';
+  }
+  if (!value) return 'Cấu hình đã lưu ở trạng thái tắt.';
+  return '';
+}
+
+function policyGroupMatchesSnapshot(resourceType, enabled, snapshot) {
+  if (!snapshot) return false;
+  const settingName = resourceType === 'app' ? 'enable_app_classification' : 'enable_web_classification';
+  if (Boolean(snapshot.settings?.[settingName]) !== Boolean(enabled)) return false;
+  return policyCategoryGroups[resourceType].every(([category]) => {
+    const key = `${resourceType}:${category}`;
+    return (state.categoryPolicies[key] || 'allow') === (snapshot.categories?.[key] || 'allow');
+  });
+}
+
+function policyGroupView(childId, resourceType, enabled) {
+  const pending = state.policyPendingByChild[childId];
+  const baseline = state.policyBaselinesByChild[childId];
+  let saveState;
+  if (pending) saveState = policyGroupMatchesSnapshot(resourceType, enabled, pending.snapshot) ? 'pending' : 'draft';
+  else if (!baseline) saveState = 'unknown';
+  else if (policyGroupHasUncertainResult(childId, resourceType)) saveState = 'error';
+  else if (policyGroupMatchesSnapshot(resourceType, enabled, baseline)) saveState = 'saved';
+  else saveState = state.policySaveErrors[childId] ? 'error' : 'draft';
+
+  let message;
+  if (saveState === 'pending') message = 'Đang lưu cấu hình. Chưa xác nhận thiết bị đã nhận.';
+  else if (pending && saveState === 'draft') message = 'Thay đổi mới chưa được lưu; lần lưu trước vẫn đang xử lý.';
+  else if (saveState === 'error') {
+    message = 'Chưa xác nhận được kết quả lưu phần này. Bản nháp vẫn được giữ; hãy kiểm tra lại trước khi tiếp tục.';
+  }
+  else if (saveState === 'draft') {
+    message = enabled
+      ? 'Nhóm này có thay đổi chưa được lưu.'
+      : 'Thay đổi chưa được lưu. Quy tắc sẽ ở trạng thái Chưa áp dụng khi phân loại tắt.';
+  } else if (saveState === 'unknown') message = 'Chưa tải được trạng thái đã lưu.';
+  else if (!enabled) message = 'Quy tắc được lưu nhưng chưa áp dụng khi phân loại tắt.';
+  else message = 'Phân loại bật trong cấu hình đã lưu.';
+
+  return {
+    saveState,
+    availability: enabled ? 'Phân loại bật' : 'Chưa áp dụng',
+    message,
+  };
+}
+
+function syncPolicyClassificationUI(form) {
+  if (!form || form.id !== 'policy-form') return;
+  const childId = String(form.dataset.childId);
+  for (const name of policyClassificationFields) {
+    const value = Boolean(form.elements[name]?.checked);
+    const saveState = policyClassificationSaveState(childId, name, value);
+    const stateNode = form.querySelector(`[data-policy-switch-status="${name}"]`);
+    const noteNode = form.querySelector(`[data-policy-switch-note="${name}"]`);
+    if (stateNode) {
+      stateNode.textContent = saveState;
+      stateNode.dataset.saveState = saveState;
+    }
+    if (noteNode) {
+      noteNode.textContent = policyClassificationSaveNote(childId, name, value, saveState);
+      noteNode.hidden = !noteNode.textContent;
+    }
+  }
+
+  for (const [resourceType, settingName] of [
+    ['app', 'enable_app_classification'],
+    ['web', 'enable_web_classification'],
+  ]) {
+    const group = form.querySelector(`.policy-group[data-resource="${resourceType}"]`);
+    if (!group) continue;
+    const enabled = Boolean(form.elements[settingName]?.checked);
+    const view = policyGroupView(childId, resourceType, enabled);
+    const availability = group.querySelector('[data-policy-group-availability]');
+    const explanation = group.querySelector('[data-policy-group-explanation]');
+    if (availability) availability.textContent = view.availability;
+    if (explanation) explanation.textContent = view.message;
+    if (group.classList) group.classList.toggle('classification-off', !enabled);
+  }
+}
+
+function syncPolicyFormState(childId) {
+  if (String(state.selectedChildId) !== String(childId) || state.page !== 'policies') return;
+  const form = document.querySelector('#policy-form');
+  if (!form || String(form.dataset.childId) !== String(childId)) return;
+  const pending = state.policyPendingByChild[childId];
+  const requiresRefresh = policySaveRequiresRefresh(childId);
+  const submit = form.querySelector('[type="submit"]');
+  const refreshButton = form.querySelector('[data-action="refresh-policy-state"]');
+  const shouldRestoreFocus = submit && document.activeElement === submit;
+  if (submit) {
+    submit.disabled = Boolean(pending) || requiresRefresh;
+    submit.textContent = pending ? 'Đang lưu chính sách...' : requiresRefresh ? 'Cần kiểm tra trạng thái' : 'Lưu chính sách';
+  }
+  if (refreshButton) refreshButton.hidden = !requiresRefresh;
+  updatePolicyDraftStatus(form, policyStatusForChild(childId));
+  syncPolicyClassificationUI(form);
+  if (shouldRestoreFocus && requiresRefresh) refreshButton?.focus({ preventScroll: true });
+}
+
+async function savePolicyForm(form) {
+  const childId = String(form.dataset.childId);
+  if (!isCurrentPolicyForm(form) || state.policyPendingByChild[childId]) return;
+  if (policySaveRequiresRefresh(childId)) {
+    throw new Error('Hãy kiểm tra trạng thái đã lưu trước khi thử lại.');
+  }
+  const baseline = state.policyBaselinesByChild[childId];
+  if (!baseline) throw new Error('Chưa tải được chính sách hiện tại. Hãy tải lại rồi thử lại.');
+
+  const snapshot = policySnapshotFromForm(form);
+  capturePolicyDraft(form);
+  const settingsBody = Object.fromEntries(policyClassificationFields.map((name) => [name, snapshot.settings[name]]));
+  const classificationSettingsChanged = policyClassificationFields.some((name) =>
+    Boolean(baseline.settings?.[name]) !== snapshot.settings[name]
+  );
+  const policyUpdates = [];
+  Object.entries(policyCategoryGroups).forEach(([resourceType, categories]) => {
+    categories.forEach(([category]) => {
+      const key = `${resourceType}:${category}`;
+      const action = snapshot.categories[key] || 'allow';
+      if (action !== (baseline.categories?.[key] || 'allow')) {
+        policyUpdates.push({ resourceType, category, action });
+      }
+    });
+  });
+  const operations = [
+    ...(classificationSettingsChanged ? [{
+      kind: 'settings',
+      descriptor: { kind: 'settings' },
+      send: () => api(`/settings/${childId}`, { method: 'PUT', body: settingsBody }),
+    }] : []),
+    ...policyUpdates.map(({ resourceType, category, action }) => ({
+      kind: 'category',
+      key: `${resourceType}:${category}`,
+      action,
+      descriptor: { kind: 'category', key: `${resourceType}:${category}` },
+      send: () => api(`/settings/${childId}/policies/${resourceType}/${category}`, { method: 'PUT', body: { action } }),
+    })),
+  ];
+
+  const token = ++policySaveSequence;
+  state.policyPendingByChild[childId] = { token, snapshot };
+  state.policyDataVersions[childId] = (state.policyDataVersions[childId] || 0) + 1;
+  delete state.policySaveErrors[childId];
+  const submit = form.querySelector('[type="submit"]');
+  if (submit) {
+    submit.disabled = true;
+    submit.textContent = 'Đang lưu chính sách...';
+  }
+  updatePolicyDraftStatus(form, 'Đang lưu chính sách...');
+  syncPolicyClassificationUI(form);
+
+  try {
+    const results = await Promise.allSettled(operations.map((operation) => {
+      try { return operation.send(); } catch (error) { return Promise.reject(error); }
+    }));
+    if (state.policyPendingByChild[childId]?.token !== token) return;
+
+    const confirmedSnapshot = {
+      settings: { ...(baseline.settings || {}) },
+      categories: { ...(baseline.categories || {}) },
+    };
+    const failedOperations = [];
+    results.forEach((result, index) => {
+      const operation = operations[index];
+      if (result.status === 'rejected') {
+        failedOperations.push(operation.descriptor);
+      } else if (operation.kind === 'settings') {
+        confirmedSnapshot.settings = { ...snapshot.settings };
+      } else {
+        confirmedSnapshot.categories[operation.key] = operation.action;
+      }
+    });
+    state.policyBaselinesByChild[childId] = confirmedSnapshot;
+
+    const currentDraft = state.policyDrafts[childId];
+    if (failedOperations.length) {
+      state.policyDrafts[childId] = {
+        snapshot: currentDraft?.snapshot || snapshot,
+        revision: currentDraft?.revision || 1,
+      };
+      const succeededCount = results.length - failedOperations.length;
+      const kind = succeededCount ? 'partial' : 'failed';
+      state.policySaveErrors[childId] = { kind, requiresRefresh: true, failedOperations };
+      const message = kind === 'partial'
+        ? 'Một phần thay đổi có thể đã được lưu. Hãy kiểm tra trạng thái đã lưu trước khi tiếp tục.'
+        : 'Chưa xác nhận được kết quả lưu. Bản nháp vẫn được giữ; hãy kiểm tra trạng thái trước khi thử lại.';
+      throw new Error(message);
+    }
+
+    if (currentDraft && policySnapshotsEqual(currentDraft.snapshot, snapshot)) delete state.policyDrafts[childId];
+    delete state.policySaveErrors[childId];
+    const child = state.children.find((item) => String(item.child_id) === childId);
+    const savedChanges = [];
+    if (classificationSettingsChanged) savedChanges.push('cài đặt phân loại');
+    if (policyUpdates.length) savedChanges.push(`${policyUpdates.length} quy tắc truy cập theo danh mục`);
+    const childName = child?.name || 'hồ sơ trẻ';
+    const savedMessage = savedChanges.length
+      ? `${savedChanges.join(' và ')} của ${childName} đã được lưu.`
+      : `Không có thay đổi mới cho ${childName}.`;
+    toast('Đã lưu chính sách', savedMessage);
+  } catch (error) {
+    if (state.policyPendingByChild[childId]?.token === token && !policySaveRequiresRefresh(childId)) {
+      state.policySaveErrors[childId] = {
+        kind: 'failed',
+        requiresRefresh: true,
+        failedOperations: operations.map((operation) => operation.descriptor),
+      };
+      if (!state.policyDrafts[childId]) state.policyDrafts[childId] = { snapshot, revision: 1 };
+    }
+    throw error;
+  } finally {
+    if (state.policyPendingByChild[childId]?.token === token) {
+      delete state.policyPendingByChild[childId];
+      state.policyDataVersions[childId] = (state.policyDataVersions[childId] || 0) + 1;
+      syncPolicyFormState(childId);
+    }
+  }
+}
+
+function isCurrentPolicyForm(form) {
+  return form?.isConnected && state.page === 'policies'
+    && String(state.selectedChildId) === String(form.dataset.childId)
+    && Number(form.dataset.renderVersion) === state.policyRenderVersion
+    && document.querySelector('#policy-form') === form;
+}
+
+async function renderPolicies(content, { focusChildId } = {}) {
+  const renderVersion = ++state.policyRenderVersion;
+  const requestedChildId = state.selectedChildId == null ? '' : String(state.selectedChildId);
+  let children;
+  try {
+    children = await api('/children?limit=200');
+  } catch (error) {
+    if (renderVersion !== state.policyRenderVersion || state.page !== 'policies'
+      || String(state.selectedChildId ?? '') !== requestedChildId) return;
+    throw error;
+  }
+  if (renderVersion !== state.policyRenderVersion || state.page !== 'policies'
+    || String(state.selectedChildId ?? '') !== requestedChildId) return;
+  state.children = children;
   state.selectedChildId = reconcileSelectedId(state.selectedChildId, state.children, 'child_id');
   if (!state.selectedChildId) {
-    content.innerHTML = pageHead('policies') + sectionVisual('policies') + emptyState('⚙', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi cấu hình chính sách.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
+    state.categoryPolicies = {};
+    content.innerHTML = pageHead('policies') + emptyState('⚙', 'Cần có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi cấu hình chính sách.', '<button class="btn" data-page="children">Đến trang hồ sơ trẻ</button>');
     return;
   }
-  const [settings, policyResult] = await Promise.all([
-    api(`/settings/${state.selectedChildId}`),
-    api(`/settings/${state.selectedChildId}/policies`),
-  ]);
-  state.categoryPolicies = Object.fromEntries(
+
+  const childId = String(state.selectedChildId);
+  const childDataVersion = state.policyDataVersions[childId] || 0;
+  let settings;
+  let policyResult;
+  try {
+    [settings, policyResult] = await Promise.all([
+      api(`/settings/${childId}`),
+      api(`/settings/${childId}/policies`),
+    ]);
+  } catch (error) {
+    if (renderVersion !== state.policyRenderVersion || state.page !== 'policies'
+      || String(state.selectedChildId) !== childId
+      || (state.policyDataVersions[childId] || 0) !== childDataVersion) return;
+    throw error;
+  }
+  if (renderVersion !== state.policyRenderVersion || state.page !== 'policies'
+    || String(state.selectedChildId) !== childId
+    || (state.policyDataVersions[childId] || 0) !== childDataVersion) return;
+
+  const savedCategories = Object.fromEntries(
     (policyResult.policies || []).map((item) => [`${item.resource_type}:${item.category}`, item.action])
   );
-  const blockedPolicyCount = Object.values(state.categoryPolicies).filter((action) => action === 'block').length;
-  const enabledClassificationCount = [settings.enable_app_classification, settings.enable_web_classification, settings.enable_text_moderation].filter(Boolean).length;
-  const selectedChild = state.children.find((child) => String(child.child_id) === String(state.selectedChildId));
+  const savedSnapshot = {
+    settings: Object.fromEntries(policyClassificationFields.map((name) => [name, Boolean(settings[name])])),
+    categories: savedCategories,
+  };
+  state.policyBaselinesByChild[childId] = savedSnapshot;
+  const draft = state.policyDrafts[childId];
+  if (draft && policySnapshotsEqual(draft.snapshot, savedSnapshot)) delete state.policyDrafts[childId];
+  delete state.policySaveErrors[childId];
+  const visibleDraft = state.policyDrafts[childId];
+  const pending = state.policyPendingByChild[childId];
+  const visibleSnapshot = visibleDraft?.snapshot || pending?.snapshot || savedSnapshot;
+  const visibleSettings = { ...settings, ...visibleSnapshot.settings };
+  state.categoryPolicies = { ...visibleSnapshot.categories };
+  const policyStatus = policyStatusForChild(childId);
+  const refreshRequired = policySaveRequiresRefresh(childId);
+  const saveButton = pending
+    ? '<button class="btn" type="submit" disabled>Đang lưu chính sách...</button>'
+    : `<button class="btn" type="submit" ${refreshRequired ? 'disabled' : ''}>${refreshRequired ? 'Cần kiểm tra trạng thái' : 'Lưu chính sách'}</button>`;
+  const refreshButton = `<button class="btn btn-secondary policy-state-refresh" type="button" data-action="refresh-policy-state" data-id="${escapeHtml(childId)}" ${refreshRequired ? '' : 'hidden'}>Kiểm tra trạng thái đã lưu</button>`;
   content.innerHTML = `
     ${pageHead('policies')}
-    ${sectionVisual('policies')}
-    <section class="policy-summary-banner"><span class="policy-summary-avatar">${escapeHtml(initials(selectedChild?.name || 'Trẻ'))}</span><div><small>Chính sách đang áp dụng cho</small><strong>${escapeHtml(selectedChild?.name || 'Hồ sơ đã chọn')}</strong><p>${enabledClassificationCount}/3 lớp phân tích đang bật · ${blockedPolicyCount} nhóm nội dung đang chặn</p></div><span class="badge blue">${blockedPolicyCount} nhóm đang chặn</span></section>
-    <section class="policy-layout">
-      <aside class="card child-picker">${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === String(state.selectedChildId) ? 'active' : ''}" data-action="select-policy-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi</small></span></button>`).join('')}</aside>
-      <article class="card card-pad">
-        <form id="policy-form" class="form-grid" data-child-id="${settings.child_id}">
-          <div class="field full">
-            <section class="setting-section"><h3>Phân loại AI & truy cập</h3><p>Chỉ phân loại và áp dụng chính sách Cho phép/Chặn khi công tắc tương ứng được bật. Khi tắt, nội dung đó được truy cập bình thường.</p>
-              ${switchRow('enable_app_classification', 'Phân loại và chặn ứng dụng', 'Ứng dụng thuộc nhóm chặn sẽ nhận yêu cầu đóng; Agent buộc thoát sau 8 giây nếu vẫn chạy. Nội dung chưa lưu có thể bị mất.', settings.enable_app_classification)}
-              ${switchRow('enable_web_classification', 'Phân loại website', 'Gán một trong 5 nhãn website rồi áp dụng chính sách truy cập.', settings.enable_web_classification)}
-              ${switchRow('enable_text_moderation', 'Phân tích an toàn văn bản', 'Phân tích câu tìm kiếm mới của bé: SAFE không tạo cảnh báo; RISK nhắc phụ huynh quan sát bé trong thời gian này; HIGH_RISK cảnh báo bé có dấu hiệu bị bạo lực. Chưa phân tích nội dung trang hoặc chat. Không lưu nguyên văn câu tìm kiếm trên máy chủ. Thay đổi cần thời gian đồng bộ tới thiết bị.', settings.enable_text_moderation)}
-            </section>
-            <section class="setting-section"><h3>Quyền truy cập theo danh mục</h3><p>Chọn Cho phép hoặc Chặn cho từng nhóm. Với website, Agent ghi nhớ tên miền đã được AI phân loại và chặn các lần truy cập tiếp theo khi nhóm tương ứng đang chọn Chặn.</p>
-              <div class="policy-groups">
-                ${categoryPolicyGroup('app', 'Ứng dụng', settings.enable_app_classification)}
-                ${categoryPolicyGroup('web', 'Website', settings.enable_web_classification)}
-              </div>
-            </section>
-          </div>
-          <div class="form-actions policy-save-bar field full"><span><strong>Sẵn sàng cập nhật</strong><small>Agent nhận chính sách mới ở heartbeat tiếp theo.</small></span><button class="btn" type="submit">Lưu chính sách</button></div>
+    <section class="policy-layout policy-settings-layout">
+      <aside class="child-picker" aria-labelledby="policy-child-picker-title"><h2 id="policy-child-picker-title">Chọn hồ sơ trẻ</h2>${state.children.map((child) => `<button class="child-pick ${String(child.child_id) === childId ? 'active' : ''}" type="button" aria-pressed="${String(child.child_id) === childId}" data-action="select-policy-child" data-id="${child.child_id}"><span class="mini-avatar">${escapeHtml(initials(child.name))}</span><span><strong>${escapeHtml(child.name)}</strong><small>${child.age == null ? 'Chưa có thông tin tuổi' : `${escapeHtml(child.age)} tuổi`}</small></span></button>`).join('')}</aside>
+      <article class="policy-form-panel">
+        <form id="policy-form" class="form-grid" data-child-id="${escapeHtml(childId)}" data-render-version="${renderVersion}">
+          <section class="setting-section"><h3>Phân loại AI & truy cập</h3><p>Chỉ phân loại và áp dụng chính sách Cho phép/Chặn khi công tắc tương ứng được bật. Khi tắt, nội dung đó được truy cập bình thường.</p>
+            ${switchRow('enable_app_classification', 'Phân loại và chặn ứng dụng', 'Ứng dụng thuộc nhóm chặn sẽ nhận yêu cầu đóng; Agent buộc thoát sau 8 giây nếu vẫn chạy. Nội dung chưa lưu có thể bị mất.', visibleSettings.enable_app_classification, true)}
+            ${switchRow('enable_web_classification', 'Phân loại website', 'Gán một trong 5 nhãn website rồi áp dụng chính sách truy cập.', visibleSettings.enable_web_classification, true)}
+            ${switchRow('enable_text_moderation', 'Phân tích an toàn văn bản', 'Phân tích câu tìm kiếm mới của bé: SAFE không tạo cảnh báo; RISK nhắc phụ huynh quan sát bé trong thời gian này; HIGH_RISK cảnh báo bé có dấu hiệu bị bạo lực. Chưa phân tích nội dung trang hoặc chat. Không lưu nguyên văn câu tìm kiếm trên máy chủ. Thay đổi cần thời gian đồng bộ tới thiết bị.', visibleSettings.enable_text_moderation, true)}
+          </section>
+          <section class="setting-section"><h3>Quyền truy cập theo danh mục</h3><p>Chọn Cho phép hoặc Chặn cho từng nhóm. Với website, Agent ghi nhớ tên miền đã được AI phân loại và chặn các lần truy cập tiếp theo khi nhóm tương ứng đang chọn Chặn.</p>
+            <div class="policy-groups">
+              ${categoryPolicyGroup('app', 'Ứng dụng', visibleSettings.enable_app_classification)}
+              ${categoryPolicyGroup('web', 'Website', visibleSettings.enable_web_classification)}
+            </div>
+          </section>
+          <div class="form-actions policy-save-bar field full"><span><strong data-policy-draft-status role="status" aria-live="polite" aria-atomic="true">${policyStatus}</strong><small data-policy-sync-guidance>${escapeHtml(policySyncGuidanceForChild(childId))}</small></span>${refreshButton}${saveButton}</div>
         </form>
       </article>
     </section>`;
+  if (focusChildId != null) {
+    [...content.querySelectorAll('[data-action="select-policy-child"]')]
+      .find((button) => String(button.dataset.id) === String(focusChildId))
+      ?.focus({ preventScroll: true });
+  }
 }
 
 function categoryPolicyGroup(resourceType, title, enabled) {
-  return `<article class="policy-group ${enabled ? '' : 'classification-off'}" data-resource="${resourceType}"><div class="policy-group-head"><div><strong>${title}</strong><small>${enabled ? 'Phân loại đang bật' : 'Phân loại đang tắt — bảng sẽ được lưu nhưng chưa áp dụng'}</small></div><span class="badge ${enabled ? '' : 'neutral'}">${enabled ? 'Đang áp dụng' : 'Tạm dừng'}</span></div><div class="policy-rule-list">${policyCategoryGroups[resourceType].map(([category, label, description]) => {
+  const view = policyGroupView(String(state.selectedChildId), resourceType, enabled);
+  return `<article class="policy-group ${enabled ? '' : 'classification-off'}" data-resource="${resourceType}"><div class="policy-group-head"><div><strong>${title}</strong><small data-policy-group-explanation>${escapeHtml(view.message)}</small></div><span class="badge ${enabled ? '' : 'neutral'}" data-policy-group-availability>${view.availability}</span></div><div class="policy-rule-list">${policyCategoryGroups[resourceType].map(([category, label, description]) => {
     const key = `${resourceType}:${category}`;
     const action = state.categoryPolicies[key] || 'allow';
-    return `<label class="policy-rule"><span><strong>${label}</strong><small>${description}</small></span><select class="select policy-action ${action}" name="policy_${resourceType}_${category}" aria-label="Quyền truy cập ${label}"><option value="allow" ${action === 'allow' ? 'selected' : ''}>Cho phép</option><option value="block" ${action === 'block' ? 'selected' : ''}>Chặn</option></select></label>`;
+    return `<label class="policy-rule"><span><strong>${label}</strong><small>${description}</small></span><select class="select policy-action ${action}" name="policy_${resourceType}_${category}" aria-label="Quyền truy cập ${label}, danh mục ${title}"><option value="allow" ${action === 'allow' ? 'selected' : ''}>Cho phép</option><option value="block" ${action === 'block' ? 'selected' : ''}>Chặn</option></select></label>`;
   }).join('')}</div></article>`;
 }
 
-function switchRow(name, label, text, checked) {
-  return `<div class="switch-row"><div class="switch-copy"><strong>${label}</strong><small>${text}</small></div><label class="switch"><input type="checkbox" name="${name}" ${checked ? 'checked' : ''}><span></span></label></div>`;
+function switchRow(name, label, text, checked, policyClassification = false) {
+  const childId = String(state.selectedChildId);
+  const saveState = policyClassification ? policyClassificationSaveState(childId, name, checked) : '';
+  const saveNote = policyClassification ? policyClassificationSaveNote(childId, name, checked, saveState) : '';
+  const labelId = policyClassification ? `policy-${name}-label` : '';
+  const labelMarkup = policyClassification ? `<strong id="${labelId}">${label}</strong>` : `<strong>${label}</strong>`;
+  const accessibleName = policyClassification ? `aria-labelledby="${labelId}"` : '';
+  const policyState = policyClassification
+    ? `<small class="policy-switch-status" data-policy-switch-status="${name}" data-save-state="${saveState}">${saveState}</small><small class="policy-switch-note" data-policy-switch-note="${name}" ${saveNote ? '' : 'hidden'}>${saveNote}</small>`
+    : '';
+  return `<div class="switch-row"><div class="switch-copy">${labelMarkup}<small>${text}</small>${policyState}</div><label class="switch"><input type="checkbox" name="${name}" ${accessibleName} ${checked ? 'checked' : ''}><span></span></label></div>`;
 }
 
 function syncAdminRoleEnrollment(form) {
@@ -2409,12 +2979,37 @@ function childForm(child = {}) {
 }
 
 function deviceForm() {
-  return `<form id="device-form" class="form-grid"><div class="field full"><label>Hồ sơ trẻ</label><select class="select" name="child_id" required><option value="">Chọn hồ sơ</option>${state.children.map((c) => `<option value="${c.child_id}">${escapeHtml(c.name)}</option>`).join('')}</select></div><div class="field full"><label>Tên thiết bị</label><input class="input" name="device_name" maxlength="100" required placeholder="Laptop học tập"></div><div class="field full"><label>Device UID</label><input class="input" name="device_uid" maxlength="150" pattern="[A-Za-z0-9_:\\-]+" required placeholder="DESKTOP-ABC123"><small>Chỉ dùng chữ, số, dấu gạch ngang, gạch dưới và dấu hai chấm.</small></div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Đăng ký</button></div></form>`;
+  return `<form id="device-form" class="form-grid"><div class="field full"><label>Hồ sơ trẻ</label><select class="select" name="child_id" required><option value="">Chọn hồ sơ</option>${state.children.map((c) => `<option value="${c.child_id}">${escapeHtml(c.name)}</option>`).join('')}</select></div><div class="field full"><label>Tên thiết bị</label><input class="input" name="device_name" maxlength="100" required placeholder="Laptop học tập"></div><div class="field full"><label>Mã định danh thiết bị (Device UID)</label><input class="input" name="device_uid" maxlength="150" pattern="[A-Za-z0-9_:\\-]+" required placeholder="DESKTOP-ABC123"><small>Mã bạn tự nhập để phân biệt máy này, không trùng thiết bị đã đăng ký. Đây không phải mã kết nối (Device Secret). Chỉ dùng chữ, số, dấu gạch ngang, gạch dưới và dấu hai chấm.</small></div><p class="device-modal-status field full" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></p><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Đăng ký</button></div></form>`;
 }
 
-function agentGuide() {
+function agentGuide(deviceOnboarding = false) {
   const serviceCommand = 'Get-Service ChildMonitorService';
   const companionCommand = "Get-CimInstance Win32_Process -Filter \"Name='ChildMonitorCompanion.exe'\"";
+  if (deviceOnboarding) {
+    return `<div class="agent-guide device-setup-guide">
+      <ol>
+        <li><strong>Tạo hồ sơ trẻ</strong><p>Nếu chưa có hồ sơ, tạo hồ sơ rồi quay lại mục Thiết bị.</p></li>
+        <li><strong>Chuẩn bị phần mềm trên máy của trẻ</strong><p>Chuẩn bị bộ cài Agent cho Windows. Cài sau khi có mã kết nối ở bước 5.</p></li>
+        <li><strong>Chuẩn bị mã định danh thiết bị</strong><p>Tự nhập một Device UID riêng, chưa đăng ký cho máy khác. Agent không cung cấp sẵn mã này.</p></li>
+        <li><strong>Đăng ký thiết bị</strong><p>Chọn hồ sơ trẻ, nhập tên máy dễ nhận biết và mã định danh đã chuẩn bị.</p></li>
+        <li><strong>Lưu mã kết nối và cài phần mềm</strong><p>Lưu Device Secret chỉ hiển thị một lần, rồi nhập mã khi cài Agent trên đúng máy. Thông số cài đặt ở phần kỹ thuật bên dưới.</p></li>
+      </ol>
+      <p class="device-setup-next">Sau khi cài, tải lại danh sách Thiết bị và kiểm tra “Lần liên lạc gần nhất”.</p>
+      <details class="device-setup-technical">
+        <summary>Hướng dẫn kỹ thuật: cài đặt và kiểm tra kết nối</summary>
+        <h3>Cài đặt trên Windows</h3>
+        <p>Chạy bộ cài Agent bằng quyền quản trị (Run as administrator), nhập Device Secret đã lưu và địa chỉ máy chủ (Backend URL):</p>
+        <div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" type="button" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép địa chỉ</button></div>
+        <h3>Kiểm tra sau cài đặt</h3>
+        <p>Mở PowerShell với quyền Administrator và chạy các lệnh kiểm tra dịch vụ, tiến trình:</p>
+        <div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" type="button" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}" aria-label="Sao chép lệnh kiểm tra dịch vụ">Sao chép lệnh</button></div>
+        <div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" type="button" data-action="copy-value" data-value="${escapeHtml(companionCommand)}" aria-label="Sao chép lệnh kiểm tra tiến trình">Sao chép lệnh</button></div>
+        <p>Nếu dùng máy ảo VMware Windows, cài Agent trong máy ảo. Backend và Cloudflare Named Tunnel cần hoạt động để Agent liên lạc với địa chỉ máy chủ ở trên.</p>
+        <p>Để kiểm tra dữ liệu hoạt động, mở một ứng dụng và một trang web mới trên máy đã cài Agent, chờ 1–2 phút rồi xem mục Hoạt động. Khi đổi mã kết nối, cần cập nhật mã mới cho Agent.</p>
+      </details>
+      <div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Đóng</button>${deviceRegistrationAction()}</div>
+    </div>`;
+  }
   return `<div class="agent-guide"><ol><li><strong>Đăng ký thiết bị</strong><p>Tạo thiết bị trên Dashboard và lưu Device Secret được hiển thị một lần.</p></li><li><strong>Cài Agent 1.0.14 trên VMware</strong><p>Chạy file cài đặt bằng quyền Administrator. Backend URL dùng địa chỉ cố định bên dưới.</p><div class="copy-row"><code>${DEFAULT_BACKEND_URL}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${DEFAULT_BACKEND_URL}">Sao chép</button></div></li><li><strong>Kiểm tra sau cài đặt</strong><p>Mở PowerShell Administrator và chạy hai lệnh:</p><div class="copy-row"><code>${escapeHtml(serviceCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(serviceCommand)}">Sao chép</button></div><div class="copy-row"><code>${escapeHtml(companionCommand)}</code><button class="btn btn-secondary btn-sm" data-action="copy-value" data-value="${escapeHtml(companionCommand)}">Sao chép</button></div></li><li><strong>Xác nhận dữ liệu</strong><p>Mở một ứng dụng và một trang web mới trong Edge, Chrome hoặc Cốc Cốc, chờ 1–2 phút rồi xem trang Hoạt động.</p></li></ol><div class="guide-note">Cloudflare Named Tunnel và Backend vẫn phải đang chạy để Agent kết nối được tới ${DEFAULT_BACKEND_URL}.</div></div>`;
 }
 
@@ -2426,9 +3021,17 @@ async function handleSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
+  if (form.id === 'device-form' && form.closest('.modal')?.dataset.devicePending === 'true') return;
+  if (form.id === 'device-control-form' && (!isCurrentControlForm(form)
+    || form.dataset.controlPending === 'true' || modalRoot.firstElementChild)) return;
+  if (form.id === 'policy-form') {
+    const childId = String(form.dataset.childId);
+    if (!isCurrentPolicyForm(form) || state.policyPendingByChild[childId]) return;
+  }
   const data = Object.fromEntries(new FormData(form));
+  if (form.id === 'edit-device-form') return renameDeviceFromModal(form, data);
   const submit = form.querySelector('[type="submit"]');
-  if (submit) submit.disabled = true;
+  if (submit && form.id !== 'device-control-form') submit.disabled = true;
   try {
     if (form.id === 'login-form') {
       const result = await api('/auth/login', { method: 'POST', body: data, noAuth: true });
@@ -2465,11 +3068,7 @@ async function handleSubmit(event) {
       await api(id ? `/children/${id}` : '/children', { method: id ? 'PUT' : 'POST', body });
       closeModal(); toast(id ? 'Đã cập nhật hồ sơ' : 'Đã thêm hồ sơ'); await navigate('children');
     } else if (form.id === 'device-form') {
-      const result = await api('/devices', { method: 'POST', body: { child_id: Number(data.child_id), device_name: data.device_name, device_uid: data.device_uid } });
-      closeModal(); showSecret(result); await renderDevices(document.querySelector('#page-content'));
-    } else if (form.id === 'edit-device-form') {
-      await api(`/devices/${form.dataset.id}`, { method: 'PUT', body: { device_name: data.device_name } });
-      closeModal(); toast('Đã đổi tên thiết bị'); await navigate('devices');
+      await registerDeviceFromModal(form, data);
     } else if (form.id === 'device-control-form') {
       const controlFields = [
         'is_locked',
@@ -2486,38 +3085,10 @@ async function handleSubmit(event) {
         delete data.break_interval_minutes;
         delete data.break_duration_minutes;
       }
-      await api(`/settings/${form.dataset.childId}`, { method: 'PUT', body: data });
-      toast('Đã lưu điều khiển thiết bị', 'Agent sẽ nhận cấu hình mới ở heartbeat tiếp theo.');
-      await renderDeviceControls(document.querySelector('#page-content'));
+      if (data.is_locked && form.dataset.savedLocked !== 'true') showControlLockConfirmation(form, data);
+      else await saveDeviceControls(form, data);
     } else if (form.id === 'policy-form') {
-      const bools = [
-        'enable_app_classification',
-        'enable_web_classification',
-        'enable_text_moderation',
-      ];
-      bools.forEach((name) => { data[name] = form.elements[name].checked; });
-      const settingsBody = Object.fromEntries(
-        Object.entries(data).filter(([name]) => !name.startsWith('policy_'))
-      );
-      const policyUpdates = [];
-      Object.entries(policyCategoryGroups).forEach(([resourceType, categories]) => {
-        categories.forEach(([category]) => {
-          const action = form.elements[`policy_${resourceType}_${category}`].value;
-          const key = `${resourceType}:${category}`;
-          if (action !== (state.categoryPolicies[key] || 'allow')) {
-            policyUpdates.push(api(`/settings/${form.dataset.childId}/policies/${resourceType}/${category}`, {
-              method: 'PUT',
-              body: { action },
-            }));
-          }
-        });
-      });
-      await Promise.all([
-        api(`/settings/${form.dataset.childId}`, { method: 'PUT', body: settingsBody }),
-        ...policyUpdates,
-      ]);
-      toast('Đã lưu chính sách', `${policyUpdates.length} quy tắc phân loại đã được cập nhật.`);
-      await renderPolicies(document.querySelector('#page-content'));
+      await savePolicyForm(form);
     } else if (form.id === 'activity-filter') {
       state.activityFilter = data;
       state.activityOffset = 0;
@@ -2602,13 +3173,195 @@ async function handleSubmit(event) {
       if (target) target.innerHTML = `<p class="eyebrow api-response-status">Request thất bại</p><pre class="code-box">${escapeHtml(JSON.stringify(error.payload || { message: error.message }, null, 2))}</pre>`;
     }
   } finally {
+    if (submit && form.id !== 'device-control-form') {
+      if (form.id === 'policy-form') syncPolicyFormState(String(form.dataset.childId));
+      else submit.disabled = false;
+    }
+  }
+}
+
+async function renameDeviceFromModal(form, data) {
+  const modal = form.closest('.modal');
+  const deviceId = form.dataset.id;
+  const pageAtSubmit = state.page;
+  // A reopened dialog for the same device is still a different editing session.
+  const isCurrent = () => form.isConnected && modal === modalRoot.querySelector('.modal')
+    && modal?.querySelector('#edit-device-form') === form
+    && form.dataset.id === deviceId && state.page === pageAtSubmit;
+  if (!isCurrent() || form.dataset.renamePending === 'true') return;
+  form.dataset.renamePending = 'true';
+  const submit = form.querySelector('[type="submit"]');
+  if (submit) submit.disabled = true;
+  try {
+    await api(`/devices/${deviceId}`, { method: 'PUT', body: { device_name: data.device_name } });
+    if (!isCurrent()) return;
+    closeModal(); toast('Đã đổi tên thiết bị'); await navigate('devices');
+  } catch (error) {
+    if (isCurrent()) toast('Không thể hoàn tất', localizeError(error.message), 'error');
+  } finally {
+    delete form.dataset.renamePending;
     if (submit) submit.disabled = false;
+  }
+}
+
+function deviceModalDismissBlocked() {
+  const modal = modalRoot.querySelector('.modal');
+  if (modal?.dataset.devicePending === 'true') {
+    modal.querySelector('.device-modal-status')?.focus();
+    return true;
+  }
+  const saved = modal?.querySelector('#device-secret-saved');
+  if (saved && !saved.checked) {
+    modal.querySelector('#device-secret-status').textContent = 'Mã vẫn được giữ ở đây. Hãy lưu mã rồi đánh dấu xác nhận trước khi đóng.';
+    saved.focus();
+    return true;
+  }
+  return false;
+}
+
+function protectDeviceModalOnUnload(event) {
+  const modal = modalRoot.querySelector('.modal');
+  const saved = modal?.querySelector('#device-secret-saved');
+  if (modal?.dataset.devicePending === 'true' || (saved && !saved.checked)) {
+    event.preventDefault();
+    event.returnValue = '';
+  }
+}
+
+function beginDeviceModalRequest(modal, message) {
+  if (!modal || modal !== modalRoot.querySelector('.modal') || modal.dataset.devicePending === 'true') return null;
+  modal.dataset.devicePending = 'true';
+  const controls = [...modal.querySelectorAll('button')].map((button) => [button, button.disabled]);
+  controls.forEach(([button]) => { button.disabled = true; });
+  const status = modal.querySelector('.device-modal-status');
+  status.textContent = message;
+  status.focus();
+  let finished = false;
+  // This timer only explains the delay; it never retries or cancels the request.
+  const slowNoticeTimer = setTimeout(() => {
+    if (finished || !modal.isConnected || modal !== modalRoot.querySelector('.modal')
+      || modal.dataset.devicePending !== 'true') return;
+    status.textContent = `${message} Thao tác đang mất nhiều thời gian hơn bình thường. Vui lòng tiếp tục chờ hoặc kiểm tra kết nối.`;
+  }, 10_000);
+  return () => {
+    if (finished) return;
+    finished = true;
+    clearTimeout(slowNoticeTimer);
+    delete modal.dataset.devicePending;
+    controls.forEach(([button, disabled]) => { button.disabled = disabled; });
+  };
+}
+
+async function registerDeviceFromModal(form, data) {
+  const finish = beginDeviceModalRequest(form.closest('.modal'), 'Đang đăng ký thiết bị. Các trường tạm khóa; vui lòng chờ để nhận mã kết nối.');
+  if (!finish) return;
+  // FormData has already been captured by handleSubmit before disabling fields.
+  const fields = [...form.querySelectorAll('input, select')].map((field) => [field, field.disabled]);
+  fields.forEach(([field]) => { field.disabled = true; });
+  try {
+    const result = await api('/devices', { method: 'POST', body: { child_id: Number(data.child_id), device_name: data.device_name, device_uid: data.device_uid } });
+    finish();
+    // Replace the form directly so focus stays in the dialog until the code is saved.
+    showSecret(result);
+    await renderDevices(document.querySelector('#page-content'));
+  } catch (error) {
+    if (form.isConnected) {
+      form.querySelector('.device-modal-status').textContent = 'Chưa nhận được mã kết nối. Hãy kiểm tra kết nối và danh sách thiết bị trước khi thử lại.';
+    }
+    throw error;
+  } finally {
+    fields.forEach(([field, disabled]) => { field.disabled = disabled; });
+    finish();
+  }
+}
+
+function showDeviceConfirmation(action, id) {
+  const device = state.devices.find((item) => String(item.device_id) === String(id));
+  if (!device) return toast('Không tìm thấy thiết bị', 'Hãy tải lại danh sách thiết bị rồi thử lại.', 'error');
+  const deleting = action === 'delete-device';
+  const label = deleting ? 'Xóa thiết bị' : 'Đổi mã kết nối';
+  const confirmAction = deleting ? 'confirm-delete-device' : 'confirm-rotate-secret';
+  const child = state.children.find((item) => String(item.child_id) === String(device.child_id));
+  showModal(
+    `${label}${deleting ? '' : ' cho'} “${device.device_name || `Thiết bị #${device.device_id}`}”?`,
+    deleting
+      ? 'Thiết bị cùng lịch sử hoạt động, ảnh chụp màn hình, cảnh báo và kết quả phân tích liên quan sẽ bị xóa. Agent sẽ không thể gửi dữ liệu bằng mã kết nối hiện tại.'
+      : 'Mã kết nối cũ (Device Secret) sẽ mất hiệu lực ngay khi đổi. Bạn cần cập nhật mã mới cho Agent (phần mềm trên máy của trẻ) để tiếp tục gửi dữ liệu.',
+    `<div class="device-confirmation" data-device-id="${escapeHtml(device.device_id)}" data-confirm-action="${confirmAction}">
+      <p class="device-confirmation-identity">${child ? `Hồ sơ trẻ: <strong>${escapeHtml(child.name)}</strong><br>` : ''}Mã định danh (Device UID): <span>${escapeHtml(device.device_uid)}</span></p>
+      <p class="device-modal-status" role="status" aria-live="polite" aria-atomic="true" tabindex="-1"></p>
+      <div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn btn-danger" type="button" data-action="${confirmAction}" data-id="${escapeHtml(device.device_id)}">${label}</button></div>
+    </div>`,
+    { initialFocus: '.device-confirmation [data-action="close-modal"]' },
+  );
+}
+
+async function confirmDeviceAction(button) {
+  const modal = modalRoot.querySelector('.modal');
+  const target = button.closest('.device-confirmation');
+  const { action, id } = button.dataset;
+  // Bind the request to the identity shown in this dialog, not a selection elsewhere.
+  if (!modal?.contains(button) || !target || target.dataset.deviceId !== id || target.dataset.confirmAction !== action) return;
+  const deleting = action === 'confirm-delete-device';
+  const finish = beginDeviceModalRequest(modal, deleting ? 'Đang xóa thiết bị…' : 'Đang đổi mã kết nối. Vui lòng chờ để lưu mã mới.');
+  if (!finish) return;
+  try {
+    if (deleting) {
+      await api(`/devices/${id}`, { method: 'DELETE' });
+      if (String(state.selectedDeviceId) === String(id)) state.selectedDeviceId = null;
+      finish();
+      closeModal(); toast('Đã xóa thiết bị'); return navigate('devices');
+    }
+    const result = await api(`/devices/${id}/rotate-secret`, { method: 'POST' });
+    finish();
+    showSecret(result);
+  } catch (error) {
+    if (modal.isConnected) {
+      modal.querySelector('.device-modal-status').textContent = deleting
+        ? 'Chưa xác nhận được việc xóa. Hãy kiểm tra kết nối và danh sách thiết bị trước khi thử lại.'
+        : 'Chưa nhận được mã kết nối mới. Hãy kiểm tra kết nối trước khi thử lại.';
+    }
+    throw error;
+  } finally {
+    finish();
   }
 }
 
 function showSecret(result) {
   state.agentSecret = result.device_secret;
-  showModal('Hãy lưu Device Secret ngay', 'Secret này chỉ được hiển thị một lần.', `<div class="secret-box"><strong>${escapeHtml(result.device_name)}</strong><code id="secret-value">${escapeHtml(result.device_secret)}</code><button class="btn btn-secondary btn-sm" data-action="copy-secret">Sao chép secret</button></div><div class="form-actions"><button class="btn" data-action="close-modal">Tôi đã lưu an toàn</button></div>`);
+  showModal('Lưu mã kết nối trước khi đóng', 'Mã kết nối (Device Secret) chỉ hiển thị một lần. Hãy sao chép và lưu mã để cài đặt hoặc cập nhật Agent (phần mềm trên máy của trẻ).',
+    `<div class="secret-box"><strong>${escapeHtml(result.device_name)}</strong><code id="secret-value" tabindex="0" aria-label="Mã kết nối (Device Secret)">${escapeHtml(result.device_secret)}</code><button class="btn btn-secondary btn-sm" type="button" data-action="copy-secret">Sao chép mã kết nối</button></div>
+    <p id="device-secret-status" class="device-modal-status" role="status" aria-live="polite" aria-atomic="true"></p>
+    <label class="device-secret-ack"><input id="device-secret-saved" type="checkbox" aria-describedby="device-secret-hint"><span>Tôi đã lưu mã kết nối ở nơi an toàn.</span></label>
+    <p id="device-secret-hint" class="device-secret-hint">Sao chép chưa đồng nghĩa với đã lưu. Hãy lưu mã trước khi xác nhận; X, phím Escape và nhấp bên ngoài chỉ đóng sau bước này.</p>
+    <div class="form-actions"><button class="btn" type="button" data-action="close-modal" id="device-secret-close" disabled>Đã lưu mã, đóng</button></div>`,
+    { initialFocus: '[data-action="copy-secret"]' });
+  const saved = modalRoot.querySelector('#device-secret-saved');
+  saved.addEventListener('change', () => {
+    modalRoot.querySelector('#device-secret-close').disabled = !saved.checked;
+  });
+}
+
+async function copyDeviceSecret(button) {
+  const modal = button.closest('.modal');
+  const secret = modal?.querySelector('#secret-value');
+  if (!secret || button.disabled) return;
+  const hadFocus = document.activeElement === button;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  try {
+    await navigator.clipboard.writeText(secret.textContent);
+    if (modal.isConnected) modal.querySelector('#device-secret-status').textContent = 'Đã sao chép mã. Hãy lưu mã ở nơi an toàn trước khi đóng.';
+  } catch {
+    if (modal.isConnected) {
+      modal.querySelector('#device-secret-status').textContent = 'Không thể sao chép tự động. Hãy chọn mã phía trên và sao chép thủ công, rồi lưu ở nơi an toàn.';
+      secret.focus();
+    }
+  } finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+    if (hadFocus && modal.isConnected && document.activeElement === document.body) button.focus();
+  }
 }
 
 async function logout(callApi = true) {
@@ -2723,7 +3476,10 @@ async function handleClick(event) {
       return;
     }
     if (action === 'logout') return logout();
-    if (action === 'agent-guide') return showModal('Cài đặt và kiểm tra Agent', 'Hướng dẫn nhanh cho máy ảo VMware Windows.', agentGuide());
+    if (action === 'agent-guide') {
+      if (state.page === 'devices') return showModal('Kết nối máy của trẻ', 'Chuẩn bị hồ sơ, đăng ký máy và cài phần mềm theo thứ tự dưới đây.', agentGuide(true));
+      return showModal('Cài đặt và kiểm tra Agent', 'Hướng dẫn nhanh cho máy ảo VMware Windows.', agentGuide());
+    }
     if (action === 'copy-value') {
       await navigator.clipboard.writeText(button.dataset.value || '');
       return toast('Đã sao chép vào clipboard');
@@ -2774,23 +3530,32 @@ async function handleClick(event) {
     if (action === 'child-policy') { state.selectedChildId = id; return navigate('policies'); }
     if (action === 'add-device') {
       if (!state.children.length) return toast('Chưa có hồ sơ trẻ', 'Hãy tạo hồ sơ trước khi đăng ký thiết bị.', 'error');
-      return showModal('Đăng ký thiết bị', 'Secret cài đặt sẽ chỉ được hiển thị một lần.', deviceForm());
+      return showModal('Đăng ký thiết bị', 'Sau khi đăng ký, bạn sẽ nhận mã kết nối (Device Secret) để cấu hình Agent trên máy của trẻ.', deviceForm());
     }
     if (action === 'edit-device') {
       const d = state.devices.find((x) => String(x.device_id) === String(id));
-      return showModal('Đổi tên thiết bị', d.device_uid, `<form id="edit-device-form" data-id="${id}"><div class="field"><label>Tên thiết bị</label><input class="input" name="device_name" maxlength="100" required value="${escapeHtml(d.device_name)}"></div><div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu</button></div></form>`);
+      return showModal('Đổi tên thiết bị', `Mã định danh (Device UID): ${d.device_uid}`, `<form id="edit-device-form" data-id="${id}"><div class="field"><label>Tên thiết bị</label><input class="input" name="device_name" maxlength="100" required value="${escapeHtml(d.device_name)}"></div><div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu tên thiết bị</button></div></form>`);
     }
-    if (action === 'delete-device') return confirmModal('Xóa thiết bị?', 'Agent đang dùng secret hiện tại sẽ mất quyền truy cập.', 'confirm-delete-device', id);
-    if (action === 'confirm-delete-device') {
-      await api(`/devices/${id}`, { method: 'DELETE' });
-      if (String(state.selectedDeviceId) === String(id)) state.selectedDeviceId = null;
-      closeModal(); toast('Đã xóa thiết bị'); return navigate('devices');
+    if (action === 'delete-device' || action === 'rotate-secret') return showDeviceConfirmation(action, id);
+    if (action === 'confirm-delete-device' || action === 'confirm-rotate-secret') return await confirmDeviceAction(button);
+    if (action === 'copy-secret') return copyDeviceSecret(button);
+    if (action === 'select-control-child') {
+      if (String(state.selectedChildId) === String(id)) return;
+      state.selectedChildId = id;
+      return renderDeviceControls(document.querySelector('#page-content'));
     }
-    if (action === 'rotate-secret') return confirmModal('Xoay Device Secret?', 'Secret cũ bị vô hiệu ngay lập tức. Bạn phải cập nhật lại Agent.', 'confirm-rotate-secret', id);
-    if (action === 'confirm-rotate-secret') { const result = await api(`/devices/${id}/rotate-secret`, { method: 'POST' }); closeModal(); return showSecret(result); }
-    if (action === 'copy-secret') { await navigator.clipboard.writeText(document.querySelector('#secret-value').textContent); return toast('Đã sao chép secret'); }
-    if (action === 'select-control-child') { state.selectedChildId = id; return renderDeviceControls(document.querySelector('#page-content')); }
-    if (action === 'select-policy-child') { state.selectedChildId = id; return renderPolicies(document.querySelector('#page-content')); }
+    if (action === 'select-policy-child') {
+      if (String(state.selectedChildId) === String(id)) return;
+      capturePolicyDraft(document.querySelector('#policy-form'));
+      state.selectedChildId = id;
+      return renderPolicies(document.querySelector('#page-content'), { focusChildId: id });
+    }
+    if (action === 'refresh-policy-state') {
+      if (state.page !== 'policies' || String(state.selectedChildId) !== String(id)
+        || !policySaveRequiresRefresh(id)) return;
+      capturePolicyDraft(document.querySelector('#policy-form'));
+      return renderPolicies(document.querySelector('#page-content'), { focusChildId: id });
+    }
     if (action === 'activity-tab') {
       if (!['apps', 'web', 'screenshots'].includes(button.dataset.tab)) return;
       state.activityTab = button.dataset.tab;
@@ -2921,6 +3686,8 @@ document.addEventListener('submit', async (event) => {
 });
 document.addEventListener('click', handleClick);
 document.addEventListener('change', (event) => {
+  const policyForm = event.target.closest?.('#policy-form');
+  if (policyForm && event.target.matches('input, select')) capturePolicyDraft(policyForm);
   if (event.target.id === 'screen-device') {
     updateScreenshotCaptureControls();
   } else if (event.target.id === 'overview-child') {
@@ -2996,6 +3763,7 @@ document.addEventListener('keydown', (event) => {
 document.addEventListener('visibilitychange', refreshAlertIndicatorInBackground);
 window.addEventListener('focus', refreshAlertIndicatorInBackground);
 window.addEventListener('online', refreshAlertIndicatorInBackground);
+window.addEventListener('beforeunload', protectDeviceModalOnUnload);
 document.addEventListener('visibilitychange', () => refreshBreakReminderHistory({ background: true }));
 window.addEventListener('online', () => refreshBreakReminderHistory({ background: true }));
 
