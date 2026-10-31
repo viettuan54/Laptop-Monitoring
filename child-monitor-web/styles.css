@@ -7788,6 +7788,7 @@ button.list-item:hover .list-arrow {
 }
 
 .policy-settings-layout .policy-action {
+  min-height: 44px;
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5;
@@ -7807,6 +7808,9 @@ button.list-item:hover .list-arrow {
 }
 
 .policy-settings-layout .policy-save-bar .btn {
+  min-height: 44px;
+  max-width: 100%;
+  padding: 11px 20px;
   font-size: 1rem;
   font-weight: 600;
   line-height: 1.5;
@@ -7854,7 +7858,8 @@ button.list-item:hover .list-arrow {
 
 .policy-settings-layout .policy-group-head .badge {
   flex: 0 0 auto;
-  max-width: 8.5rem;
+  max-width: min(8.5rem, 100%);
+  overflow-wrap: anywhere;
   font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.35;
@@ -7889,6 +7894,10 @@ button.list-item:hover .list-arrow {
   grid-template-columns: 220px minmax(0, 1fr);
   align-items: start;
   gap: 24px;
+}
+
+.policy-settings-layout [hidden] {
+  display: none !important;
 }
 
 .policy-settings-layout .child-picker {
@@ -7937,8 +7946,13 @@ button.list-item:hover .list-arrow {
 }
 
 .policy-settings-layout .policy-group-head {
+  flex-wrap: wrap;
   padding: 0 0 10px;
   background: transparent;
+}
+
+.policy-settings-layout .policy-group-head > div {
+  flex: 1 1 12rem;
 }
 
 .policy-settings-layout .policy-rule {
@@ -7946,13 +7960,31 @@ button.list-item:hover .list-arrow {
 }
 
 .policy-settings-layout .policy-save-bar {
-  padding: 14px 0 0;
-  border: 0;
-  border-top: 1px solid var(--line);
-  border-radius: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 20px;
+  min-width: 0;
+  margin-top: 0;
+  padding: 20px 24px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
   background: var(--paper);
   box-shadow: none;
   backdrop-filter: none;
+}
+
+.policy-settings-layout .policy-save-bar > span {
+  flex: 1 1 24rem;
+}
+
+.policy-settings-layout .policy-save-bar .btn[type="submit"] {
+  margin-inline-start: auto;
+}
+
+.policy-settings-layout .policy-save-bar .btn:hover {
+  transform: none;
+  box-shadow: none;
 }
 
 @media (max-width: 1024px) {
@@ -7999,9 +8031,15 @@ button.list-item:hover .list-arrow {
   outline-offset: 3px;
 }
 
+.policy-settings-layout .switch-row {
+  align-items: flex-start;
+}
+
 .policy-settings-layout .switch {
   width: 44px;
   height: 44px;
+  /* Center the track on the first 1rem / 1.4 label line, not its description. */
+  margin-top: calc(0.7rem - 22px);
 }
 
 .policy-settings-layout .switch input {
@@ -8021,8 +8059,25 @@ button.list-item:hover .list-arrow {
   pointer-events: none;
 }
 
+.policy-settings-layout .switch input:not(:checked) + span {
+  background: var(--ink-soft);
+}
+
 .policy-settings-layout .switch input:focus-visible + span {
   outline: 3px solid var(--forest);
   outline-offset: 3px;
   box-shadow: none;
+}
+
+@media (max-width: 610px) {
+  .policy-settings-layout .policy-save-bar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    padding: 16px;
+  }
+
+  .policy-settings-layout .policy-save-bar .btn[type="submit"] {
+    margin-inline-start: 0;
+  }
 }

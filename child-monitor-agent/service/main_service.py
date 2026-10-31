@@ -102,6 +102,8 @@ class ChildMonitorService(ServiceBaseClass):
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
         logging.info("Service stopping signal received...")
         self.stop_event.set()
+        if self.offline_queue:
+            self.offline_queue.text_sync_requested.set()
         if self.pipe_server:
             self.pipe_server.stop()
         if self.blocked_web_monitor:
@@ -197,6 +199,11 @@ class ChildMonitorService(ServiceBaseClass):
 
         # 3. Khởi tạo các Worker Thread tự phục hồi (run_forever)
         threads = [
+            threading.Thread(
+                target=self._text_sync_loop,
+                name="TextModerationSync",
+                daemon=True,
+            ),
             threading.Thread(
                 target=run_forever,
                 args=("HeartbeatLoop", self._heartbeat_loop_step, 5),
@@ -296,6 +303,21 @@ class ChildMonitorService(ServiceBaseClass):
     def _offline_sync_loop_step(self):
         """Offline Log Sync Loop (60s): Đồng bộ log trong SQLite queue lên backend."""
         self.offline_queue.sync_offline_data(self.api_client)
+
+    def _text_sync_loop(self):
+        """Wake on a committed query; retry retained records without the 60s queue."""
+        requested = self.offline_queue.text_sync_requested
+        while not self.stop_event.is_set():
+            requested.wait(timeout=5)
+            requested.clear()
+            if self.stop_event.is_set():
+                break
+            try:
+                self.offline_queue.sync_text_moderation(self.api_client)
+            except Exception as error:
+                # Never log a request body or unprotected child text.
+                logging.warning("Text sync worker failed (%s)", type(error).__name__)
+                self.stop_event.wait(5)
 
     def _content_backfill_loop_step(self):
         """Reclassify bounded sets of legacy unknown app and website rows."""

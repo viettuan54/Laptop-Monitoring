@@ -517,6 +517,47 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         with self.queue.get_connection() as conn:
             return conn.execute("SELECT COUNT(*) FROM text_moderation_queue").fetchone()[0]
 
+    def test_text_wakes_worker_after_commit_without_waiting_for_telemetry(self):
+        self.assertFalse(self.queue.text_sync_requested.is_set())
+        record_id, inserted = self._enqueue_current_text()
+        self.assertTrue(inserted)
+        self.assertTrue(self.queue.text_sync_requested.is_set())
+        self.assertEqual(self._text_count(), 1)
+        api = FakeApiClient([record_id])
+        with patch.object(self.queue, "_sync_apps") as apps, \
+             patch.object(self.queue, "_sync_webs") as webs:
+            self.queue.sync_text_moderation(api)
+        apps.assert_not_called()
+        webs.assert_not_called()
+        self.assertEqual(self._text_count(), 0)
+
+    def test_text_delivery_is_single_flight_and_retries_only_unacknowledged_rows(self):
+        record_id, _ = self._enqueue_current_text()
+        api = FakeApiClient([record_id])
+        with self.queue._text_sync_lock:
+            self.queue.sync_text_moderation(api)
+        self.assertEqual(api.calls, [])
+        self.queue.sync_text_moderation(FakeVisionApi(status_code=502))
+        self.assertEqual(self._text_count(), 1)
+        self.queue.sync_text_moderation(api)
+        self.queue.sync_text_moderation(api)
+        self.assertEqual(len(api.calls), 1)
+        self.assertEqual(self._text_count(), 0)
+
+    def test_fast_text_worker_respects_revocation_and_suspension(self):
+        self._enqueue_current_text()
+        api = FakeVisionApi()
+        api.suspended = True
+        self.queue.sync_text_moderation(api)
+        self.assertEqual(self._text_count(), 1)
+        self.text_policy = {"enabled": False}
+        self.queue.sync_text_moderation(api)
+        self.assertEqual(self._text_count(), 0)
+        self.assertEqual(api.calls, [])
+        self.queue.text_sync_requested.clear()
+        self.assertEqual(self._enqueue_current_text(), (None, False))
+        self.assertFalse(self.queue.text_sync_requested.is_set())
+
     def test_disabled_expired_and_unknown_policy_delete_pending_text_even_when_api_suspended(self):
         for policy in ({"enabled": False}, {}, {**self.text_policy, "expires_at": time.time() - 1}):
             current = self.text_policy

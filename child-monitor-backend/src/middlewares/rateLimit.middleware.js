@@ -226,7 +226,20 @@ const breakReminderReadLimiter = rateLimit({
   message: { message: 'Đang tải lịch sử quá thường xuyên. Vui lòng chờ một chút rồi thử lại.' },
 });
 
+// A visible dashboard checks badges and its alert list every five seconds.
+// Keep reads out of the settings/navigation budget; authenticate before keying.
+const alertReadLimiter = rateLimit({
+  store: createRateLimitStore('alert-read'),
+  windowMs: 15 * 60 * 1000,
+  max: 900,
+  keyGenerator: (req) => String(req.user.user_id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Đang tải cảnh báo quá thường xuyên. Vui lòng chờ một chút rồi thử lại.' },
+});
+
 module.exports = {
+  alertReadLimiter,
   breakReminderReadLimiter,
   screenshotReadLimiter,
   loginLimiter,

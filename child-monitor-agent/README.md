@@ -1,5 +1,8 @@
 # Child Monitor Agent
 
+Agent **1.0.24** giảm độ trễ cảnh báo văn bản: quét lịch sử mỗi 3 giây và gửi
+truy vấn qua luồng riêng ngay khi vào hàng đợi, không chờ đồng bộ app/web 60 giây.
+
 Agent **1.0.23** sửa [Nhắc nghỉ giải lao](docs/break_reminders.md): xem video/đọc
 nội dung ít thao tác vẫn được tính thời gian, cửa sổ nhắc phục hồi khi kết nối
 Service trở lại. Tính năng thay điều khiển ghi nhận phím bấm từ bản 1.0.22.
@@ -85,7 +88,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.23"
+  -Version "1.0.24"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -93,14 +96,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.23.exe
+build\output\ChildMonitorSetup-1.0.24.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.23" `
+  -Version "1.0.24" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -197,7 +200,7 @@ và không giải mã HTTPS.
 Trước mỗi lần trích xuất, Companion phải có cấu hình bật còn hiệu lực từ Service.
 Lease dài 180 giây, gia hạn khi nhận cấu hình backend qua heartbeat/config;
 thiếu/hết hạn thì dừng trích xuất. Lịch sử trước phiên bật hiện tại không được
-đưa vào phân tích. Heartbeat thường mỗi 60 giây, Companion kiểm tra mỗi 15 giây;
+đưa vào phân tích. Heartbeat mỗi 5 giây, Companion kiểm tra mỗi 3 giây;
 đây không phải công tắc đồng bộ tức thì khi thiết bị mất kết nối.
 
 Truy vấn được lọc email/điện thoại/secret/URL, chuyển qua Named Pipe tới Service,
@@ -221,6 +224,29 @@ nguồn này, chưa nhận nội dung trang/chat. `SAFE` không cảnh báo; `RI
 phụ huynh quan sát bé; `HIGH_RISK` báo “Bé có dấu hiệu bị bạo lực”. Nội dung trang chưa có
 bộ thu thập/hàng đợi. Xem chi tiết nghiệm thu và giới hạn tại
 [bật/tắt và bảo vệ dữ liệu](docs/text_privacy_controls.md).
+
+### Độ trễ cảnh báo tìm kiếm — Agent 1.0.24
+
+Service đánh thức luồng gửi văn bản ngay sau khi truy vấn được ghi vào hàng đợi
+mã hoá. Luồng này độc lập với đồng bộ app/web 60 giây; bản ghi chưa được xác nhận
+được thử lại sau khoảng 5 giây cộng thời gian request/retry. Giữ nguyên kiểm tra
+quyền trước mỗi lần gửi, UUID chống trùng và xóa văn bản sau ACK.
+
+Dashboard đang hiển thị cập nhật số cảnh báo và danh sách cảnh báo mỗi 5 giây,
+giữ bộ lọc đang chỉnh sửa và bỏ qua phản hồi đến muộn. API đọc cảnh báo có hạn mức
+riêng theo tài khoản; không tiêu thụ hạn mức chung của cài đặt/điều hướng.
+
+Khi đã nhận quyền bật, phần chờ do chu kỳ quét/hiển thị là khoảng 0–8 giây,
+chưa tính thời gian Cốc Cốc ghi lịch sử, đọc SQLite, mạng, model và tải server.
+Đây là ngân sách chu kỳ, không phải cam kết độ trễ thực đo. Backend vẫn chống
+cảnh báo lặp cùng loại trên cùng thiết bị trong 5 phút. Không thu lại truy vấn
+đã xảy ra trước khi Agent nhận quyền bật.
+
+Triển khai đồng bộ backend (hạn mức đọc), Dashboard và bộ cài Agent 1.0.24.
+Không chỉ giảm timer Dashboard trong khi backend cũ vẫn giới hạn chung
+100 request/15 phút. Sau cập nhật, thử một truy vấn mới trên Cốc Cốc sau khi
+Agent nhận cấu hình; kiểm tra cả số cảnh báo và danh sách, không gửi thử vào
+dữ liệu production khi chưa được cho phép.
 
 ## Edge AI: khoảng cách mắt và tư thế
 

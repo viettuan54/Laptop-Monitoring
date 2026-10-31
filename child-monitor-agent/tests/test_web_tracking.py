@@ -9,6 +9,7 @@ import unittest
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 from unittest.mock import Mock, patch
 
 
@@ -270,6 +271,28 @@ class WebTrackingTest(unittest.TestCase):
             tracker.get_profiles_for_browser(browser_paths["coccoc"]),
             [("Default", str(coccoc_history))],
         )
+
+    def test_coccoc_reported_query_is_forwarded_once_within_three_second_scan(self):
+        query = "bị bạn đánh vào giờ ra chơi vì không cho bạn mượn đồ thì nên báo cô giáo không"
+        self._insert_visit("https://coccoc.com/search?" + urlencode({"query": query}))
+        coccoc = self.local_app_data / "CocCoc/Browser/User Data/Default/History"
+        coccoc.parent.mkdir(parents=True)
+        self.history_path.replace(coccoc)
+        pipe = FakePipeClient(policy=enabled_policy())
+        tracker = WebTracker(pipe, local_app_data=str(self.local_app_data), state_dir=str(self.state_dir))
+        pipe.send_ping = Mock(wraps=pipe.send_ping)
+        with patch.object(companion_web_tracker.time, "monotonic", return_value=100):
+            tracker.poll()
+        with patch.object(companion_web_tracker.time, "monotonic", return_value=102):
+            tracker.poll()
+        self.assertEqual(pipe.send_ping.call_count, 1)
+        with patch.object(companion_web_tracker.time, "monotonic", return_value=103):
+            tracker.poll()
+        self.assertEqual(pipe.send_ping.call_count, 2)
+        self.assertEqual(len(pipe.calls), 1)
+        self.assertEqual(pipe.calls[0]["text_record"]["text"], query)
+        self.assertEqual(pipe.calls[0]["domain"], "coccoc.com")
+        self.assertNotIn(query, pipe.calls[0]["url"])
 
     def test_snapshot_fallback_copies_wal_family_when_backup_is_unavailable(self):
         pipe_client = FakePipeClient()

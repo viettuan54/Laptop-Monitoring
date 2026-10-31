@@ -18,7 +18,7 @@ REQUIRED = {
     "service/ChildMonitorService.exe": {
         "break_reminders": {"BreakReminderEngine", "tick", "receipt"},
         "api_client": {"post_text_moderation"},
-        "offline_queue": {"enqueue_text_moderation", "_sync_text_moderation", "enqueue_app_enforcement", "_sync_app_enforcement"},
+        "offline_queue": {"enqueue_text_moderation", "sync_text_moderation", "_sync_text_moderation", "text_sync_requested", "enqueue_app_enforcement", "_sync_app_enforcement"},
         "app_enforcement": {"AppEnforcer", "check", "tick"},
         "windows_app_process": {"WindowsAppProcesses", "WindowsAppTarget", "client_allowed", "terminate"},
         "enforcement_core": {"get_text_moderation_policy", "get_screenshot_policy"},

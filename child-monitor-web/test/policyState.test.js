@@ -32,7 +32,19 @@ function makeForm(childId, { app = false, web = false, text = false, learning = 
     .map(name => [name, { textContent: '', hidden: true }]));
   const refreshButton = { hidden: true, focus() {} };
   const policyGroups = Object.fromEntries(['app', 'web'].map(resource => {
-    const availability = { textContent: '' };
+    const badgeClasses = new Set(['badge']);
+    if (!(resource === 'app' ? app : web)) badgeClasses.add('neutral');
+    const availability = {
+      textContent: '',
+      classList: {
+        contains(name) { return badgeClasses.has(name); },
+        toggle(name, enabled) {
+          if (enabled) badgeClasses.add(name);
+          else badgeClasses.delete(name);
+          return badgeClasses.has(name);
+        },
+      },
+    };
     const explanation = { textContent: '' };
     return [resource, {
       availability,
@@ -168,6 +180,132 @@ function contrastRatio(first, second) {
   const [lighter, darker] = [luminance(first), luminance(second)].sort((a, b) => b - a);
   return (lighter + 0.05) / (darker + 0.05);
 }
+
+function markupAttributes(tag) {
+  return Object.fromEntries([...tag.matchAll(/\s([\w:-]+)(?:="([^"]*)")?/g)]
+    .map(([, name, value]) => [name, value ?? '']));
+}
+
+function assertAriaTargets(markup) {
+  const elements = [...markup.matchAll(/<[a-z][\w-]*\b[^>]*>/gi)].map(([tag]) => markupAttributes(tag));
+  const ids = elements.filter(element => element.id).map(element => element.id);
+  assert.equal(new Set(ids).size, ids.length, 'rendered IDs must be unique');
+  for (const element of elements) {
+    for (const attribute of ['aria-labelledby', 'aria-describedby']) {
+      if (!(attribute in element)) continue;
+      const references = element[attribute].trim().split(/\s+/);
+      assert.equal(new Set(references).size, references.length, 'ARIA references must not repeat');
+      for (const id of references) assert.ok(ids.includes(id), `${attribute} target ${id} must exist`);
+    }
+  }
+  return elements;
+}
+
+test('policy controls reference unique descriptions, save statuses and notes in every save state', () => {
+  const app = fixture();
+  app.context.policyCategoryGroups.app = [['unknown', 'Chưa phân loại', 'Mô tả ứng dụng.']];
+  app.context.policyCategoryGroups.web = [['unknown', 'Chưa phân loại', 'Mô tả website.']];
+  const names = ['enable_app_classification', 'enable_web_classification', 'enable_text_moderation'];
+  const snapshot = { settings: savedSettings(), categories: {} };
+  for (const saveState of ['unknown', 'saved', 'draft', 'pending', 'failed']) {
+    app.state.policyBaselinesByChild = saveState === 'unknown' ? {} : { '1': snapshot };
+    app.state.policyPendingByChild = saveState === 'pending' ? { '1': { snapshot } } : {};
+    app.state.policySaveErrors = saveState === 'failed'
+      ? { '1': { requiresRefresh: true, failedOperations: [{ kind: 'settings' }] } } : {};
+    for (const checked of [false, true]) {
+      const markup = names.map(name => app.context.switchRow(name, name, 'Hướng dẫn dài. '.repeat(40), checked, true)).join('')
+        + app.context.categoryPolicyGroup('app', 'Ứng dụng', checked)
+        + app.context.categoryPolicyGroup('web', 'Website', checked);
+      const elements = assertAriaTargets(markup);
+      for (const name of names) {
+        const input = elements.find(element => element.type === 'checkbox' && element.name === name);
+        assert.equal(input['aria-describedby'].split(/\s+/).length, 3);
+        assert.equal('checked' in input, checked);
+        const targets = input['aria-describedby'].split(/\s+/).map(id => elements.find(element => element.id === id));
+        assert.ok(targets.some(element => element['data-policy-switch-status'] === name));
+        assert.ok(targets.some(element => element['data-policy-switch-note'] === name));
+      }
+      const selects = elements.filter(element => element.name?.startsWith('policy_'));
+      assert.equal(selects.length, 2);
+      assert.notEqual(selects[0]['aria-describedby'], selects[1]['aria-describedby']);
+    }
+  }
+});
+
+test('accessibility enhancement preserves policy descriptions and retains non-policy behavior', () => {
+  const app = fixture();
+  const source = fs.readFileSync(APP_PATH, 'utf8');
+  vm.runInContext('let accessibleControlSequence = 0;\n'
+    + functionSource(source, 'ensureControlId') + '\n'
+    + functionSource(source, 'enhanceFormAccessibility'), app.context);
+  for (const policy of [true, false]) {
+    for (const existing of [undefined, 'custom-hint custom-note']) {
+      const markup = app.context.switchRow('enable_web_classification', 'Website', 'Mô tả', false, policy)
+        + '<small id="custom-hint">Mô tả bổ sung</small><small id="custom-note">Ghi chú bổ sung</small>';
+      const elements = assertAriaTargets(markup);
+      const attributes = elements.find(element => element.type === 'checkbox');
+      if (existing !== undefined) attributes['aria-describedby'] = existing;
+      const before = attributes['aria-describedby'];
+      for (const id of (before || '').split(/\s+/).filter(Boolean)) {
+        assert.ok(elements.some(element => element.id === id), 'preserved description targets exist');
+      }
+      const control = {
+        get id() { return attributes.id; },
+        set id(value) { attributes.id = value; },
+        closest(selector) { assert.equal(selector, '#policy-form'); return policy ? {} : null; },
+        getAttribute(name) { return attributes[name] ?? null; },
+        setAttribute(name, value) { attributes[name] = value; },
+      };
+      const title = markupAttributes(markup.match(/<strong[^>]*>/)[0]);
+      const hint = markupAttributes(markup.match(/<small[^>]*>/)[0]);
+      const row = { querySelector: selector => ({
+        'input[type="checkbox"]': control, '.switch-copy strong': title, '.switch-copy small': hint,
+      })[selector] };
+      const root = { querySelectorAll: selector => selector === '.switch-row' ? [row] : [] };
+      for (let pass = 0; pass < 3; pass++) app.context.enhanceFormAccessibility(root);
+      assert.equal(attributes['aria-labelledby'], title.id);
+      assert.equal(attributes['aria-describedby'], policy ? before : hint.id);
+      if (policy) {
+        delete attributes['aria-describedby'];
+        app.context.enhanceFormAccessibility(root);
+        assert.equal(attributes['aria-describedby'], hint.id, 'missing policy description still gets the fallback');
+      }
+    }
+  }
+});
+
+test('non-policy switch markup remains unchanged for both checkbox states', () => {
+  const app = fixture();
+  for (const name of ['enable_break_reminders', 'is_locked', 'enable_screenshot_review', 'is_active']) {
+    for (const checked of [false, true]) {
+      const expected = `<div class="switch-row"><div class="switch-copy"><strong>Nhãn</strong><small>Mô tả</small></div><label class="switch"><input type="checkbox" name="${name}"  ${checked ? 'checked' : ''}><span></span></label></div>`;
+      assert.equal(app.context.switchRow(name, 'Nhãn', 'Mô tả', checked), expected);
+    }
+  }
+});
+
+test('policy rendering preserves long names, many profiles, long descriptions and native tab order', async () => {
+  const children = Array.from({ length: 200 }, (_, index) => ({
+    child_id: index + 1, name: `${index + 1} Nguyễn & <An> ${'Tênrấtdài'.repeat(20)} 🌱`, age: null,
+  }));
+  const app = fixture({ children, api: async route => route.startsWith('/children')
+    ? children : route.endsWith('/policies') ? savedPolicies() : savedSettings() });
+  vm.runInContext(functionSource(fs.readFileSync(APP_PATH, 'utf8'), 'escapeHtml'), app.context);
+  const longDescription = 'Hướng dẫn chính sách cần được giữ nguyên đầy đủ. '.repeat(80);
+  app.context.policyCategoryGroups.app = [['learning', 'Học tập', longDescription]];
+  const content = { innerHTML: '' };
+  await app.context.renderPolicies(content);
+  const elements = assertAriaTargets(content.innerHTML);
+  assert.equal(elements.filter(element => element['data-action'] === 'select-policy-child').length, 200);
+  for (const child of children) assert.ok(content.innerHTML.includes(app.context.escapeHtml(child.name)));
+  assert.ok(content.innerHTML.includes(longDescription));
+  assert.deepEqual(elements.filter(element => element.name).map(element => element.name), [
+    'enable_app_classification', 'enable_web_classification', 'enable_text_moderation',
+    'policy_app_learning', 'policy_web_social',
+  ]);
+  assert.ok(elements.every(element => !('tabindex' in element)), 'controls retain native tab order');
+  assert.ok(elements.some(element => element.type === 'submit' && !('disabled' in element)));
+});
 
 test('policy draft is restored for its child after switching to another child', async () => {
   const app = fixture({ api: async route => {
@@ -435,6 +573,10 @@ test('classification switches immediately update saved state and availability fo
   assert.match(form.policyGroups.app.explanation.textContent, /Chưa áp dụng/);
   assert.equal(form.policyGroups.web.availability.textContent, 'Chưa áp dụng');
   assert.match(form.policyGroups.web.explanation.textContent, /Chưa áp dụng/);
+  for (const resource of ['app', 'web']) {
+    assert.equal(form.policyGroups[resource].availability.classList.contains('neutral'), true);
+    assert.equal(form.policyGroups[resource].availability.classList.contains('badge'), true);
+  }
   for (const name of ['enable_app_classification', 'enable_web_classification', 'enable_text_moderation']) {
     assert.equal(form.switchStatuses[name].textContent, 'Chưa lưu');
     assert.equal(form.switchNotes[name].textContent, 'Thay đổi này chưa được lưu.');
@@ -446,10 +588,27 @@ test('classification switches immediately update saved state and availability fo
   app.context.capturePolicyDraft(form);
   assert.equal(form.policyGroups.app.availability.textContent, 'Phân loại bật');
   assert.equal(form.policyGroups.web.availability.textContent, 'Phân loại bật');
+  for (const resource of ['app', 'web']) {
+    assert.equal(form.policyGroups[resource].availability.classList.contains('neutral'), false);
+    assert.equal(form.policyGroups[resource].availability.classList.contains('badge'), true);
+  }
   for (const name of ['enable_app_classification', 'enable_web_classification', 'enable_text_moderation']) {
     assert.equal(form.switchStatuses[name].textContent, 'Đã lưu');
   }
   assert.equal(form.policyGroups.app.explanation.textContent, 'Phân loại bật trong cấu hình đã lưu.');
+
+  for (const appEnabled of [false, true]) {
+    form.elements.enable_app_classification.checked = appEnabled;
+    form.elements.enable_web_classification.checked = !appEnabled;
+    app.context.capturePolicyDraft(form);
+    for (const resource of ['app', 'web']) {
+      const enabled = resource === 'app' ? appEnabled : !appEnabled;
+      const badge = form.policyGroups[resource].availability;
+      assert.equal(badge.textContent, enabled ? 'Phân loại bật' : 'Chưa áp dụng');
+      assert.equal(badge.classList.contains('neutral'), !enabled);
+      assert.equal(badge.classList.contains('badge'), true);
+    }
+  }
 });
 
 test('successful policy save reports saved configuration without claiming device execution', async () => {
@@ -739,6 +898,9 @@ test('policy layout wraps long content and keeps mobile controls and statuses av
   assert.match(styles, /\.policy-settings-layout \.child-pick\s*\{[^}]*min-height:\s*48px;/s);
   assert.match(styles, /\.policy-settings-layout \.policy-group-head \.badge\s*\{[^}]*white-space:\s*normal;/s);
   assert.match(styles, /\.policy-settings-layout \.policy-rule select\s*\{[^}]*min-width:\s*0;[^}]*max-width:\s*100%;/s);
+  assert.match(styles.match(/\.policy-settings-layout \.policy-action\s*\{([^}]*)\}/)[1], /min-height:\s*44px;/);
+  assert.match(styles.match(/\.policy-settings-layout \.policy-save-bar \.btn\s*\{([^}]*)\}/)[1], /min-height:\s*44px;/);
+  assert.match(styles, /\.policy-settings-layout \.policy-group-head\s*\{[^}]*flex-wrap:\s*wrap;/s);
   assert.match(styles, /@media \(max-width:\s*610px\)\s*\{\s*\.policy-save-bar\s*\{\s*bottom:\s*calc\(86px \+ env\(safe-area-inset-bottom\)\);/);
   assert.match(styles, /@media \(max-width:\s*610px\)[\s\S]*?\.policy-settings-layout \.policy-action\s*\{\s*min-height:\s*44px;/);
   assert.match(styles, /@media \(max-height:\s*32rem\)\s*\{\s*\.policy-settings-layout \.policy-save-bar\s*\{\s*position:\s*static;/);

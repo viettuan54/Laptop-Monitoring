@@ -31,6 +31,7 @@ function dashboard({ count = 0, page = 'devices', role = 'parent', request } = {
     role, page, unreadAlertCount: 0, devices: [], children: [], alerts: [], overviewChildId: '' };
   const context = vm.createContext({
     state, URLSearchParams, alertRefreshPromise: null, alertRefreshSequence: 0, alertRefreshTimer: null,
+    alertListRefreshPromise: null,
     screenshotRefreshTimer: null, activityRenderVersion: 0, clearTimeout: () => {},
     modalReturnFocus: null, app: {}, modalRoot: {}, toastRoot: {}, INITIAL_CHAT: [],
     location: { hash: '#' + page },
@@ -53,7 +54,7 @@ function dashboard({ count = 0, page = 'devices', role = 'parent', request } = {
     },
   });
   const functions = ['stopScreenshotPolling', 'alertCountLabel', 'updateAlertIndicator', 'refreshUnreadAlertCount',
-    'refreshAlertIndicatorInBackground', 'stopAlertPolling', 'startAlertPolling',
+    'refreshAlertIndicatorInBackground', 'refreshVisibleAlerts', 'stopAlertPolling', 'startAlertPolling',
     'initialize', 'completeLogin', 'saveSession', 'detectRole', 'clearSession',
     'loadParentCore', 'reconcileSelectedId'];
   vm.runInContext(functions.map(name => functionSource(source, name)).join('\n'), context);
@@ -71,7 +72,7 @@ test('restored parent session shows badges on a direct device URL without openin
   assert.deepEqual(view.badgeText(), ['7', '7', '7']);
   assert.equal(view.calls.filter(route => route.includes('is_read=false')).length, 1);
   assert.equal(view.intervals.size, 1);
-  assert.equal([...view.intervals.values()][0].ms, 30_000);
+  assert.equal([...view.intervals.values()][0].ms, 5_000);
   assert.match(view.buttons[0].attributes['aria-label'], /7 cảnh báo chưa đọc/);
 });
 
@@ -174,4 +175,42 @@ test('overview recent alerts cannot overwrite the global unread count', async ()
   assert.equal(view.state.alerts.length, 1);
   assert.equal(view.state.unreadAlertCount, 5);
   assert.deepEqual(view.badgeText(), ['5', '5', '5']);
+});
+
+test('visible alert list refreshes alongside badges and coalesces a slow request', async () => {
+  const view = dashboard({ page: 'alerts', count: 1 });
+  const content = { querySelector: () => ({}) };
+  view.context.document.querySelector = () => content;
+  let finish;
+  let renders = 0;
+  view.context.renderAlerts = async (target, options) => {
+    assert.equal(target, content);
+    assert.equal(options.background, true);
+    renders++;
+    await new Promise(resolve => { finish = resolve; });
+  };
+  const first = view.context.refreshAlertIndicatorInBackground();
+  const second = view.context.refreshAlertIndicatorInBackground();
+  assert.equal(renders, 1);
+  finish();
+  await Promise.all([first, second]);
+  assert.deepEqual(view.badgeText(), ['1', '1', '1']);
+  view.context.document.hidden = true;
+  await view.context.refreshAlertIndicatorInBackground();
+  assert.equal(renders, 1);
+  view.context.document.hidden = false;
+  view.state.page = 'policies';
+  await view.context.refreshAlertIndicatorInBackground();
+  assert.equal(renders, 1);
+});
+
+test('a failed visible list refresh is retried without stopping badge updates', async () => {
+  const view = dashboard({ page: 'alerts', count: 2 });
+  view.context.document.querySelector = () => ({ querySelector: () => ({}) });
+  let renders = 0;
+  view.context.renderAlerts = async () => { renders++; throw new Error('Temporary failure'); };
+  await view.context.refreshAlertIndicatorInBackground();
+  await view.context.refreshAlertIndicatorInBackground();
+  assert.equal(renders, 2);
+  assert.deepEqual(view.badgeText(), ['2', '2', '2']);
 });

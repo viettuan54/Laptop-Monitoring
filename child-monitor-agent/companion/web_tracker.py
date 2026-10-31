@@ -15,7 +15,7 @@ from text_privacy import clean_text, eligible_timestamp, safe_web_metadata, sear
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 
-AGENT_VERSION = "1.0.23"
+AGENT_VERSION = "1.0.24"
 
 
 def extract_search_query(raw_url):
@@ -58,7 +58,7 @@ class WebTracker:
         pipe_client,
         local_app_data=None,
         state_dir=None,
-        scan_interval_seconds=15,
+        scan_interval_seconds=3,
         initial_lookback_seconds=300,
     ):
         self.pipe_client = pipe_client
@@ -284,7 +284,7 @@ class WebTracker:
         try:
             # Copy the SQLite family so recent Edge/Chrome visits that still
             # live in WAL remain visible. A racing write can make one scan
-            # inconsistent; that scan fails closed and the next 15s poll retries.
+            # inconsistent; that scan fails closed and the next poll retries.
             shutil.copy2(history_file, snapshot_path)
             for suffix in ("-wal", "-shm"):
                 source_sidecar = history_file + suffix

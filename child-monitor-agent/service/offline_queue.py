@@ -38,6 +38,8 @@ class OfflineQueue:
         self.db_path = db_path
         self.api_client = api_client
         self._text_lock = threading.RLock()
+        self._text_sync_lock = threading.Lock()
+        self.text_sync_requested = threading.Event()
         self._text_policy_provider = None
         self._text_storage_allowed = not secure_file
         self.init_db()
@@ -746,6 +748,8 @@ class OfflineQueue:
                     ORDER BY created_at DESC, client_record_id DESC LIMIT -1 OFFSET 1000
                 )""")
                 conn.commit()
+            if inserted:
+                self.text_sync_requested.set()
             return client_record_id, inserted
         except Exception as e:
             logging.warning("Text moderation record rejected (%s)", type(e).__name__)
@@ -804,7 +808,6 @@ class OfflineQueue:
         self._sync_app_enforcement(api_client)
         self._sync_apps(api_client)
         self._sync_webs(api_client)
-        self._sync_text_moderation(api_client)
         self._sync_vision_alerts(api_client)
         self.cleanup_synced_logs(days=7)
 
@@ -1064,6 +1067,17 @@ class OfflineQueue:
             except Exception as e:
                 logging.error(f"Error during vision alert sync: {e}")
                 break
+
+    def sync_text_moderation(self, api_client):
+        """Independent single-flight delivery; slow usage uploads cannot delay text."""
+        if not self._text_sync_lock.acquire(blocking=False):
+            return
+        try:
+            self.refresh_text_policy()
+            if not api_client.suspended:
+                self._sync_text_moderation(api_client)
+        finally:
+            self._text_sync_lock.release()
 
     def _sync_text_moderation(self, api_client):
         """Send a small text batch and erase raw text as soon as it is acknowledged."""

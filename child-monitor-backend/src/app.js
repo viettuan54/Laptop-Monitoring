@@ -63,7 +63,7 @@ app.use('/api/auth', parentLimiter, require('./routes/auth.routes'));
 app.use('/api/children', parentLimiter, require('./routes/children.routes'));
 app.use('/api/devices', parentLimiter, require('./routes/devices.routes'));
 app.use('/api/settings', parentLimiter, require('./routes/settings.routes'));
-app.use('/api/alerts', parentLimiter, require('./routes/alerts.routes'));
+app.use('/api/alerts', require('./routes/alerts.routes'));
 app.use('/api/notifications', parentLimiter, require('./routes/notifications.routes'));
 app.use('/api/ai-analysis', parentLimiter, require('./routes/aiAnalysis.routes'));
 app.use('/api/agent', agentLimiter, require('./routes/agent.routes'));

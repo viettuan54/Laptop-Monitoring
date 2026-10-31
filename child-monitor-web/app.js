@@ -31,6 +31,7 @@ let overviewRenderSequence = 0;
 let alertRefreshTimer = null;
 let alertRefreshPromise = null;
 let alertRefreshSequence = 0;
+let alertListRefreshPromise = null;
 
 const state = {
   accessToken: sessionStorage.getItem('lm_access_token') || '',
@@ -504,13 +505,26 @@ async function refreshUnreadAlertCount({ force = false } = {}) {
 function refreshAlertIndicatorInBackground() {
   if (document.hidden) return;
   // Keep the last known count on a failed request; the next refresh retries.
-  return refreshUnreadAlertCount().catch(() => {});
+  return Promise.allSettled([refreshUnreadAlertCount(), refreshVisibleAlerts()]);
+}
+
+function refreshVisibleAlerts() {
+  if (!state.accessToken || state.role !== 'parent' || state.page !== 'alerts') return;
+  if (alertListRefreshPromise) return alertListRefreshPromise;
+  const content = document.querySelector('#page-content');
+  if (!content?.querySelector('.alerts-card')) return;
+  const request = renderAlerts(content, { background: true });
+  alertListRefreshPromise = request;
+  return request.finally(() => {
+    if (alertListRefreshPromise === request) alertListRefreshPromise = null;
+  });
 }
 
 function stopAlertPolling() {
   window.clearInterval(alertRefreshTimer);
   alertRefreshTimer = null;
   alertRefreshPromise = null;
+  alertListRefreshPromise = null;
   alertRefreshSequence += 1;
 }
 
@@ -518,7 +532,7 @@ function startAlertPolling() {
   stopAlertPolling();
   if (!state.accessToken || state.role !== 'parent') return;
   refreshAlertIndicatorInBackground();
-  alertRefreshTimer = window.setInterval(refreshAlertIndicatorInBackground, 30_000);
+  alertRefreshTimer = window.setInterval(refreshAlertIndicatorInBackground, 5_000);
 }
 
 function initials(name = 'Phụ huynh') {
@@ -838,7 +852,9 @@ function enhanceFormAccessibility(root) {
     control.setAttribute('aria-labelledby', title.id);
     if (hint) {
       if (!hint.id) hint.id = `${control.id}-hint`;
-      control.setAttribute('aria-describedby', hint.id);
+      if (!control.closest('#policy-form') || !control.getAttribute('aria-describedby')?.trim()) {
+        control.setAttribute('aria-describedby', hint.id);
+      }
     }
   });
 }
@@ -2020,7 +2036,10 @@ function syncPolicyClassificationUI(form) {
     const view = policyGroupView(childId, resourceType, enabled);
     const availability = group.querySelector('[data-policy-group-availability]');
     const explanation = group.querySelector('[data-policy-group-explanation]');
-    if (availability) availability.textContent = view.availability;
+    if (availability) {
+      availability.textContent = view.availability;
+      availability.classList.toggle('neutral', !enabled);
+    }
     if (explanation) explanation.textContent = view.message;
     if (group.classList) group.classList.toggle('classification-off', !enabled);
   }
@@ -2267,7 +2286,8 @@ function categoryPolicyGroup(resourceType, title, enabled) {
   return `<article class="policy-group ${enabled ? '' : 'classification-off'}" data-resource="${resourceType}"><div class="policy-group-head"><div><strong>${title}</strong><small data-policy-group-explanation>${escapeHtml(view.message)}</small></div><span class="badge ${enabled ? '' : 'neutral'}" data-policy-group-availability>${view.availability}</span></div><div class="policy-rule-list">${policyCategoryGroups[resourceType].map(([category, label, description]) => {
     const key = `${resourceType}:${category}`;
     const action = state.categoryPolicies[key] || 'allow';
-    return `<label class="policy-rule"><span><strong>${label}</strong><small>${description}</small></span><select class="select policy-action ${action}" name="policy_${resourceType}_${category}" aria-label="Quyền truy cập ${label}, danh mục ${title}"><option value="allow" ${action === 'allow' ? 'selected' : ''}>Cho phép</option><option value="block" ${action === 'block' ? 'selected' : ''}>Chặn</option></select></label>`;
+    const descriptionId = `policy-${resourceType}-${category}-description`;
+    return `<label class="policy-rule"><span><strong>${label}</strong><small id="${descriptionId}">${description}</small></span><select class="select policy-action ${action}" name="policy_${resourceType}_${category}" aria-label="Quyền truy cập ${label}, danh mục ${title}" aria-describedby="${descriptionId}"><option value="allow" ${action === 'allow' ? 'selected' : ''}>Cho phép</option><option value="block" ${action === 'block' ? 'selected' : ''}>Chặn</option></select></label>`;
   }).join('')}</div></article>`;
 }
 
@@ -2277,11 +2297,16 @@ function switchRow(name, label, text, checked, policyClassification = false) {
   const saveNote = policyClassification ? policyClassificationSaveNote(childId, name, checked, saveState) : '';
   const labelId = policyClassification ? `policy-${name}-label` : '';
   const labelMarkup = policyClassification ? `<strong id="${labelId}">${label}</strong>` : `<strong>${label}</strong>`;
-  const accessibleName = policyClassification ? `aria-labelledby="${labelId}"` : '';
-  const policyState = policyClassification
-    ? `<small class="policy-switch-status" data-policy-switch-status="${name}" data-save-state="${saveState}">${saveState}</small><small class="policy-switch-note" data-policy-switch-note="${name}" ${saveNote ? '' : 'hidden'}>${saveNote}</small>`
+  const accessibleName = policyClassification
+    ? `aria-labelledby="${labelId}" aria-describedby="policy-${name}-description policy-${name}-status policy-${name}-note"`
     : '';
-  return `<div class="switch-row"><div class="switch-copy">${labelMarkup}<small>${text}</small>${policyState}</div><label class="switch"><input type="checkbox" name="${name}" ${accessibleName} ${checked ? 'checked' : ''}><span></span></label></div>`;
+  const descriptionMarkup = policyClassification
+    ? `<small id="policy-${name}-description">${text}</small>`
+    : `<small>${text}</small>`;
+  const policyState = policyClassification
+    ? `<small id="policy-${name}-status" class="policy-switch-status" data-policy-switch-status="${name}" data-save-state="${saveState}">${saveState}</small><small id="policy-${name}-note" class="policy-switch-note" data-policy-switch-note="${name}" ${saveNote ? '' : 'hidden'}>${saveNote}</small>`
+    : '';
+  return `<div class="switch-row"><div class="switch-copy">${labelMarkup}${descriptionMarkup}${policyState}</div><label class="switch"><input type="checkbox" name="${name}" ${accessibleName} ${checked ? 'checked' : ''}><span></span></label></div>`;
 }
 
 function syncAdminRoleEnrollment(form) {
@@ -2711,19 +2736,27 @@ function exportActivityCsv() {
   URL.revokeObjectURL(url);
 }
 
-async function renderAlerts(content) {
+async function renderAlerts(content, { background = false } = {}) {
+  const version = state.alertRenderVersion = (state.alertRenderVersion || 0) + 1;
+  const session = state.accessToken;
+  const filter = { ...state.alertFilter };
+  const filterKey = queryString(filter);
+  const current = () => version === state.alertRenderVersion
+    && session === state.accessToken && state.role === 'parent' && state.page === 'alerts'
+    && content.isConnected && queryString(state.alertFilter || {}) === filterKey;
   if (!state.devices.length) state.devices = (await api('/devices?limit=200')).data || [];
-  const filter = state.alertFilter || {};
+  if (!current()) return;
   const [result] = await Promise.all([
     api('/alerts' + queryString({ ...filter, limit: 200 })),
-    refreshUnreadAlertCount({ force: true }),
+    background ? undefined : refreshUnreadAlertCount({ force: true }),
   ]);
+  if (!current()) return;
   state.alerts = result.data || [];
   const unreadCount = state.alerts.filter((item) => !item.is_read).length;
   const postureCount = state.alerts.filter((item) => item.alert_type === 'posture_warning').length;
   const distanceCount = state.alerts.filter((item) => item.alert_type === 'eye_distance_warning').length;
-  content.innerHTML = `
-    ${pageHead('alerts', `<span class="badge ${unreadCount ? 'coral' : 'neutral'}">${unreadCount} chưa đọc</span><button class="btn btn-secondary" data-action="mark-all-read" ${unreadCount ? '' : 'disabled'}>Đánh dấu mục đang hiển thị</button>`)}
+  const markup = `
+    ${pageHead('alerts', `<span data-alert-unread-count class="badge ${unreadCount ? 'coral' : 'neutral'}">${unreadCount} chưa đọc</span><button class="btn btn-secondary" data-action="mark-all-read" ${unreadCount ? '' : 'disabled'}>Đánh dấu mục đang hiển thị</button>`)}
     ${sectionVisual('alerts')}
     <section class="page-summary-strip alert-summary" aria-label="Tóm tắt cảnh báo"><div><span class="summary-icon">${icons.alert}</span><span><small>Tổng cảnh báo</small><strong>${state.alerts.length} tín hiệu</strong></span></div><div><span class="summary-icon">!</span><span><small>Chưa đọc</small><strong>${unreadCount} cảnh báo</strong></span></div><div><span class="summary-icon">↗</span><span><small>Tư thế</small><strong>${postureCount} tín hiệu</strong></span></div><div><span class="summary-icon">◉</span><span><small>Khoảng cách mắt</small><strong>${distanceCount} tín hiệu</strong></span></div></section>
     <form id="alert-filter" class="filters filters-alerts">
@@ -2734,6 +2767,30 @@ async function renderAlerts(content) {
       const presentation = alertPresentation(item.alert_type);
       return `<article class="alert-row ${item.is_read ? '' : 'unread'}"><div class="alert-symbol ${presentation.tone}">${presentation.symbol}</div><div class="alert-copy"><strong>${escapeHtml(presentation.label)}</strong><p>${escapeHtml(item.message)}</p><small>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.created_at)}</small></div>${item.is_read ? '<span class="badge neutral">Đã đọc</span>' : `<button class="btn btn-secondary btn-sm" data-action="mark-alert" data-id="${item.alert_id}">Đánh dấu đã đọc</button>`}</article>`;
     }).join('') || emptyState('✓', 'Không có cảnh báo', 'Không có cảnh báo phù hợp với bộ lọc hiện tại.')}</section>`;
+  if (!background) {
+    content.innerHTML = markup;
+    return;
+  }
+  // Update only results. Never replace an edited filter or navigate/scroll the page.
+  const next = document.createElement('div');
+  next.innerHTML = markup;
+  const focused = document.activeElement;
+  const focusAction = focused?.dataset?.action;
+  const focusId = focused?.dataset?.id;
+  let replacedFocus = false;
+  for (const selector of ['.alert-summary', '.alerts-card', '[data-alert-unread-count]', '[data-action="mark-all-read"]']) {
+    const previous = content.querySelector(selector);
+    const replacement = next.querySelector(selector);
+    if (previous && replacement && previous.outerHTML !== replacement.outerHTML) {
+      replacedFocus ||= previous.contains(focused);
+      previous.replaceWith(replacement);
+    }
+  }
+  if (replacedFocus && focusAction) {
+    const target = Array.from(content.querySelectorAll('[data-action]')).find(button =>
+      button.dataset.action === focusAction && button.dataset.id === focusId && !button.disabled);
+    (target || content).focus({ preventScroll: true });
+  }
 }
 
 function alertType(type) {
