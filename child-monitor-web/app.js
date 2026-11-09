@@ -32,6 +32,8 @@ let alertRefreshTimer = null;
 let alertRefreshPromise = null;
 let alertRefreshSequence = 0;
 let alertListRefreshPromise = null;
+// clearSession replaces state.chat; token refresh preserves it. No persistent AI storage.
+const aiSessions = new WeakMap();
 
 const state = {
   accessToken: sessionStorage.getItem('lm_access_token') || '',
@@ -512,7 +514,7 @@ function refreshVisibleAlerts() {
   if (!state.accessToken || state.role !== 'parent' || state.page !== 'alerts') return;
   if (alertListRefreshPromise) return alertListRefreshPromise;
   const content = document.querySelector('#page-content');
-  if (!content?.querySelector('.alerts-card')) return;
+  if (!content?.querySelector('.alerts-card') || content.alertsView?.pending) return;
   const request = renderAlerts(content, { background: true });
   alertListRefreshPromise = request;
   return request.finally(() => {
@@ -2318,76 +2320,158 @@ function syncAdminRoleEnrollment(form) {
   if (confirmation) confirmation.required = promoting;
 }
 
-async function renderActivity(content) {
+function activityRequestCurrent(content, version, session = state.accessToken) {
+  return version === activityRenderVersion && state.page === 'activity'
+    && Boolean(state.accessToken) && state.accessToken === session && content.isConnected;
+}
+
+function activitySurface(content) {
+  if (!content.querySelector('#activity-surface')) {
+    content.innerHTML = '<div id="activity-load-status" class="muted" role="status" aria-live="polite" aria-atomic="true"></div><div id="activity-surface"></div>';
+  }
+  return content.querySelector('#activity-surface');
+}
+
+function activityStatus(content, message) {
+  // Keep the live region outside the busy panel and alive across result replacements.
+  content.querySelector('#activity-load-status').textContent = message;
+}
+
+function activityPanelStart(busy = false) {
+  const tab = state.activityTab;
+  return ['apps', 'web', 'screenshots'].filter(key => key !== tab)
+    .map(key => `<section id="activity-panel-${key}" role="tabpanel" aria-labelledby="activity-tab-${key}" hidden></section>`).join('')
+    + `<section id="activity-panel-${tab}" role="tabpanel" aria-labelledby="activity-tab-${tab}" tabindex="-1" aria-busy="${busy}">`;
+}
+
+function activityFeedback(content, phase) {
+  const loading = phase === 'loading';
+  const label = { apps: 'hoạt động ứng dụng', web: 'hoạt động website', screenshots: 'ảnh màn hình' }[state.activityTab];
+  activitySurface(content).innerHTML = pageHead('activity', activityTabs()) + activityPanelStart(loading)
+    + (loading ? '' : '<p class="muted">Lựa chọn hiện tại được giữ lại. Kiểm tra kết nối rồi thử lại.</p><button class="btn" data-action="retry-activity">Thử lại</button>')
+    + '</section>';
+  activityStatus(content, loading ? `Đang tải ${label}…` : `Chưa tải được ${label}.`);
+}
+
+function activityFocus(content, interaction) {
+  let owned = document.activeElement;
+  let relinquished = !interaction || !content.contains(owned);
+  const track = (event) => { if (event.target !== owned) relinquished = true; };
+  document.addEventListener('focusin', track);
+  return {
+    restore(finished) {
+      if (relinquished) return;
+      const tab = content.querySelector(`#activity-tab-${state.activityTab}`);
+      const panel = content.querySelector(`#activity-panel-${state.activityTab}`);
+      const retry = content.querySelector('[data-action="retry-activity"]');
+      const action = finished && ['refresh-screenshots', 'refresh-app-enforcement', 'clear-activity-filter'].includes(interaction)
+        ? content.querySelector(`[data-action="${interaction}"]`) : null;
+      owned = interaction === 'activity-tab' ? tab : (finished && retry) || action || panel;
+      owned?.focus({ preventScroll: interaction === 'activity-tab' });
+    },
+    dispose() { document.removeEventListener('focusin', track); },
+  };
+}
+
+async function renderActivity(content, interaction = '') {
   stopScreenshotPolling();
   const renderVersion = ++activityRenderVersion;
-  if (!state.devices.length) state.devices = (await api('/devices?limit=200')).data || [];
-  if (renderVersion !== activityRenderVersion) return;
-  if (state.activityTab === 'screenshots') return renderScreenshotActivity(content, renderVersion);
-  const filter = state.activityFilter || {};
-  const path = state.activityTab === 'apps' ? '/logs/app' : '/logs/web';
-  const isApps = state.activityTab === 'apps';
-  const activityQuery = queryString({
-    device_id: filter.device_id,
-    start: filter.start,
-    end: filter.end,
-    limit: 200,
-  });
-  const [result, enforcement] = await Promise.all([
-    api(path + activityQuery),
-    isApps ? api('/logs/app-enforcement' + activityQuery)
-      .catch(() => ({ error: true, data: [] })) : Promise.resolve(null),
-  ]);
-  if (renderVersion !== activityRenderVersion) return;
-  if (state.activityTab === 'apps') state.appLogs = result.data || [];
-  else state.webLogs = result.data || [];
-  const allRows = state.activityTab === 'apps' ? state.appLogs : state.webLogs;
-  const search = String(filter.search || '').trim().toLowerCase();
-  const filteredRows = allRows.filter((item) => {
-    const text = state.activityTab === 'apps'
-      ? `${item.app_name || ''} ${deviceName(item.device_id)}`
-      : `${websiteActivityTitle(item)} ${item.domain || ''} ${item.url || ''} ${deviceName(item.device_id)}`;
-    return (!search || text.toLowerCase().includes(search))
-      && (!filter.category || String(item.category || 'unknown') === String(filter.category))
-      && (!filter.access_status || String(item.access_status || 'open') === String(filter.access_status));
-  });
-  const maxOffset = Math.max(0, Math.floor(Math.max(0, filteredRows.length - 1) / state.activityLimit) * state.activityLimit);
-  state.activityOffset = Math.min(state.activityOffset, maxOffset);
-  const rows = filteredRows.slice(state.activityOffset, state.activityOffset + state.activityLimit);
-  state.activityViewRows = filteredRows;
-  const categories = policyCategoryGroups[state.activityTab === 'apps' ? 'app' : 'web'];
-  const pageNumber = Math.floor(state.activityOffset / state.activityLimit) + 1;
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / state.activityLimit));
-  const filteredDuration = filteredRows.reduce((sum, item) => sum + (Number(item.duration_seconds) || 0), 0);
-  const blockedCount = filteredRows.filter((item) => String(item.access_status || 'open') === 'blocked').length;
-  const activeDeviceCount = new Set(filteredRows.map((item) => String(item.device_id))).size;
-  content.innerHTML = `
-    ${pageHead('activity', `<div class="activity-head-actions">${activityTabs()}<button class="btn btn-secondary" data-action="export-activity" ${filteredRows.length ? '' : 'disabled'}>Xuất CSV</button></div>`)}
-    ${sectionVisual('activity')}
-    <section class="page-summary-strip" aria-label="Tóm tắt dữ liệu đang hiển thị">
-      <div><span class="summary-icon">${icons.activity}</span><span><small>Kết quả phù hợp</small><strong>${filteredRows.length} bản ghi</strong></span></div>
-      <div><span class="summary-icon">◷</span><span><small>Tổng thời lượng</small><strong>${duration(filteredDuration)}</strong></span></div>
-      <div><span class="summary-icon">${icons.policy}</span><span><small>${isApps ? 'Bản ghi thuộc nhóm chặn' : 'Hiện đang bị chặn'}</small><strong>${blockedCount} lượt</strong></span></div>
-      <div><span class="summary-icon">${icons.device}</span><span><small>Thiết bị có dữ liệu</small><strong>${activeDeviceCount} thiết bị</strong></span></div>
-    </section>
-    <form id="activity-filter" class="filters activity-filters">
-      <div class="field"><label>Tìm kiếm</label><input class="input" name="search" value="${escapeHtml(filter.search || '')}" placeholder="${state.activityTab === 'apps' ? 'Tên ứng dụng' : 'YouTube, tên miền hoặc URL'}"></div>
-      <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Danh mục</label><select class="select" name="category"><option value="">Tất cả danh mục</option>${categories.map(([value, label]) => `<option value="${value}" ${filter.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
-      <div class="field"><label>${isApps ? 'Chính sách hiện tại' : 'Trạng thái hiện tại'}</label><select class="select" name="access_status"><option value="">Tất cả trạng thái</option><option value="blocked" ${filter.access_status === 'blocked' ? 'selected' : ''}>${isApps ? 'Yêu cầu chặn' : 'Đã chặn'}</option><option value="open" ${filter.access_status === 'open' ? 'selected' : ''}>${isApps ? 'Cho phép' : 'Đang mở'}</option></select></div>
-      <div class="field"><label>Từ thời điểm</label><input class="input" type="datetime-local" name="start" value="${escapeHtml(filter.start || '')}"></div>
-      <div class="field"><label>Đến thời điểm</label><input class="input" type="datetime-local" name="end" value="${escapeHtml(filter.end || '')}"></div>
-      <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-activity-filter">Xóa lọc</button><button class="btn" type="submit">Áp dụng</button></div>
-    </form>
-    ${isApps ? appEnforcementMarkup(enforcement, filter) : ''}
-    <section class="table-card"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Chính sách hiện tại</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Trạng thái hiện tại</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
-      if (state.activityTab === 'apps') {
-        return `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status, 'app')}</td><td>${formatDate(item.start_time)}</td><td>${formatDate(item.end_time)}</td><td>${duration(item.duration_seconds)}</td></tr>`;
-      }
-      const externalUrl = safeExternalUrl(item.url);
-      const subtitle = websiteActivitySubtitle(item);
-      return `<tr><td class="cell-title website-cell"><strong>${escapeHtml(websiteActivityTitle(item))}</strong>${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ''}${externalUrl ? `<a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">Mở website ↗</a>` : ''}</td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.visit_time)}</td><td>${escapeHtml(deviceName(item.device_id))}</td><td>${duration(item.duration_seconds)}</td></tr>`;
-    }).join('')}</tbody></table></div>${rows.length ? `<div class="table-footer"><span>Hiển thị ${state.activityOffset + 1}–${state.activityOffset + rows.length} / ${filteredRows.length} bản ghi gần nhất</span><div class="pagination"><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${Math.max(0, state.activityOffset - state.activityLimit)}" ${state.activityOffset === 0 ? 'disabled' : ''}>Trước</button><span>Trang ${pageNumber}/${pageCount}</span><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${state.activityOffset + state.activityLimit}" ${state.activityOffset + state.activityLimit >= filteredRows.length ? 'disabled' : ''}>Sau</button></div><span>Tổng ${duration(filteredDuration)}</span></div>` : emptyState('↗', 'Chưa có dữ liệu', 'Hãy đổi bộ lọc hoặc kiểm tra Agent đang hoạt động.')}</section>`;
+  const session = state.accessToken;
+  const current = () => activityRequestCurrent(content, renderVersion, session);
+  if (!current()) return;
+  const focus = activityFocus(content, interaction);
+  state.activityViewRows = [];
+  activityFeedback(content, 'loading');
+  focus.restore(false);
+  try {
+    if (!state.devices.length) {
+      const devices = (await api('/devices?limit=200')).data || [];
+      if (!current()) return;
+      state.devices = devices;
+    }
+    if (!current()) return;
+    if (state.activityTab === 'screenshots') {
+      await renderScreenshotActivity(content, renderVersion);
+      return;
+    }
+    const filter = state.activityFilter || {};
+    const path = state.activityTab === 'apps' ? '/logs/app' : '/logs/web';
+    const isApps = state.activityTab === 'apps';
+    const activityQuery = queryString({
+      device_id: filter.device_id,
+      start: filter.start,
+      end: filter.end,
+      limit: 200,
+    });
+    const [result, enforcement] = await Promise.all([
+      api(path + activityQuery),
+      isApps ? api('/logs/app-enforcement' + activityQuery)
+        .catch(() => ({ error: true, data: [] })) : Promise.resolve(null),
+    ]);
+    if (!current()) return;
+    if (state.activityTab === 'apps') state.appLogs = result.data || [];
+    else state.webLogs = result.data || [];
+    const allRows = state.activityTab === 'apps' ? state.appLogs : state.webLogs;
+    const search = String(filter.search || '').trim().toLowerCase();
+    const filteredRows = allRows.filter((item) => {
+      const text = state.activityTab === 'apps'
+        ? `${item.app_name || ''} ${deviceName(item.device_id)}`
+        : `${websiteActivityTitle(item)} ${item.domain || ''} ${item.url || ''} ${deviceName(item.device_id)}`;
+      return (!search || text.toLowerCase().includes(search))
+        && (!filter.category || String(item.category || 'unknown') === String(filter.category))
+        && (!filter.access_status || String(item.access_status || 'open') === String(filter.access_status));
+    });
+    const maxOffset = Math.max(0, Math.floor(Math.max(0, filteredRows.length - 1) / state.activityLimit) * state.activityLimit);
+    state.activityOffset = Math.min(state.activityOffset, maxOffset);
+    const rows = filteredRows.slice(state.activityOffset, state.activityOffset + state.activityLimit);
+    state.activityViewRows = filteredRows;
+    const categories = policyCategoryGroups[state.activityTab === 'apps' ? 'app' : 'web'];
+    const pageNumber = Math.floor(state.activityOffset / state.activityLimit) + 1;
+    const pageCount = Math.max(1, Math.ceil(filteredRows.length / state.activityLimit));
+    const filteredDuration = filteredRows.reduce((sum, item) => sum + (Number(item.duration_seconds) || 0), 0);
+    const blockedCount = filteredRows.filter((item) => String(item.access_status || 'open') === 'blocked').length;
+    const activeDeviceCount = new Set(filteredRows.map((item) => String(item.device_id))).size;
+    activitySurface(content).innerHTML = `
+      ${pageHead('activity', `<div class="activity-head-actions">${activityTabs()}<button class="btn btn-secondary" data-action="export-activity" ${filteredRows.length ? '' : 'disabled'}>Xuất kết quả CSV</button></div>`)}
+      ${activityPanelStart()}
+      <p class="activity-note">Trang tải tối đa 200 bản ghi gần nhất theo thiết bị và khoảng thời gian đã áp dụng. Khi chọn tất cả thiết bị, giới hạn này tính chung, không phải cho từng thiết bị. Tìm kiếm, danh mục và trạng thái chỉ lọc trong tập đã tải.</p>
+      <section class="page-summary-strip" aria-label="Tóm tắt kết quả sau lọc trong tập đã tải">
+        <div class="activity-summary-primary"><span><small>Bản ghi phù hợp</small><strong>${filteredRows.length} bản ghi</strong></span></div>
+        <div><span><small>Thời lượng các kết quả</small><strong>${duration(filteredDuration)}</strong></span></div>
+        <div><span><small>${isApps ? 'Bản ghi thuộc nhóm chặn' : 'Bản ghi có trạng thái chặn'}</small><strong>${blockedCount} lượt</strong></span></div>
+        <div><span><small>Thiết bị trong kết quả</small><strong>${activeDeviceCount} thiết bị</strong></span></div>
+      </section>
+      <p class="activity-note">Các chỉ số và CSV gồm toàn bộ kết quả sau lọc trong tập đã tải, kể cả các trang kết quả khác. Thời lượng là tổng của các bản ghi này, không đại diện cho toàn bộ thời gian sử dụng.</p>
+      <form id="activity-filter" class="filters activity-filters">
+        <div class="field"><label>Tìm kiếm</label><input class="input" name="search" value="${escapeHtml(filter.search || '')}" placeholder="${state.activityTab === 'apps' ? 'Tên ứng dụng' : 'YouTube, tên miền hoặc URL'}"></div>
+        <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
+        <div class="field"><label>Danh mục</label><select class="select" name="category"><option value="">Tất cả danh mục</option>${categories.map(([value, label]) => `<option value="${value}" ${filter.category === value ? 'selected' : ''}>${label}</option>`).join('')}</select></div>
+        <div class="field"><label>${isApps ? 'Chính sách hiện tại' : 'Trạng thái hiện tại'}</label><select class="select" name="access_status"><option value="">Tất cả trạng thái</option><option value="blocked" ${filter.access_status === 'blocked' ? 'selected' : ''}>${isApps ? 'Yêu cầu chặn' : 'Đã chặn'}</option><option value="open" ${filter.access_status === 'open' ? 'selected' : ''}>${isApps ? 'Cho phép' : 'Đang mở'}</option></select></div>
+        <div class="field"><label>Từ thời điểm</label><input class="input" type="datetime-local" name="start" value="${escapeHtml(filter.start || '')}"></div>
+        <div class="field"><label>Đến thời điểm</label><input class="input" type="datetime-local" name="end" value="${escapeHtml(filter.end || '')}"></div>
+        <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-activity-filter">Xóa lọc</button><button class="btn" type="submit">Áp dụng</button></div>
+      </form>
+      <p class="activity-note">Khoảng thời gian được lọc theo ${isApps ? 'lúc ứng dụng bắt đầu hoạt động' : 'lúc truy cập website'}.</p>
+      <section class="table-card activity-history"><div class="table-scroll"><table><thead><tr>${state.activityTab === 'apps' ? '<th>Ứng dụng</th><th>Danh mục</th><th>Chính sách hiện tại</th><th>Bắt đầu</th><th>Kết thúc</th>' : '<th>Website</th><th>Danh mục</th><th>Trạng thái hiện tại</th><th>Truy cập</th><th>Thiết bị</th>'}<th>Thời lượng</th></tr></thead><tbody>${rows.map((item) => {
+        if (state.activityTab === 'apps') {
+          return `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status, 'app')}</td><td>${formatDate(item.start_time)}</td><td>${formatDate(item.end_time)}</td><td>${duration(item.duration_seconds)}</td></tr>`;
+        }
+        const externalUrl = safeExternalUrl(item.url);
+        const subtitle = websiteActivitySubtitle(item);
+        return `<tr><td class="cell-title website-cell"><strong>${escapeHtml(websiteActivityTitle(item))}</strong>${subtitle ? `<small>${escapeHtml(subtitle)}</small>` : ''}${externalUrl ? `<a href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer">Mở website ↗</a>` : ''}</td><td>${categoryBadge(item.category)}</td><td>${accessStatusBadge(item.access_status)}</td><td>${formatDate(item.visit_time)}</td><td>${escapeHtml(deviceName(item.device_id))}</td><td>${duration(item.duration_seconds)}</td></tr>`;
+      }).join('')}</tbody></table></div>${rows.length ? `<div class="table-footer"><span>Hiển thị ${state.activityOffset + 1}–${state.activityOffset + rows.length} / ${filteredRows.length} bản ghi phù hợp</span><div class="pagination"><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${Math.max(0, state.activityOffset - state.activityLimit)}" ${state.activityOffset === 0 ? 'disabled' : ''}>Trước</button><span>Trang ${pageNumber}/${pageCount}</span><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${state.activityOffset + state.activityLimit}" ${state.activityOffset + state.activityLimit >= filteredRows.length ? 'disabled' : ''}>Sau</button></div><span>Thời lượng các kết quả: ${duration(filteredDuration)}</span></div>` : emptyState('↗',
+        allRows.length ? 'Không có kết quả phù hợp' : 'Chưa có bản ghi trong phạm vi đã chọn',
+        allRows.length ? 'Thử đổi từ khóa, danh mục hoặc trạng thái. Các bộ lọc này chỉ tìm trong tối đa 200 bản ghi đã tải.'
+          : 'Thử đổi thiết bị hoặc khoảng thời gian. Nếu vẫn chưa có dữ liệu, kiểm tra kết nối Agent.')}</section>
+      ${isApps ? appEnforcementMarkup(enforcement, filter) : ''}
+    </section>`;
+    activityStatus(content, `Có ${filteredRows.length} bản ghi phù hợp trong ${allRows.length} bản ghi đã tải. Trang ${pageNumber}/${pageCount}.`);
+  } catch (error) {
+    if (current()) activityFeedback(content, 'error');
+  } finally {
+    if (current()) focus.restore(true);
+    focus.dispose();
+  }
 }
 
 function appEnforcementMarkup(result, filter = {}) {
@@ -2401,16 +2485,18 @@ function appEnforcementMarkup(result, filter = {}) {
   const rows = (result?.data || []).filter((item) =>
     (!search || `${item.app_name} ${deviceName(item.device_id)}`.toLowerCase().includes(search))
     && (!filter.category || item.category === filter.category)).slice(0, 10);
-  return `<section class="card" aria-labelledby="app-enforcement-title"><div class="card-head"><div><h2 id="app-enforcement-title">Kết quả chặn ứng dụng</h2><p>10 kết quả gần nhất Agent đã gửi, theo thiết bị, thời gian và danh mục đang lọc. Chính sách yêu cầu chặn chưa xác nhận ứng dụng đã đóng.</p></div><button class="btn btn-secondary btn-sm" data-action="refresh-app-enforcement">Làm mới</button></div>${result?.error
+  return `<section class="card activity-enforcement" aria-labelledby="app-enforcement-title"><div class="card-head"><div><h2 id="app-enforcement-title">Kết quả chặn ứng dụng</h2><p>Tối đa 10 kết quả phù hợp trong 200 kết quả chặn gần nhất đã tải theo thiết bị và thời gian. Lọc thêm theo tìm kiếm và danh mục; không áp dụng bộ lọc Chính sách hiện tại. Chính sách yêu cầu chặn chưa xác nhận ứng dụng đã đóng.</p></div><button class="btn btn-secondary btn-sm" data-action="refresh-app-enforcement">Làm mới</button></div>${result?.error
     ? '<div class="card-body" role="status">Chưa tải được kết quả chặn. Nhấn Làm mới để thử lại.</div>'
     : rows.length ? `<div class="table-scroll"><table><thead><tr><th>Ứng dụng</th><th>Danh mục</th><th>Kết quả Agent xác nhận</th><th>Thời điểm</th></tr></thead><tbody>${rows.map((item) => `<tr><td class="cell-title"><strong>${escapeHtml(item.app_name)}</strong><small>${escapeHtml(deviceName(item.device_id))}</small></td><td>${categoryBadge(item.category)}</td><td><span class="badge ${item.outcome === 'failed' ? 'red' : item.outcome === 'closed' ? 'blue' : 'neutral'}">${escapeHtml(outcomes[item.outcome] || 'Chưa xác định')}</span><div class="muted">${escapeHtml(reasons[item.reason] || '')}</div></td><td>${formatDate(item.occurred_at)}</td></tr>`).join('')}</tbody></table></div>`
-      : '<div class="card-body">Chưa có kết quả chặn được gửi lên. Thiết bị cần chạy Agent hỗ trợ chặn ứng dụng và kết nối để đồng bộ kết quả.</div>'}</section>`;
+      : `<div class="card-body">${result?.data?.length
+        ? 'Không có kết quả chặn phù hợp. Thử đổi từ khóa hoặc danh mục trong tập kết quả đã tải.'
+        : 'Chưa có kết quả chặn trong phạm vi đã chọn. Thử đổi thiết bị hoặc khoảng thời gian; thiết bị cần kết nối Agent hỗ trợ chặn ứng dụng để gửi kết quả.'}</div>`}</section>`;
 }
 
 function activityTabs() {
-  return `<nav class="tabs activity-tabs" aria-label="Loại hoạt động">${[
+  return `<nav class="tabs activity-tabs" role="tablist" aria-label="Loại hoạt động">${[
     ['apps', 'Ứng dụng'], ['web', 'Website'], ['screenshots', 'Giám sát màn hình'],
-  ].map(([key, label]) => `<button class="tab ${state.activityTab === key ? 'active' : ''}" data-action="activity-tab" data-tab="${key}" ${state.activityTab === key ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>`;
+  ].map(([key, label]) => `<button id="activity-tab-${key}" role="tab" aria-controls="activity-panel-${key}" aria-selected="${state.activityTab === key}" tabindex="${state.activityTab === key ? 0 : -1}" class="tab ${state.activityTab === key ? 'active' : ''}" data-action="activity-tab" data-tab="${key}" ${state.activityTab === key ? 'aria-current="page"' : ''}>${label}</button>`).join('')}</nav>`;
 }
 
 function screenshotDataUrl(value) {
@@ -2470,22 +2556,22 @@ function scheduleScreenshotRefresh(content, renderVersion) {
 
 async function renderScreenshotActivity(content, renderVersion, background = false) {
   const filter = state.activityFilter || {};
+  const session = state.accessToken;
   let result;
   try {
     result = await api('/logs/screenshots' + screenshotQuery(), { cache: 'no-store' });
   } catch (error) {
-    if (renderVersion !== activityRenderVersion || !content.isConnected) return;
+    if (!activityRequestCurrent(content, renderVersion, session)) return;
     state.screenshotPollError = true;
     if (background) {
       scheduleScreenshotRefresh(content, renderVersion);
       return;
     }
-    content.innerHTML = pageHead('activity', activityTabs()) + emptyState('!', 'Chưa tải được ảnh màn hình',
-      'Kiểm tra kết nối rồi thử lại.', '<button class="btn" data-action="refresh-screenshots">Thử lại</button>');
+    activityFeedback(content, 'error');
     scheduleScreenshotRefresh(content, renderVersion);
     return;
   }
-  if (renderVersion !== activityRenderVersion || !content.isConnected || state.activityTab !== 'screenshots') return;
+  if (!activityRequestCurrent(content, renderVersion, session) || state.activityTab !== 'screenshots') return;
   if (background && screenshotInteractionActive(content)) {
     scheduleScreenshotRefresh(content, renderVersion);
     return;
@@ -2504,52 +2590,71 @@ async function renderScreenshotActivity(content, renderVersion, background = fal
   const monitor = state.screenshotDevices.find((device) => String(device.device_id) === String(filter.device_id))
     || (!filter.device_id && state.screenshotDevices.length === 1 ? state.screenshotDevices[0] : null);
   const pending = Boolean(monitor?.enabled && monitor.pending_request_id);
-  content.innerHTML = `
+  const keepPanelFocus = background && document.activeElement === content.querySelector('#activity-panel-screenshots');
+  activitySurface(content).innerHTML = `
     ${pageHead('activity', `<div class="activity-head-actions">${activityTabs()}<button class="btn btn-secondary" data-action="refresh-screenshots">${icons.refresh} Làm mới</button><button class="btn btn-secondary" data-action="clear-screenshots" ${!state.screenshotDevices.length ? 'disabled' : ''}>Xóa tất cả ảnh</button></div>`)}
-    <section class="screen-monitor-intro"><div><h2>Giám sát màn hình</h2><p>Ảnh chụp màn hình chính từ thiết bị của con, mới nhất ở đầu danh sách.</p></div><p class="screen-monitor-policy">Chụp mỗi ${Math.round(Number(result.capture_interval_seconds || 300) / 60)} phút · Lưu ${Number(result.retention_days) || 7} ngày</p></section>
+    ${activityPanelStart()}
+    <section class="screen-monitor-intro"><div><h2>Giám sát màn hình</h2><p>Ảnh chụp màn hình chính từ thiết bị của con, mới nhất ở đầu danh sách.</p></div><p class="screen-monitor-policy">Khi bật: chụp mỗi ${Math.round(Number(result.capture_interval_seconds || 300) / 60)} phút · Lưu ${Number(result.retention_days) || 7} ngày</p></section>
     <form id="activity-filter" class="filters screenshot-filters">
       <div class="field"><label for="screen-device">Thiết bị</label><select id="screen-device" class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((device) => `<option value="${device.device_id}" ${String(filter.device_id) === String(device.device_id) ? 'selected' : ''}>${escapeHtml(device.device_name)}</option>`).join('')}</select></div>
       <div class="field"><label for="screen-start">Từ thời điểm</label><input id="screen-start" class="input" type="datetime-local" name="start" value="${escapeHtml(filter.start || '')}"></div>
       <div class="field"><label for="screen-end">Đến thời điểm</label><input id="screen-end" class="input" type="datetime-local" name="end" value="${escapeHtml(filter.end || '')}"></div>
       <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-activity-filter">Xóa lọc</button><button class="btn" type="submit">Áp dụng</button></div>
     </form>
+    <p class="activity-note">Nhấn Áp dụng để cập nhật danh sách ảnh theo thiết bị và thời gian đã chọn. Yêu cầu chụp ngay dùng thiết bị đang chọn, không cần nhấn Áp dụng.</p>
     <section id="screenshot-capture-controls" tabindex="-1" aria-label="Điều khiển chụp ảnh">${screenshotCaptureControls(monitor)}</section>
     <div class="screen-monitor-summary"><span>${total} ảnh phù hợp</span><span>${pending ? 'Kiểm tra ảnh mới mỗi 2 giây' : 'Tự cập nhật ảnh mới'}</span></div>
     ${rows.length ? `<section class="screenshot-grid" aria-label="Ảnh màn hình thiết bị">${rows.map((item) => `<figure class="screenshot-card">
       <button class="screenshot-preview" data-action="view-screenshot" data-id="${escapeHtml(item.screenshot_id)}" aria-label="Xem ảnh ${escapeHtml(deviceName(item.device_id))}, ${escapeHtml(formatDate(item.captured_at))}"><img src="${screenshotDataUrl(item.thumbnail_base64)}" alt="Ảnh màn hình ${escapeHtml(deviceName(item.device_id))}" width="${Number(item.width)}" height="${Number(item.height)}" loading="lazy" decoding="async"><span>Xem ảnh lớn</span></button>
       <figcaption><div><strong>${escapeHtml(deviceName(item.device_id))}</strong><time datetime="${escapeHtml(item.captured_at)}">${formatDate(item.captured_at)}</time></div><button class="btn btn-ghost btn-sm screenshot-delete" data-action="delete-screenshot" data-id="${escapeHtml(item.screenshot_id)}" aria-label="Xóa ảnh ${escapeHtml(deviceName(item.device_id))} lúc ${escapeHtml(formatDate(item.captured_at))}">Xóa ảnh</button></figcaption></figure>`).join('')}</section>
       <nav class="screenshot-pagination" aria-label="Phân trang ảnh màn hình"><span>${state.activityOffset + 1}–${state.activityOffset + rows.length} / ${total} ảnh</span><div><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${Math.max(0, state.activityOffset - 12)}" ${state.activityOffset === 0 ? 'disabled' : ''}>Trước</button><button class="btn btn-secondary btn-sm" data-action="activity-page" data-offset="${state.activityOffset + 12}" ${state.activityOffset + rows.length >= total ? 'disabled' : ''}>Sau</button></div></nav>`
-      : emptyState(icons.device, filter.start || filter.end ? 'Không có ảnh phù hợp bộ lọc' : 'Chưa có ảnh màn hình', 'Khi bật chụp ảnh, ảnh mới sẽ xuất hiện tại đây sau khi Agent gửi lên. Máy của con cần kết nối mạng và Windows đang mở khóa.')}`;
+      : emptyState(icons.device, filter.start || filter.end ? 'Không có ảnh phù hợp bộ lọc' : 'Chưa có ảnh màn hình', 'Khi bật chụp ảnh, ảnh mới sẽ xuất hiện tại đây sau khi Agent gửi lên. Máy của con cần kết nối mạng và Windows đang mở khóa.')}</section>`;
+  activityStatus(content, `Đã tải ${rows.length} ảnh. Trang ${Math.floor(state.activityOffset / 12) + 1}.`);
+  if (keepPanelFocus) content.querySelector('#activity-panel-screenshots')?.focus({ preventScroll: true });
   scheduleScreenshotRefresh(content, renderVersion);
 }
 
 function confirmScreenshotDelete(id) {
   const item = (state.screenshotRows || []).find((row) => String(row.screenshot_id) === String(id));
   if (!item) return;
+  const previousModal = modalRoot.firstElementChild;
   showModal('Xóa ảnh màn hình này?',
     `Ảnh của ${deviceName(item.device_id)} lúc ${formatDate(item.captured_at)} sẽ bị xóa vĩnh viễn. Không thể hoàn tác.`,
     `<div class="form-actions"><button class="btn btn-secondary" data-action="close-modal">Hủy</button><button class="btn btn-danger" data-action="confirm-delete-screenshot" data-id="${escapeHtml(id)}">Xóa ảnh</button></div>`);
+  const createdModal = modalRoot.firstElementChild;
+  if (createdModal && createdModal !== previousModal) {
+    createdModal.querySelector('.modal')?.classList.add('activity-screenshot-dialog');
+  }
 }
 
 async function confirmClearScreenshots() {
+  function showScreenshotDialog(...args) {
+    const previousModal = modalRoot.firstElementChild;
+    const result = showModal(...args);
+    const createdModal = modalRoot.firstElementChild;
+    if (createdModal && createdModal !== previousModal) {
+      createdModal.querySelector('.modal')?.classList.add('activity-screenshot-dialog');
+    }
+    return result;
+  }
   const deviceId = document.querySelector('#screen-device')?.value || '';
   const version = activityRenderVersion;
-  showModal('Xóa tất cả ảnh?', 'Đang kiểm tra dữ liệu ảnh…', '<p role="status">Đang tải phạm vi xóa.</p>');
+  showScreenshotDialog('Xóa tất cả ảnh?', 'Đang kiểm tra dữ liệu ảnh…', '<p role="status">Đang tải phạm vi xóa.</p>');
   const modal = modalRoot.firstElementChild;
   try {
     const result = await api('/logs/screenshots' + queryString({ device_id: deviceId || undefined, metadata: '1' }), { cache: 'no-store' });
     if (version !== activityRenderVersion || modalRoot.firstElementChild !== modal) return;
     if (!result.scope_latest_id) {
-      return showModal('Không có ảnh để xóa', 'Thiết bị đã chọn chưa có ảnh được lưu.',
+      return showScreenshotDialog('Không có ảnh để xóa', 'Thiết bị đã chọn chưa có ảnh được lưu.',
         '<div class="form-actions"><button class="btn btn-secondary" data-action="close-modal">Đóng</button></div>');
     }
     const scope = deviceId ? `thiết bị ${deviceName(deviceId)}` : 'tất cả thiết bị thuộc tài khoản của bạn';
-    showModal('Xóa tất cả ảnh?',
+    showScreenshotDialog('Xóa tất cả ảnh?',
       `Xóa ${Number(result.scope_total)} ảnh của ${scope}, kể cả ảnh ngoài bộ lọc thời gian. Không thể hoàn tác. Ảnh mới chụp sau lúc mở hộp thoại này vẫn được giữ; thao tác xóa không thay đổi cài đặt chụp tự động.`,
       `<div class="form-actions"><button class="btn btn-secondary" data-action="close-modal">Hủy</button><button class="btn btn-danger" data-action="confirm-clear-screenshots" data-device-id="${escapeHtml(deviceId)}" data-through-id="${escapeHtml(result.scope_latest_id)}">Xóa tất cả ảnh</button></div>`);
   } catch (error) {
     if (version !== activityRenderVersion || modalRoot.firstElementChild !== modal) return;
-    showModal('Chưa tải được phạm vi xóa', 'Kiểm tra kết nối rồi thử lại.',
+    showScreenshotDialog('Chưa tải được phạm vi xóa', 'Kiểm tra kết nối rồi thử lại.',
       '<div class="form-actions"><button class="btn btn-secondary" data-action="close-modal">Đóng</button><button class="btn" data-action="clear-screenshots">Thử lại</button></div>');
   }
 }
@@ -2589,12 +2694,12 @@ function screenshotCaptureControls(monitor) {
             : 'Đã gửi yêu cầu. Thiết bị đang ngoại tuyến; Agent cần kết nối lại trong 3 phút để nhận yêu cầu chụp ngay.')
             : monitor.request_expired ? 'Chưa nhận được ảnh từ yêu cầu trước. Kiểm tra kết nối Agent hoặc nhấn Dừng chụp ảnh để tắt lịch chụp.'
               : 'Giám sát đang bật. Agent tự chụp định kỳ; nhấn Dừng chụp ảnh để ngừng chụp và gửi ảnh mới.';
-  const scope = monitor ? `Bật hoặc dừng áp dụng cho tất cả thiết bị cùng hồ sơ con với ${deviceName(monitor.device_id)}. Agent nhận thay đổi khi kết nối; ảnh đã lưu không bị xóa.`
-    : 'Chọn thiết bị để xem phạm vi bật hoặc dừng chụp ảnh.';
+  const scope = monitor ? `Chụp ngay: ${deviceName(monitor.device_id)}. Bắt đầu cũng bật chụp định kỳ nếu đang tắt. Bật/dừng chụp định kỳ áp dụng cho tất cả thiết bị cùng hồ sơ trẻ khi Agent nhận cấu hình; ảnh đã lưu vẫn được giữ. Gửi yêu cầu thành công sẽ chuyển danh sách sang thiết bị này và bỏ lọc thời gian để xem ảnh mới.`
+    : 'Chọn một thiết bị để gửi yêu cầu chụp ngay và xem phạm vi bật/dừng chụp định kỳ.';
   return `<div class="form-actions form-actions-start" role="group" aria-label="Bật hoặc dừng chụp ảnh" aria-describedby="screenshot-capture-scope">
     <button class="btn" data-action="start-screenshot" ${operation || pending || !monitor ? 'disabled' : ''}>${operation?.enabled ? 'Đang gửi yêu cầu…' : pending ? 'Đang chờ ảnh…' : 'Bắt đầu chụp ảnh'}</button>
     <button class="btn btn-secondary" data-action="stop-screenshot" ${operation || !monitor?.enabled ? 'disabled' : ''}>${operation && !operation.enabled ? 'Đang dừng…' : 'Dừng chụp ảnh'}</button>
-    </div><p id="screenshot-capture-status" role="status">${captureStatus}</p><p id="screenshot-capture-scope" class="muted">${escapeHtml(scope)}</p>`;
+    </div><p id="screenshot-capture-status" role="status">${captureStatus}</p><p id="screenshot-capture-scope">${escapeHtml(scope)}</p>`;
 }
 
 function updateScreenshotCaptureControls() {
@@ -2696,9 +2801,12 @@ async function setScreenshotCapture(button, enabled) {
 }
 
 async function viewScreenshot(id) {
+  const previousModal = modalRoot.firstElementChild;
   showModal('Ảnh màn hình', 'Đang tải ảnh…', '<p role="status">Đang tải ảnh màn hình.</p>');
   const requestModal = modalRoot.firstElementChild;
-  modalRoot.querySelector('.modal')?.classList.add('screenshot-modal');
+  if (requestModal && requestModal !== previousModal) {
+    requestModal.querySelector('.modal')?.classList.add('screenshot-modal', 'activity-screenshot-dialog');
+  }
   try {
     const result = await api(`/logs/screenshots/${encodeURIComponent(id)}`, { cache: 'no-store' });
     if (modalRoot.firstElementChild !== requestModal) return;
@@ -2736,60 +2844,195 @@ function exportActivityCsv() {
   URL.revokeObjectURL(url);
 }
 
-async function renderAlerts(content, { background = false } = {}) {
+async function renderAlerts(content, { background = false, markIds = null, reset = false, focusTarget = null } = {}) {
+  // State belongs to this mounted page, never to a new route or session.
+  let view = content.alertsView;
+  if (!view || view.session !== state.accessToken) {
+    view = content.alertsView = { session: state.accessToken, pending: null, valid: false, filterKey: null, outcome: '' };
+  }
+  if (background && view.pending) return { status: 'ignored' };
+  if (markIds && (view.pending || !view.valid)) return { status: 'ignored' };
   const version = state.alertRenderVersion = (state.alertRenderVersion || 0) + 1;
   const session = state.accessToken;
   const filter = { ...state.alertFilter };
   const filterKey = queryString(filter);
-  const current = () => version === state.alertRenderVersion
-    && session === state.accessToken && state.role === 'parent' && state.page === 'alerts'
-    && content.isConnected && queryString(state.alertFilter || {}) === filterKey;
-  if (!state.devices.length) state.devices = (await api('/devices?limit=200')).data || [];
-  if (!current()) return;
-  const [result] = await Promise.all([
-    api('/alerts' + queryString({ ...filter, limit: 200 })),
-    background ? undefined : refreshUnreadAlertCount({ force: true }),
-  ]);
-  if (!current()) return;
-  state.alerts = result.data || [];
-  const unreadCount = state.alerts.filter((item) => !item.is_read).length;
-  const postureCount = state.alerts.filter((item) => item.alert_type === 'posture_warning').length;
-  const distanceCount = state.alerts.filter((item) => item.alert_type === 'eye_distance_warning').length;
-  const markup = `
-    ${pageHead('alerts', `<span data-alert-unread-count class="badge ${unreadCount ? 'coral' : 'neutral'}">${unreadCount} chưa đọc</span><button class="btn btn-secondary" data-action="mark-all-read" ${unreadCount ? '' : 'disabled'}>Đánh dấu mục đang hiển thị</button>`)}
-    ${sectionVisual('alerts')}
-    <section class="page-summary-strip alert-summary" aria-label="Tóm tắt cảnh báo"><div><span class="summary-icon">${icons.alert}</span><span><small>Tổng cảnh báo</small><strong>${state.alerts.length} tín hiệu</strong></span></div><div><span class="summary-icon">!</span><span><small>Chưa đọc</small><strong>${unreadCount} cảnh báo</strong></span></div><div><span class="summary-icon">↗</span><span><small>Tư thế</small><strong>${postureCount} tín hiệu</strong></span></div><div><span class="summary-icon">◉</span><span><small>Khoảng cách mắt</small><strong>${distanceCount} tín hiệu</strong></span></div></section>
-    <form id="alert-filter" class="filters filters-alerts">
-      <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
-      <div class="field"><label>Trạng thái</label><select class="select" name="is_read"><option value="">Tất cả</option><option value="false" ${filter.is_read === 'false' ? 'selected' : ''}>Chưa đọc</option><option value="true" ${filter.is_read === 'true' ? 'selected' : ''}>Đã đọc</option></select></div><div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-alert-filter">Đặt lại</button><button class="btn" type="submit">Áp dụng</button></div>
-    </form>
-    <section class="card alerts-card">${state.alerts.map((item) => {
-      const presentation = alertPresentation(item.alert_type);
-      return `<article class="alert-row ${item.is_read ? '' : 'unread'}"><div class="alert-symbol ${presentation.tone}">${presentation.symbol}</div><div class="alert-copy"><strong>${escapeHtml(presentation.label)}</strong><p>${escapeHtml(item.message)}</p><small>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.created_at)}</small></div>${item.is_read ? '<span class="badge neutral">Đã đọc</span>' : `<button class="btn btn-secondary btn-sm" data-action="mark-alert" data-id="${item.alert_id}">Đánh dấu đã đọc</button>`}</article>`;
-    }).join('') || emptyState('✓', 'Không có cảnh báo', 'Không có cảnh báo phù hợp với bộ lọc hiện tại.')}</section>`;
+  const token = {};
+  const contextCurrent = () => content.alertsView === view && session === state.accessToken
+    && state.role === 'parent' && state.page === 'alerts' && content.isConnected
+    && queryString(state.alertFilter || {}) === filterKey;
+  const current = () => contextCurrent() && version === state.alertRenderVersion;
+  if (!current()) return { status: 'ignored' };
   if (!background) {
-    content.innerHTML = markup;
-    return;
+    if (view.pending) {
+      // Detach an older mutation's busy controls before its shared finally runs.
+      // That cleanup must not unlock the next request's controls.
+      for (const button of content.querySelectorAll?.('[data-action="mark-alert"], [data-action="mark-all-read"]') || []) {
+        if (button.dataset.busy !== 'true') continue;
+        const replacement = button.cloneNode(true);
+        delete replacement.dataset.busy;
+        replacement.removeAttribute('aria-busy');
+        button.replaceWith(replacement);
+      }
+    }
+    view.pending = token;
   }
-  // Update only results. Never replace an edited filter or navigate/scroll the page.
-  const next = document.createElement('div');
-  next.innerHTML = markup;
-  const focused = document.activeElement;
-  const focusAction = focused?.dataset?.action;
-  const focusId = focused?.dataset?.id;
-  let replacedFocus = false;
-  for (const selector of ['.alert-summary', '.alerts-card', '[data-alert-unread-count]', '[data-action="mark-all-read"]']) {
-    const previous = content.querySelector(selector);
-    const replacement = next.querySelector(selector);
-    if (previous && replacement && previous.outerHTML !== replacement.outerHTML) {
-      replacedFocus ||= previous.contains(focused);
-      previous.replaceWith(replacement);
+  const find = selector => content.querySelector?.(selector);
+  const doc = typeof document === 'undefined' ? null : document;
+  const origin = doc?.activeElement === doc?.body && focusTarget ? focusTarget : doc?.activeElement;
+  let focusMoved = false;
+  const trackFocus = event => { if (event.target !== origin && event.target !== doc?.body) focusMoved = true; };
+  if (!background) doc?.addEventListener?.('focusin', trackFocus);
+
+  function status(message, retry = false) {
+    const region = find('#alerts-load-status');
+    if (!region) return;
+    const html = `${message ? `<p>${escapeHtml(message)}</p>` : ''}${retry ? '<button type="button" class="btn btn-secondary" data-action="retry-alerts">Tải lại danh sách</button>' : ''}`;
+    if (region.innerHTML !== html) region.innerHTML = html;
+  }
+  function busy(value) {
+    find('#alerts-results')?.setAttribute('aria-busy', String(value));
+    for (const button of content.querySelectorAll?.('[data-action="mark-alert"], [data-action="mark-all-read"]') || []) {
+      button.disabled = value || !view.valid || (button.dataset.action === 'mark-all-read' && !state.alerts.some(item => !item.is_read));
+      // The shared click handler releases its original button in finally. Keep an
+      // invalid result locked without changing that handler for other pages.
+      if (!value && button.disabled && button.dataset.busy === 'true') {
+        const replacement = button.cloneNode(true);
+        delete replacement.dataset.busy;
+        replacement.removeAttribute('aria-busy');
+        button.replaceWith(replacement);
+      }
     }
   }
-  if (replacedFocus && focusAction) {
-    const target = Array.from(content.querySelectorAll('[data-action]')).find(button =>
-      button.dataset.action === focusAction && button.dataset.id === focusId && !button.disabled);
-    (target || content).focus({ preventScroll: true });
+  function restoreFocus(previous) {
+    if (!current() || !previous || !content.contains?.(find('#alerts-results'))) return;
+    if (!background && focusMoved && previous === origin) return;
+    const active = doc?.activeElement;
+    if (active && active !== previous && active !== doc?.body) return;
+    if (content.contains(previous) && !previous.disabled) return;
+    const action = previous.dataset?.action;
+    const id = previous.dataset?.id;
+    const controls = Array.from(content.querySelectorAll('[data-action]'));
+    const matching = controls.find(button => button.dataset.action === action && button.dataset.id === id && !button.disabled);
+    const row = id && Array.from(content.querySelectorAll('[data-alert-id]')).find(item => item.dataset.alertId === id);
+    (matching || row || find('#alerts-results'))?.focus({ preventScroll: true });
+  }
+  function template(rows) {
+    const unreadCount = rows.filter(item => !item.is_read).length;
+    const postureCount = rows.filter(item => item.alert_type === 'posture_warning').length;
+    const distanceCount = rows.filter(item => item.alert_type === 'eye_distance_warning').length;
+    return `<div id="alerts-surface">
+    ${pageHead('alerts', `<span data-alert-unread-count class="badge ${unreadCount ? 'coral' : 'neutral'}">${unreadCount} chưa đọc</span><button class="btn btn-secondary" data-action="mark-all-read" aria-describedby="alerts-read-help" ${unreadCount ? '' : 'disabled'}>Đánh dấu các mục đang hiển thị là đã đọc</button>`)}
+    <section class="page-summary-strip alert-summary" aria-label="Tóm tắt cảnh báo"><div><span><small>Trong danh sách</small><strong>${rows.length} cảnh báo</strong></span></div><div><span><small>Chưa đọc</small><strong>${unreadCount} cảnh báo</strong></span></div><div><span><small>Tư thế</small><strong>${postureCount} cảnh báo</strong></span></div><div><span><small>Khoảng cách mắt</small><strong>${distanceCount} cảnh báo</strong></span></div></section>
+    <p id="alerts-scope-note">Tối đa 200 cảnh báo mới nhất theo bộ lọc đã áp dụng. Bốn chỉ số chỉ tính các cảnh báo trong danh sách này.</p>
+    <p id="alerts-filter-help">Chọn Áp dụng để cập nhật danh sách theo lựa chọn bên dưới.</p>
+    <form id="alert-filter" class="filters filters-alerts">
+      <div class="field"><label>Thiết bị</label><select class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Trạng thái đọc</label><select class="select" name="is_read"><option value="">Tất cả</option><option value="false" ${filter.is_read === 'false' ? 'selected' : ''}>Chưa đọc</option><option value="true" ${filter.is_read === 'true' ? 'selected' : ''}>Đã đọc</option></select></div><div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-alert-filter">Đặt lại</button><button class="btn" type="submit">Áp dụng</button></div>
+    </form>
+    <p id="alerts-read-help">“Chưa đọc” là chưa được đánh dấu. “Đã đọc” là đã được đánh dấu, không có nghĩa sự việc đã được giải quyết. Khi lọc “Chưa đọc”, cảnh báo vừa đánh dấu sẽ rời danh sách sau khi tải lại.</p>
+    <div id="alerts-load-status" role="status" aria-live="polite" aria-atomic="true"></div><section id="alerts-results" class="card alerts-card" aria-busy="false" tabindex="-1">${rows.map((item) => {
+      const presentation = alertPresentation(item.alert_type);
+      return `<article class="alert-row ${item.is_read ? '' : 'unread'}" data-alert-id="${escapeHtml(String(item.alert_id))}" tabindex="-1"><div class="alert-symbol ${presentation.tone}">${presentation.symbol}</div><div class="alert-copy"><strong>${escapeHtml(presentation.label)}</strong><p>${escapeHtml(item.message)}</p><small>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.created_at)}</small></div>${item.is_read ? '<span class="badge neutral">Đã đọc</span>' : `<button class="btn btn-secondary btn-sm" data-action="mark-alert" data-id="${escapeHtml(String(item.alert_id))}">Đánh dấu đã đọc</button>`}</article>`;
+    }).join('') || emptyState('✓', filterKey ? 'Không có cảnh báo theo bộ lọc này' : 'Chưa có cảnh báo để hiển thị', filterKey ? 'Bạn có thể đổi thiết bị hoặc trạng thái đọc rồi chọn Áp dụng.' : 'Danh sách vừa tải không có cảnh báo.')}</section></div>`;
+  }
+  function clearResults() {
+    const summary = find('.alert-summary');
+    if (summary) summary.innerHTML = '';
+    const count = find('[data-alert-unread-count]');
+    if (count) count.textContent = 'Chưa cập nhật';
+    const results = find('#alerts-results');
+    if (results) results.innerHTML = '';
+    view.valid = false;
+  }
+  function commit(rows) {
+    const markup = template(rows);
+    if (!find('#alerts-surface')) {
+      content.innerHTML = markup;
+      return;
+    }
+    const next = doc.createElement('div');
+    next.innerHTML = markup;
+    // Preserve the form, live region and results focus target across requests.
+    for (const selector of ['.alert-summary', '#alerts-results']) {
+      const previous = find(selector);
+      const replacement = next.querySelector(selector);
+      if (previous && replacement && previous.innerHTML !== replacement.innerHTML) previous.innerHTML = replacement.innerHTML;
+    }
+    const count = find('[data-alert-unread-count]');
+    const nextCount = next.querySelector('[data-alert-unread-count]');
+    if (count && nextCount && count.outerHTML !== nextCount.outerHTML) count.replaceWith(nextCount);
+  }
+
+  try {
+    if (!background) {
+      // Mount controls once, even when the first request fails. Do not show fake zeroes.
+      if (!find('#alerts-surface')) {
+        content.innerHTML = template([]);
+        clearResults();
+      }
+      if (reset) {
+        for (const control of find('#alert-filter')?.querySelectorAll('select') || []) control.value = '';
+      }
+      if (view.filterKey !== filterKey) {
+        view.outcome = '';
+        clearResults();
+      }
+      view.filterKey = filterKey;
+      busy(true);
+      status(markIds ? 'Đang đánh dấu cảnh báo đã đọc…' : 'Đang tải cảnh báo…');
+    }
+    if (markIds) {
+      const ids = [...markIds];
+      const settled = await Promise.allSettled(ids.map(async id => api(`/alerts/${id}/read`, { method: 'PUT' })));
+      if (!contextCurrent() || view.pending !== token) return { status: 'ignored' };
+      const confirmed = settled.filter(result => result.status === 'fulfilled').length;
+      const uncertain = ids.length - confirmed;
+      view.outcome = uncertain
+        ? (confirmed
+          ? `Đã đánh dấu ${confirmed} cảnh báo là đã đọc. Chưa xác nhận được việc đánh dấu ${uncertain} cảnh báo còn lại.`
+          : `Chưa xác nhận được việc đánh dấu đã đọc cho ${uncertain} cảnh báo.`)
+        : `Đã đánh dấu ${confirmed} cảnh báo là đã đọc.`;
+      view.valid = false;
+      status(`${view.outcome} Đang tải lại danh sách…`);
+    }
+    if (!state.devices.length) {
+      const devices = await api('/devices?limit=200');
+      if (!current()) return { status: 'ignored' };
+      state.devices = devices.data || [];
+      // Only populate an initially empty select; never overwrite an edited selection.
+      const select = find('#alert-filter [name="device_id"]');
+      if (select && select.options.length === 1) {
+        select.innerHTML = '<option value="">Tất cả thiết bị</option>' + state.devices.map(d => `<option value="${escapeHtml(String(d.device_id))}" ${String(filter.device_id) === String(d.device_id) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('');
+      }
+    }
+    // Indicator failures (or a slow indicator) must not block the page's list.
+    if (!background) void refreshUnreadAlertCount({ force: true }).catch(() => {});
+    const result = await api('/alerts' + queryString({ ...filter, limit: 200 }));
+    if (!current()) return { status: 'ignored' };
+    const active = doc?.activeElement;
+    const previous = content.contains?.(active) ? active : (!background && !focusMoved ? origin : null);
+    state.alerts = result.data || [];
+    view.valid = true;
+    view.filterKey = filterKey;
+    commit(state.alerts);
+    busy(false);
+    status(view.outcome ? `${view.outcome} Danh sách đã được cập nhật.` : (background ? '' : 'Đã tải cảnh báo.'));
+    restoreFocus(previous);
+    return { status: 'success' };
+  } catch (error) {
+    if (!current()) return { status: 'ignored' };
+    const active = doc?.activeElement;
+    const previous = content.contains?.(active) ? active : (!background && !focusMoved ? origin : null);
+    if (!background) view.valid = false;
+    busy(false);
+    status(background && view.valid
+      ? `${view.outcome ? view.outcome + ' ' : ''}Chưa cập nhật được cảnh báo. Danh sách đang hiển thị có thể đã cũ.`
+      : `${view.outcome ? view.outcome + ' Chưa tải lại được danh sách.' : 'Chưa tải được cảnh báo theo bộ lọc đã chọn.'}`, true);
+    restoreFocus(previous);
+    return { status: 'error' };
+  } finally {
+    if (!background) doc?.removeEventListener?.('focusin', trackFocus);
+    if (view.pending === token) view.pending = null;
   }
 }
 
@@ -2822,26 +3065,384 @@ function riskLevelLabel(level) {
   }[String(level || '').toLowerCase()] || 'Chưa xác định';
 }
 
+function aiSession() {
+  let session = aiSessions.get(state.chat);
+  if (!session || session.userId !== state.userId) {
+    session = { history: state.chat, userId: state.userId, view: null, draft: '',
+      chatOperation: null, chatStatus: '', runs: new Map() };
+    aiSessions.set(state.chat, session);
+  }
+  return session;
+}
+
+function aiSessionCurrent(session) {
+  return state.chat === session.history && state.userId === session.userId
+    && state.role === 'parent' && Boolean(state.accessToken);
+}
+
+function aiViewCurrent(view) {
+  return Boolean(view && aiSessionCurrent(view.session) && state.page === 'ai'
+    && view.session.view === view && view.content.aiView === view && view.content.isConnected
+    && document.querySelector('#page-content') === view.content
+    && view.content.querySelector('#ai-surface') === view.surface);
+}
+
+function aiViewFrom(node) {
+  const view = node?.closest('#ai-surface')?.aiView;
+  return aiViewCurrent(view) && view.surface.contains(node) ? view : null;
+}
+
+function aiStatus(view, id, message) {
+  if (!aiViewCurrent(view)) return;
+  const region = view.surface.querySelector(id);
+  if (region.textContent !== message) region.textContent = message;
+}
+
+function aiFocus(view, origin) {
+  const scope = view.scope;
+  let moved = !origin || (document.activeElement !== origin && document.activeElement !== document.body);
+  const focus = event => { if (event.target !== origin && event.target !== document.body) moved = true; };
+  const pointer = event => { if (event.target !== origin && !origin?.contains(event.target)) moved = true; };
+  document.addEventListener('focusin', focus);
+  document.addEventListener('pointerdown', pointer);
+  const owned = () => !moved && aiViewCurrent(view) && scope === view.scope
+    && !modalRoot.firstElementChild && document.hasFocus?.() !== false;
+  return {
+    owned,
+    restore(target) { if (owned() && target?.isConnected && view.surface.contains(target)) target.focus({ preventScroll: true }); },
+    dispose() { document.removeEventListener('focusin', focus); document.removeEventListener('pointerdown', pointer); },
+  };
+}
+
+function aiControls(view) {
+  if (!aiViewCurrent(view)) return;
+  const ready = view.deviceReady && Boolean(view.deviceId);
+  const run = view.session.runs.get(view.deviceId);
+  view.run = run;
+  const running = run && ['posting', 'refreshing'].includes(run.phase);
+  const button = view.surface.querySelector('[data-action="run-analysis"]');
+  button.disabled = !ready || Boolean(running);
+  button.setAttribute('aria-busy', String(Boolean(running)));
+  button.textContent = run?.phase === 'posting' ? 'Đang phân tích…'
+    : run?.phase === 'refreshing' ? 'Đang tải kết quả…' : '✦ Chạy phân tích mới';
+  view.surface.querySelector('[data-action="latest-analysis"]').disabled = !ready || view.latest?.status === 'pending';
+  for (const control of view.surface.querySelectorAll('[data-action="summary"]')) {
+    control.disabled = !ready || (view.summary?.status === 'pending' && view.summary.period === control.dataset.period);
+  }
+  const message = !run ? '' : run.phase === 'posting' ? 'Đang phân tích thiết bị đang chọn…'
+    : run.phase === 'refreshing' ? 'Phân tích đã hoàn thành. Đang tải lại kết quả…'
+    : run.phase === 'refresh-error' ? 'Phân tích đã hoàn thành, nhưng chưa tải lại được kết quả.'
+    : run.phase === 'unconfirmed' ? `Chưa xác nhận được kết quả phân tích. ${run.error} Bạn có thể tải lại lịch sử để kiểm tra.`
+    : 'Phân tích đã hoàn thành.';
+  aiStatus(view, '#ai-analysis-status', message);
+  const retry = view.surface.querySelector('#ai-analysis-retry');
+  const retryNeeded = run && ['refresh-error', 'unconfirmed'].includes(run.phase);
+  // Do not replace an unchanged retry button while it owns keyboard focus.
+  if (retryNeeded && !retry.firstElementChild) retry.innerHTML = '<button class="btn btn-secondary" data-action="retry-ai-analysis">Tải lại kết quả</button>';
+  else if (!retryNeeded && retry.firstElementChild) retry.innerHTML = '';
+}
+
+function aiChangeScope(view, deviceId) {
+  if (!aiViewCurrent(view)) return;
+  view.scope += 1;
+  view.deviceId = String(deviceId || '');
+  view.deviceReady = false;
+  view.summary = null;
+  view.summaryRequests = new Map();
+  view.latest = null;
+  state.selectedDeviceId = deviceId || null;
+  state.analyses = [];
+  view.surface.querySelector('#summary-result').innerHTML = '';
+  view.surface.querySelector('#summary-result').setAttribute('aria-busy', 'false');
+  aiStatus(view, '#ai-summary-status', '');
+  aiStatus(view, '#ai-latest-status', '');
+  aiControls(view);
+}
+
+async function loadAIHistory(view, origin = null) {
+  if (!aiViewCurrent(view)) return { status: 'ignored' };
+  const version = ++view.historyVersion;
+  let scope = view.scope;
+  const requestedDevice = view.deviceId;
+  const current = () => aiViewCurrent(view) && version === view.historyVersion && scope === view.scope;
+  const focus = aiFocus(view, origin);
+  const history = view.surface.querySelector('#ai-history');
+  state.analyses = [];
+  view.historyPending = true;
+  history.innerHTML = '';
+  history.setAttribute('aria-busy', 'true');
+  aiStatus(view, '#ai-history-status', requestedDevice
+    ? `Đang tải phân tích của ${view.devices.find(d => String(d.device_id) === requestedDevice)?.device_name || 'thiết bị đang chọn'}…`
+    : 'Đang tải thiết bị và phân tích…');
+  try {
+    const devices = (await api('/devices?limit=200')).data || [];
+    if (!current()) return { status: 'ignored' };
+    const selected = reconcileSelectedId(requestedDevice, devices, 'device_id');
+    if (String(selected || '') !== view.deviceId) { aiChangeScope(view, selected); scope = view.scope; }
+    view.devices = devices;
+    state.devices = devices;
+    state.selectedDeviceId = selected;
+    view.deviceId = String(selected || '');
+    view.deviceReady = true;
+    const picker = view.surface.querySelector('#ai-device');
+    picker.innerHTML = '<option value="">Chọn thiết bị</option>' + devices.map(d => `<option value="${escapeHtml(d.device_id)}" ${String(d.device_id) === view.deviceId ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('');
+    picker.value = view.deviceId;
+    aiControls(view);
+    const rows = selected ? (await api(`/ai-analysis${queryString({ device_id: selected, limit: 50 })}`)).data || [] : [];
+    if (!current()) return { status: 'ignored' };
+    state.analyses = rows;
+    history.innerHTML = rows.map(item => `<article class="analysis-card"><span class="badge ${escapeHtml(String(item.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(item.risk_level))}</span><h4>${escapeHtml(item.behavior_type)}</h4><p>${escapeHtml(item.suggestion)}</p><time>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.analyzed_at)}</time></article>`).join('') || emptyState('✦', 'Chưa có phân tích', 'Chọn thiết bị và chạy phân tích AI đầu tiên.');
+    const run = view.session.runs.get(view.deviceId);
+    if (run && ['refreshing', 'refresh-error'].includes(run.phase)) run.phase = 'complete';
+    aiStatus(view, '#ai-history-status', rows.length ? `Đã tải ${rows.length} kết quả phân tích.` : 'Chưa có phân tích.');
+    return { status: 'loaded' };
+  } catch (error) {
+    if (!current()) return { status: 'ignored' };
+    const run = view.session.runs.get(view.deviceId);
+    if (run?.phase === 'refreshing') run.phase = 'refresh-error';
+    aiStatus(view, '#ai-history-status', `Chưa tải được phân tích của thiết bị đang chọn. ${localizeError(error.message)}`);
+    history.innerHTML = '<button class="btn btn-secondary" data-action="retry-ai-history">Thử lại</button>';
+    return { status: 'error' };
+  } finally {
+    if (current()) {
+      view.historyPending = false;
+      history.setAttribute('aria-busy', 'false');
+      aiControls(view);
+      focus.restore(history.querySelector('[data-action="retry-ai-history"]') || history);
+    }
+    focus.dispose();
+  }
+}
+
+async function runAIAnalysis(view, button) {
+  if (!aiViewCurrent(view) || !view.deviceReady || !view.deviceId) return;
+  const session = view.session, deviceId = view.deviceId;
+  if (['posting', 'refreshing'].includes(session.runs.get(deviceId)?.phase)) return;
+  const operation = { deviceId, phase: 'posting' };
+  session.runs.set(deviceId, operation);
+  const current = () => aiSessionCurrent(session) && session.runs.get(deviceId) === operation;
+  const focus = aiFocus(view, button);
+  let postCompleted = false;
+  aiControls(view);
+  try {
+    await api(`/ai-analysis/analyze/${deviceId}`, { method: 'POST' });
+    postCompleted = true;
+    if (!current()) return;
+    // A new mount may explicitly adopt this same pending operation; never use a route's main blindly.
+    const target = session.view;
+    if (aiViewCurrent(target) && target.deviceId === deviceId && target.run === operation) {
+      operation.phase = 'refreshing';
+      aiControls(target);
+      await loadAIHistory(target);
+    } else operation.phase = 'complete';
+  } catch (error) {
+    if (!current()) return;
+    operation.phase = postCompleted ? 'refresh-error' : 'unconfirmed';
+    operation.error = localizeError(error.message);
+  } finally {
+    if (current()) {
+      aiControls(session.view);
+      focus.restore(button);
+    }
+    focus.dispose();
+  }
+}
+
+async function requestAISummary(view, period, button) {
+  if (!aiViewCurrent(view) || !view.deviceReady || !view.deviceId || !['daily', 'weekly'].includes(period)) return;
+  if (view.summary?.status === 'pending' && view.summary.period === period) return;
+  const scope = view.scope, deviceId = view.deviceId;
+  const operation = view.summary = { period, deviceId, status: 'pending' };
+  const current = () => aiViewCurrent(view) && view.scope === scope && view.summary === operation;
+  const focus = aiFocus(view, button);
+  const target = view.surface.querySelector('#summary-result');
+  const label = `${period === 'daily' ? 'Báo cáo ngày' : 'Báo cáo tuần'} — ${deviceName(deviceId)}`;
+  target.innerHTML = '';
+  target.setAttribute('aria-busy', 'true');
+  aiStatus(view, '#ai-summary-status', `Đang tạo ${label}…`);
+  aiControls(view);
+  try {
+    // Switching daily -> weekly -> daily reuses the still-running daily GET,
+    // but only the newest UI operation is allowed to display its response.
+    let request = view.summaryRequests.get(period);
+    if (!request) {
+      request = {};
+      view.summaryRequests.set(period, request);
+      request.promise = (async () => {
+        try { return await api(`/ai-analysis/summary/${deviceId}?period=${period}`); }
+        finally { if (view.summaryRequests.get(period) === request) view.summaryRequests.delete(period); }
+      })();
+    }
+    const result = await request.promise;
+    if (!current()) return;
+    operation.status = 'complete';
+    target.innerHTML = `<div class="summary-box">${escapeHtml(result.summary)}</div>`;
+    aiStatus(view, '#ai-summary-status', `Đã tải ${label}.`);
+  } catch (error) {
+    if (!current()) return;
+    operation.status = 'error';
+    aiStatus(view, '#ai-summary-status', `Chưa tạo được ${label}. ${localizeError(error.message)}`);
+    target.innerHTML = `<p class="muted">${escapeHtml(label)}: chưa tải được báo cáo. ${escapeHtml(localizeError(error.message))}</p><button class="btn btn-secondary" data-action="retry-ai-summary" data-period="${period}">Thử lại báo cáo</button>`;
+  } finally {
+    if (current()) {
+      target.setAttribute('aria-busy', 'false');
+      aiControls(view);
+      focus.restore(target.querySelector('[data-action="retry-ai-summary"]') || view.surface.querySelector(`[data-period="${period}"]`));
+    }
+    focus.dispose();
+  }
+}
+
+function openAILatest(view, result) {
+  if (!aiViewCurrent(view) || modalRoot.firstElementChild) return;
+  showModal('Phân tích mới nhất', `${deviceName(result.device_id)} · ${formatDate(result.analyzed_at)}`, `<span class="badge ${escapeHtml(String(result.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(result.risk_level))}</span><h3>${escapeHtml(result.behavior_type)}</h3><p class="muted analysis-suggestion">${escapeHtml(result.suggestion)}</p>`);
+}
+
+async function requestAILatest(view, button) {
+  if (!aiViewCurrent(view) || !view.deviceReady || !view.deviceId || modalRoot.firstElementChild || view.latest?.status === 'pending') return;
+  if (view.latest?.status === 'ready') {
+    aiStatus(view, '#ai-latest-status', '');
+    openAILatest(view, view.latest.result);
+    view.latest = null;
+    return;
+  }
+  const scope = view.scope, deviceId = view.deviceId;
+  const operation = view.latest = { status: 'pending' };
+  const current = () => aiViewCurrent(view) && scope === view.scope && view.latest === operation;
+  const focus = aiFocus(view, button);
+  aiStatus(view, '#ai-latest-status', 'Đang tải kết quả mới nhất…');
+  aiControls(view);
+  try {
+    const result = await api(`/ai-analysis/latest/${deviceId}`);
+    if (!current()) return;
+    operation.result = result;
+    operation.status = 'ready';
+    // Re-enable before opening: the shared modal can then return focus to its trigger.
+    aiControls(view);
+    if (focus.owned()) {
+      focus.restore(button);
+      aiStatus(view, '#ai-latest-status', '');
+      openAILatest(view, result);
+      view.latest = null;
+    } else aiStatus(view, '#ai-latest-status', 'Đã tải kết quả. Chọn “Kết quả mới nhất” để xem.');
+  } catch (error) {
+    if (!current()) return;
+    operation.status = 'error';
+    aiStatus(view, '#ai-latest-status', `Chưa tải được kết quả mới nhất. ${localizeError(error.message)} Chọn lại nút để thử lại.`);
+  } finally {
+    if (current()) { aiControls(view); focus.restore(button); }
+    focus.dispose();
+  }
+}
+
+function syncAIChat(view, messages = false) {
+  if (!aiViewCurrent(view)) return;
+  const session = view.session;
+  view.chatOperation = session.chatOperation;
+  const form = view.surface.querySelector('#chat-form');
+  const input = form.querySelector('[name="message"]');
+  input.value = session.draft;
+  input.readOnly = Boolean(session.chatOperation);
+  form.querySelector('[type="submit"]').disabled = Boolean(session.chatOperation);
+  form.setAttribute('aria-busy', String(Boolean(session.chatOperation)));
+  aiStatus(view, '#ai-chat-status', session.chatOperation ? 'Đang chờ phản hồi…' : session.chatStatus);
+  if (messages) {
+    const log = view.surface.querySelector('#chat-messages');
+    const atEnd = log.scrollHeight - log.scrollTop - log.clientHeight < 40;
+    log.innerHTML = session.history.map(msg => `<div class="chat-bubble ${msg.role === 'user' ? 'user' : ''}">${escapeHtml(msg.content)}</div>`).join('');
+    if (atEnd) log.scrollTop = log.scrollHeight;
+  }
+}
+
+function captureAIChatDraft(input) {
+  const view = aiViewFrom(input);
+  if (view && input === view.surface.querySelector('#chat-form [name="message"]') && !view.session.chatOperation) view.session.draft = input.value;
+}
+
+async function submitAIChat(form) {
+  const view = aiViewFrom(form);
+  if (!view || view.session.chatOperation) return;
+  const session = view.session, input = form.querySelector('[name="message"]');
+  const text = input.value;
+  if (!text || text.length > 2000) return;
+  session.draft = text;
+  const operation = session.chatOperation = { text };
+  const current = () => aiSessionCurrent(session) && session.chatOperation === operation;
+  const focus = aiFocus(view, document.activeElement);
+  const messages = [...session.history, { role: 'user', content: text }].slice(-20).map(msg => ({ role: msg.role, content: msg.content }));
+  syncAIChat(view);
+  try {
+    const result = await api('/ai-analysis/chat', { method: 'POST', body: { messages } });
+    if (!current()) return;
+    session.history.push({ role: 'user', content: text }, { role: 'model', content: result.reply });
+    if (session.draft === text) session.draft = '';
+    session.chatStatus = 'Đã nhận phản hồi.';
+  } catch (error) {
+    if (!current()) return;
+    session.chatStatus = `Chưa nhận được phản hồi. ${localizeError(error.message)} Câu hỏi được giữ lại; bạn có thể gửi lại.`;
+  } finally {
+    if (current()) {
+      session.chatOperation = null;
+      const target = session.view;
+      if (aiViewCurrent(target) && target.chatOperation === operation) syncAIChat(target, true);
+      focus.restore(input);
+    }
+    focus.dispose();
+  }
+}
+
+async function handleAIAction(button) {
+  const view = aiViewFrom(button);
+  if (!view) return;
+  const action = button.dataset.action;
+  if (action === 'run-analysis') return await runAIAnalysis(view, button);
+  if (action === 'latest-analysis') return await requestAILatest(view, button);
+  if (action === 'summary') return await requestAISummary(view, button.dataset.period, button);
+  if (action === 'retry-ai-summary' && view.summary?.status === 'error' && view.summary.period === button.dataset.period) return await requestAISummary(view, view.summary.period, button);
+  if (action === 'retry-ai-history' || action === 'retry-ai-analysis') {
+    if (view.historyPending) return;
+    const run = view.session.runs.get(view.deviceId);
+    if (action === 'retry-ai-analysis' && run?.phase === 'refresh-error') run.phase = 'refreshing';
+    aiControls(view);
+    return await loadAIHistory(view, button);
+  }
+}
+
+function changeAIDevice(picker) {
+  const view = aiViewFrom(picker);
+  if (!view) return;
+  aiChangeScope(view, picker.value);
+  view.historyTask = loadAIHistory(view);
+  return view.historyTask;
+}
+
 async function renderAI(content) {
-  state.devices = (await api('/devices?limit=200')).data || [];
-  state.selectedDeviceId = reconcileSelectedId(state.selectedDeviceId, state.devices, 'device_id');
-  state.analyses = state.selectedDeviceId
-    ? (await api(`/ai-analysis${queryString({ device_id: state.selectedDeviceId, limit: 50 })}`)).data || []
-    : [];
+  if (state.page !== 'ai' || !content.isConnected || document.querySelector('#page-content') !== content) return;
+  const session = aiSession();
+  if (!aiSessionCurrent(session)) return;
+  const view = { content, session, scope: 0, historyVersion: 0, devices: state.devices.slice(),
+    deviceId: String(state.selectedDeviceId || ''), deviceReady: false, summary: null, summaryRequests: new Map(), latest: null };
+  content.aiView = session.view = view;
   content.innerHTML = `
+    <div id="ai-surface">
     ${pageHead('ai', `<select class="select ai-device-select" id="ai-device"><option value="">Chọn thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(d.device_id) === String(state.selectedDeviceId) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select>`)}
     <section class="ai-layout">
-      ${sectionVisual('ai', `<button class="btn" data-action="run-analysis" ${state.selectedDeviceId ? '' : 'disabled'}>✦ Chạy phân tích mới</button>`)}
+      ${sectionVisual('ai', '<button class="btn" data-action="run-analysis" disabled>✦ Chạy phân tích mới</button><div><div id="ai-analysis-status" class="muted" role="status" aria-atomic="true"></div><div id="ai-analysis-retry"></div></div>')}
       <div class="stack">
-        <article class="card"><div class="card-head"><div><h2>Phân tích gần đây</h2><p>Kết quả của riêng thiết bị đang chọn.</p></div><div><button class="btn btn-secondary btn-sm" data-action="latest-analysis" ${state.selectedDeviceId ? '' : 'disabled'}>Kết quả mới nhất</button></div></div><div>${state.analyses.map((item) => `<article class="analysis-card"><span class="badge ${escapeHtml(String(item.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(item.risk_level))}</span><h4>${escapeHtml(item.behavior_type)}</h4><p>${escapeHtml(item.suggestion)}</p><time>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.analyzed_at)}</time></article>`).join('') || emptyState('✦', 'Chưa có phân tích', 'Chọn thiết bị và chạy phân tích AI đầu tiên.')}</div></article>
-        <article class="card card-pad"><div class="card-head card-head-flush"><div><h2>Báo cáo tóm tắt</h2><p>Tạo báo cáo ngày hoặc tuần bằng Gemini.</p></div></div><div class="form-actions form-actions-start"><button class="btn btn-secondary" data-action="summary" data-period="daily" ${state.selectedDeviceId ? '' : 'disabled'}>Báo cáo ngày</button><button class="btn btn-secondary" data-action="summary" data-period="weekly" ${state.selectedDeviceId ? '' : 'disabled'}>Báo cáo tuần</button></div><div id="summary-result"></div></article>
+        <article class="card"><div class="card-head"><div><h2>Phân tích gần đây</h2><p>Kết quả của riêng thiết bị đang chọn.</p></div><div><button class="btn btn-secondary btn-sm" data-action="latest-analysis" disabled>Kết quả mới nhất</button></div></div><div id="ai-latest-status" class="muted" role="status" aria-atomic="true"></div><div id="ai-history-status" class="muted" role="status" aria-atomic="true"></div><div id="ai-history" tabindex="-1" aria-busy="false"></div></article>
+        <article class="card card-pad"><div class="card-head card-head-flush"><div><h2>Báo cáo tóm tắt</h2><p>Tạo báo cáo ngày hoặc tuần bằng Gemini.</p></div></div><div class="form-actions form-actions-start"><button class="btn btn-secondary" data-action="summary" data-period="daily" disabled>Báo cáo ngày</button><button class="btn btn-secondary" data-action="summary" data-period="weekly" disabled>Báo cáo tuần</button></div><div id="ai-summary-status" class="muted" role="status" aria-atomic="true"></div><div id="summary-result" aria-busy="false"></div></article>
       </div>
-      <aside class="card chat-card"><div class="chat-header"><strong>Cố vấn AI SafeNest</strong><small>Không thay thế tư vấn y khoa hoặc tâm lý.</small></div><div class="chat-messages" id="chat-messages">${state.chat.map((msg) => `<div class="chat-bubble ${msg.role === 'user' ? 'user' : ''}">${escapeHtml(msg.content)}</div>`).join('')}</div><form id="chat-form" class="chat-form"><input class="input" name="message" maxlength="2000" required placeholder="Hỏi về thói quen số..."><button class="btn btn-icon" type="submit" aria-label="Gửi câu hỏi">↑</button></form></aside>
-    </section>`;
-  setTimeout(() => {
-    const messages = document.querySelector('#chat-messages');
-    if (messages) messages.scrollTop = messages.scrollHeight;
-  });
+      <aside class="card chat-card"><div class="chat-header"><strong>Cố vấn AI SafeNest</strong><small>Không thay thế tư vấn y khoa hoặc tâm lý.</small></div><div class="chat-messages" id="chat-messages"></div><div id="ai-chat-status" class="muted" role="status" aria-atomic="true"></div><form id="chat-form" class="chat-form"><input class="input" name="message" maxlength="2000" required placeholder="Hỏi về thói quen số..."><button class="btn btn-icon" type="submit" aria-label="Gửi câu hỏi">↑</button></form></aside>
+    </section></div>`;
+  view.surface = content.querySelector('#ai-surface');
+  view.surface.aiView = view;
+  syncAIChat(view, true);
+  const messages = view.surface.querySelector('#chat-messages');
+  messages.scrollTop = messages.scrollHeight;
+  aiControls(view);
+  // Mount resolves immediately; navigation's focus cleanup must not wait for network responses.
+  view.historyTask = loadAIHistory(view);
+  return view;
 }
 
 function pushPlatformOptions(provider, selected = '') {
@@ -3078,6 +3679,7 @@ async function handleSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
+  if (form.id === 'chat-form') return await submitAIChat(form);
   if (form.id === 'device-form' && form.closest('.modal')?.dataset.devicePending === 'true') return;
   if (form.id === 'device-control-form' && (!isCurrentControlForm(form)
     || form.dataset.controlPending === 'true' || modalRoot.firstElementChild)) return;
@@ -3149,15 +3751,10 @@ async function handleSubmit(event) {
     } else if (form.id === 'activity-filter') {
       state.activityFilter = data;
       state.activityOffset = 0;
-      await renderActivity(document.querySelector('#page-content'));
+      await renderActivity(document.querySelector('#page-content'), 'activity-filter');
     } else if (form.id === 'alert-filter') {
-      state.alertFilter = data; await renderAlerts(document.querySelector('#page-content'));
-    } else if (form.id === 'chat-form') {
-      state.chat.push({ role: 'user', content: data.message });
-      form.reset();
-      const reply = await api('/ai-analysis/chat', { method: 'POST', body: { messages: state.chat.slice(-20) } });
-      state.chat.push({ role: 'model', content: reply.reply });
-      await renderAI(document.querySelector('#page-content'));
+      state.alertFilter = data;
+      await renderAlerts(document.querySelector('#page-content'));
     } else if (form.id === 'change-password-form') {
       const result = await api('/auth/change-password', { method: 'POST', body: data });
       toast('Đã đổi mật khẩu', localizeMessage(result.message));
@@ -3442,6 +4039,7 @@ async function handleClick(event) {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const { action, id } = button.dataset;
+  if (['run-analysis', 'latest-analysis', 'summary', 'retry-ai-history', 'retry-ai-analysis', 'retry-ai-summary'].includes(action)) return await handleAIAction(button);
   const mutationActions = new Set([
     'confirm-delete-screenshot',
     'confirm-clear-screenshots',
@@ -3450,7 +4048,6 @@ async function handleClick(event) {
     'confirm-rotate-secret',
     'mark-alert',
     'mark-all-read',
-    'run-analysis',
     'confirm-delete-push-token',
     'confirm-revoke-user-sessions',
     'confirm-delete-user',
@@ -3499,7 +4096,10 @@ async function handleClick(event) {
     if (action === 'refresh-users') return renderUsers(document.querySelector('#page-content'));
     if (action === 'clear-alert-filter') {
       state.alertFilter = {};
-      return renderAlerts(document.querySelector('#page-content'));
+      return await renderAlerts(document.querySelector('#page-content'), { reset: true });
+    }
+    if (action === 'retry-alerts') {
+      return await renderAlerts(document.querySelector('#page-content'));
     }
     if (action === 'clear-admin-user-filter') {
       state.adminUserFilter = {};
@@ -3618,13 +4218,14 @@ async function handleClick(event) {
       state.activityTab = button.dataset.tab;
       state.activityOffset = 0;
       state.activityFilter = { ...(state.activityFilter || {}), category: '' };
-      return renderActivity(document.querySelector('#page-content'));
+      return await renderActivity(document.querySelector('#page-content'), action);
     }
     if (action === 'activity-page') {
       state.activityOffset = Math.max(0, Number(button.dataset.offset) || 0);
-      return renderActivity(document.querySelector('#page-content'));
+      return await renderActivity(document.querySelector('#page-content'), action);
     }
-    if (action === 'refresh-screenshots' || action === 'refresh-app-enforcement') return renderActivity(document.querySelector('#page-content'));
+    if (action === 'refresh-screenshots' || action === 'refresh-app-enforcement') return await renderActivity(document.querySelector('#page-content'), action);
+    if (action === 'retry-activity') return await renderActivity(document.querySelector('#page-content'), action);
     if (action === 'delete-screenshot') return confirmScreenshotDelete(id);
     if (action === 'clear-screenshots') return confirmClearScreenshots();
     if (action === 'confirm-delete-screenshot') return await deleteScreenshots(button);
@@ -3635,37 +4236,21 @@ async function handleClick(event) {
     if (action === 'clear-activity-filter') {
       state.activityFilter = {};
       state.activityOffset = 0;
-      return renderActivity(document.querySelector('#page-content'));
+      return await renderActivity(document.querySelector('#page-content'), action);
     }
     if (action === 'export-activity') {
       exportActivityCsv();
       return toast('Đã xuất dữ liệu CSV', `${state.activityViewRows.length} bản ghi đã được đưa vào tệp.`);
     }
-    if (action === 'mark-alert') { await api(`/alerts/${id}/read`, { method: 'PUT' }); toast('Đã đánh dấu cảnh báo là đã đọc'); return renderAlerts(document.querySelector('#page-content')); }
+    if (action === 'mark-alert') {
+      const item = state.alerts.find(item => String(item.alert_id) === String(id) && !item.is_read);
+      if (!item) return;
+      return await renderAlerts(document.querySelector('#page-content'), { markIds: [item.alert_id], focusTarget: button });
+    }
     if (action === 'mark-all-read') {
-      const unread = state.alerts.filter((x) => !x.is_read);
-      await Promise.all(unread.map((x) => api(`/alerts/${x.alert_id}/read`, { method: 'PUT' })));
-      toast('Đã cập nhật cảnh báo đang hiển thị', `${unread.length} cảnh báo đã được đánh dấu đã đọc.`);
-      return renderAlerts(document.querySelector('#page-content'));
-    }
-    if (action === 'run-analysis') {
-      if (!state.selectedDeviceId) throw new Error('Hãy chọn thiết bị trước');
-      button.disabled = true; button.textContent = 'Đang phân tích…';
-      await api(`/ai-analysis/analyze/${state.selectedDeviceId}`, { method: 'POST' });
-      toast('Phân tích hoàn tất'); return renderAI(document.querySelector('#page-content'));
-    }
-    if (action === 'latest-analysis') {
-      if (!state.selectedDeviceId) throw new Error('Hãy chọn thiết bị trước');
-      const result = await api(`/ai-analysis/latest/${state.selectedDeviceId}`);
-      showModal('Phân tích mới nhất', `${deviceName(result.device_id)} · ${formatDate(result.analyzed_at)}`, `<span class="badge ${escapeHtml(String(result.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(result.risk_level))}</span><h3>${escapeHtml(result.behavior_type)}</h3><p class="muted analysis-suggestion">${escapeHtml(result.suggestion)}</p>`);
-      return;
-    }
-    if (action === 'summary') {
-      if (!state.selectedDeviceId) throw new Error('Hãy chọn thiết bị trước');
-      const target = document.querySelector('#summary-result'); target.innerHTML = loading();
-      const result = await api(`/ai-analysis/summary/${state.selectedDeviceId}?period=${button.dataset.period}`);
-      target.innerHTML = `<div class="summary-box">${escapeHtml(result.summary)}</div>`;
-      return;
+      const ids = state.alerts.filter(item => !item.is_read).map(item => item.alert_id);
+      if (!ids.length) return;
+      return await renderAlerts(document.querySelector('#page-content'), { markIds: ids, focusTarget: button });
     }
     if (action === 'view-user') {
       const detail = await api(`/admin/users/${id}`);
@@ -3718,7 +4303,6 @@ async function handleClick(event) {
       button.dataset.busy = 'false';
       button.removeAttribute('aria-busy');
     }
-    if (button && action === 'run-analysis' && document.body.contains(button)) button.innerHTML = '✦ Chạy phân tích mới';
     if (button && action === 'verify-admin-face' && document.body.contains(button)) button.disabled = false;
   }
 }
@@ -3751,8 +4335,7 @@ document.addEventListener('change', (event) => {
     state.overviewChildId = event.target.value;
     renderOverview(document.querySelector('#page-content')).catch((error) => toast('Không thể đổi phạm vi thống kê', localizeError(error.message), 'error'));
   } else if (event.target.id === 'ai-device') {
-    state.selectedDeviceId = event.target.value;
-    renderAI(document.querySelector('#page-content')).catch((error) => toast('Không thể tải Trung tâm AI', localizeError(error.message), 'error'));
+    changeAIDevice(event.target);
   } else if (event.target.matches('.policy-action')) {
     event.target.classList.toggle('allow', event.target.value === 'allow');
     event.target.classList.toggle('block', event.target.value === 'block');
@@ -3817,6 +4400,10 @@ document.addEventListener('keydown', (event) => {
     first.focus();
   }
 });
+document.addEventListener('input', event => {
+  if (event.target.matches('#chat-form [name="message"]')) captureAIChatDraft(event.target);
+});
+
 document.addEventListener('visibilitychange', refreshAlertIndicatorInBackground);
 window.addEventListener('focus', refreshAlertIndicatorInBackground);
 window.addEventListener('online', refreshAlertIndicatorInBackground);

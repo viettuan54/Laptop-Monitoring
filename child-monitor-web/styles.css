@@ -8081,3 +8081,427 @@ button.list-item:hover .list-arrow {
     margin-inline-start: 0;
   }
 }
+
+#modal-root .activity-screenshot-dialog .modal-close {
+  min-width: 44px;
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+/* Alerts: flatten decoration without changing shared layout or controls. */
+#alerts-surface .alert-summary {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+#alerts-surface .alert-summary > div {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+#alerts-surface #alert-filter {
+  box-shadow: none;
+}
+
+#alerts-surface #alerts-results {
+  box-shadow: none;
+}
+
+/* Alerts layout: group guidance and let header actions wrap within the surface. */
+#alerts-surface .page-head {
+  flex-wrap: wrap;
+}
+
+#alerts-surface .head-actions {
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#alerts-surface [data-action="mark-all-read"] {
+  min-width: 0;
+  max-width: 100%;
+}
+
+#alerts-surface .alert-summary {
+  margin-bottom: 8px;
+}
+
+#alerts-surface #alerts-scope-note {
+  margin: 0 0 16px;
+}
+
+#alerts-surface #alerts-filter-help {
+  margin: 0 0 8px;
+}
+
+#alerts-surface #alert-filter {
+  margin-bottom: 8px;
+}
+
+#alerts-surface #alerts-read-help {
+  margin: 0 0 16px;
+}
+
+#alerts-surface #alerts-load-status:not(:empty) {
+  margin-bottom: 16px;
+}
+
+#alerts-surface #alerts-load-status p {
+  margin: 0 0 8px;
+}
+
+/* Alerts typeset: readable content and wrapping without changing Layout A. */
+#alerts-surface .alert-copy {
+  overflow-wrap: anywhere;
+}
+
+#alerts-surface .alert-copy strong {
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+#alerts-surface .alert-copy p {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+#alerts-surface .alert-copy small {
+  font-size: 14px !important;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+#alerts-surface .alert-summary small {
+  font-size: 14px !important;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+#alerts-surface .alert-summary strong {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+#alerts-surface .alert-summary small,
+#alerts-surface .alert-summary strong {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+#alerts-surface #alerts-scope-note,
+#alerts-surface #alerts-filter-help,
+#alerts-surface #alerts-read-help {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+#alerts-surface .alert-row .badge {
+  font-size: 14px;
+  font-weight: 650;
+  line-height: 1.4;
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+#alerts-surface .empty-state p {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+/* Alerts adapt: preserve layout while improving touch targets and focus contrast. */
+#alerts-surface [data-action="mark-alert"] {
+  min-height: 44px;
+}
+
+#alerts-surface :is(button, .select, [tabindex]):focus-visible {
+  outline-color: var(--forest);
+}
+
+/* Alerts polish: disabled primary buttons keep their resting background on hover. */
+#alerts-surface .btn:not(.btn-secondary):not(.btn-danger):not(.btn-ghost):disabled:hover {
+  background: var(--forest);
+}
+
+/* Activity content: preserve existing column breakpoints and control styles. */
+#activity-surface .page-summary-strip {
+  gap: 8px 16px;
+  margin-bottom: 8px;
+  border: 0;
+  border-block: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+}
+
+#activity-surface .page-summary-strip > div {
+  display: flex;
+  align-items: stretch;
+  padding: 10px 0;
+  background: transparent;
+}
+
+#activity-surface .page-summary-strip > div > span {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+#activity-surface .page-summary-strip small,
+#activity-surface .page-summary-strip strong {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#activity-surface .page-summary-strip strong {
+  margin-top: auto;
+  padding-top: 2px;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#activity-surface .activity-summary-primary strong {
+  font-size: 1.125rem;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+#activity-surface #activity-filter {
+  gap: 10px 12px;
+  padding: 12px 0;
+  margin-bottom: 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#activity-surface .activity-filters .filter-actions {
+  grid-column: 1 / -1;
+}
+
+#activity-surface .activity-note {
+  margin: 8px 0 12px;
+}
+
+#activity-surface .activity-history {
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+#activity-surface .activity-history .table-footer,
+#activity-surface .activity-history .pagination {
+  flex-wrap: wrap;
+}
+
+#activity-surface .activity-enforcement {
+  margin-top: 24px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+#activity-surface .activity-enforcement .card-head {
+  flex-wrap: wrap;
+  padding: 16px 0 12px;
+}
+
+#activity-surface .activity-enforcement .card-head > div {
+  flex: 1 1 24rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+#activity-surface .activity-enforcement .card-head > button {
+  flex-shrink: 0;
+}
+
+#activity-surface .activity-enforcement .card-body {
+  padding: 0 0 12px;
+}
+
+#activity-surface .screen-monitor-intro {
+  margin: 8px 0 16px;
+}
+
+#activity-surface #screenshot-capture-controls > p {
+  margin: 8px 0;
+}
+
+#activity-surface #screenshot-capture-controls .form-actions {
+  margin-top: 12px;
+}
+
+#activity-surface .screen-monitor-summary {
+  margin: 16px 0 12px;
+}
+
+#activity-surface .screenshot-pagination,
+#activity-surface .screenshot-pagination > div {
+  flex-wrap: wrap;
+}
+
+#activity-surface .activity-history .pagination > button,
+#activity-surface .screenshot-pagination > div > button {
+  flex-shrink: 0;
+}
+
+/* Activity typography: important sizes only override existing global small rules. */
+#activity-surface .page-summary-strip small {
+  font-size: 0.875rem !important;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+#activity-surface .activity-history th,
+#activity-surface .activity-enforcement th {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+#activity-surface .activity-history td,
+#activity-surface .activity-enforcement td {
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+#activity-surface .activity-history .cell-title strong,
+#activity-surface .activity-enforcement .cell-title strong {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+#activity-surface .activity-history .cell-title small,
+#activity-surface .activity-enforcement .cell-title small {
+  font-size: 0.875rem !important;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+#activity-surface .activity-history .cell-title strong,
+#activity-surface .activity-history .cell-title small,
+#activity-surface .activity-enforcement .cell-title strong,
+#activity-surface .activity-enforcement .cell-title small {
+  max-width: 100%;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+#activity-surface .activity-history .website-cell a {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+#activity-surface .activity-history .badge,
+#activity-surface .activity-enforcement .badge {
+  width: fit-content;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#activity-surface #activity-filter label,
+#activity-surface .btn,
+#activity-surface .activity-tabs .tab {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+#activity-surface #activity-filter .input,
+#activity-surface #activity-filter .select {
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+#activity-surface #activity-filter input::placeholder {
+  color: var(--ink-soft);
+  opacity: 1;
+}
+
+#activity-surface .activity-enforcement .card-head h2,
+#activity-surface .screen-monitor-intro h2 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+#activity-surface .activity-note,
+#activity-surface .activity-enforcement .card-head p,
+#activity-surface .activity-enforcement .card-body,
+#activity-surface .empty-state p,
+#activity-surface .screen-monitor-intro p,
+#activity-surface #screenshot-capture-status,
+#activity-surface #screenshot-capture-scope {
+  font-size: 1rem;
+  font-weight: 400;
+  line-height: 1.6;
+  max-width: 75ch;
+  overflow-wrap: anywhere;
+}
+
+#activity-surface .activity-history .table-footer,
+#activity-surface .screen-monitor-intro .screen-monitor-policy,
+#activity-surface .screen-monitor-summary,
+#activity-surface .screenshot-pagination,
+#activity-surface .screenshot-card time {
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+}
+
+#activity-surface .screenshot-card figcaption strong {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+#activity-surface .screenshot-preview span {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+#activity-surface .activity-tabs .tab,
+#activity-surface .btn-sm {
+  min-height: 44px;
+}
+
+#activity-surface :is(button, a, .input, .select, [tabindex]):focus-visible {
+  outline-color: var(--forest);
+}
+
+#activity-surface .btn:not(.btn-secondary):not(.btn-danger):not(.btn-ghost):disabled:hover {
+  background: var(--forest);
+}

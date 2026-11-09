@@ -1,0 +1,299 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-09T08:13:52Z",
+  "title": "Design System: LaptopChildren Android Parent",
+  "extensions": {
+    "platform": {
+      "name": "android",
+      "toolkit": "Jetpack Compose Material 3",
+      "target": "compact phone",
+      "units": {
+        "layout": "dp",
+        "typography": "sp"
+      },
+      "sourceRoot": "app/src/main/java/vn/laptopchildren/parent",
+      "sources": [
+        "ui/Theme.kt",
+        "ui/ParentApp.kt",
+        "ui/SettingsScreens.kt",
+        "MainActivity.kt"
+      ],
+      "composeBom": "2025.04.01",
+      "typeScale": "MaterialTheme.typography defaults; no Typography override",
+      "shapes": "Material defaults except local RoundedCornerShape overrides documented in DESIGN.md",
+      "themeSelection": "isSystemInDarkTheme(); static light/dark schemes; no Dynamic Color or in-app override",
+      "inheritedColorRoles": "All roles not explicitly overridden in Theme.kt retain lightColorScheme/darkColorScheme defaults, including dark error and newer surface-container levels.",
+      "previewContract": "HTML/CSS previews are self-contained documentation approximations of dark native components. CSS pixels are panel units only. Compose and physical-device screenshots are authoritative; preview focus/hover effects are not app tokens.",
+      "assets": "Compose outlined vector icons and Android vector resources; no shipping raster art."
+    },
+    "colorMeta": {
+      "light-primary": {
+        "role": "primary",
+        "displayName": "LaptopChildren Blue"
+      },
+      "dark-primary": {
+        "role": "primary",
+        "displayName": "Night Action Blue"
+      },
+      "light-primary-container": {
+        "role": "primary",
+        "displayName": "Pale Blue Emphasis"
+      },
+      "dark-primary-container": {
+        "role": "primary",
+        "displayName": "Deep Blue Emphasis"
+      },
+      "light-secondary": {
+        "role": "secondary",
+        "displayName": "Connected Green"
+      },
+      "dark-secondary": {
+        "role": "secondary",
+        "displayName": "Night Connected Green"
+      },
+      "light-background": {
+        "role": "neutral",
+        "displayName": "Pale Phone Canvas"
+      },
+      "dark-background": {
+        "role": "neutral",
+        "displayName": "Night Phone Canvas"
+      },
+      "light-on-surface-variant": {
+        "role": "neutral",
+        "displayName": "Secondary Ink"
+      },
+      "dark-on-surface-variant": {
+        "role": "neutral",
+        "displayName": "Night Secondary Ink"
+      },
+      "light-error": {
+        "role": "error",
+        "displayName": "Error Red"
+      }
+    },
+    "typographyMeta": {
+      "headline-medium": {
+        "displayName": "Headline medium",
+        "purpose": "Wordmark and today's total; explicit bold."
+      },
+      "headline-small": {
+        "displayName": "Headline small",
+        "purpose": "Purpose sentence and overview/family headings; selected headings use semibold."
+      },
+      "title-large": {
+        "displayName": "Title large",
+        "purpose": "App bar, forms and account identity."
+      },
+      "title-medium": {
+        "displayName": "Title medium",
+        "purpose": "Selected child/device and section headings."
+      },
+      "title-small": {
+        "displayName": "Title small",
+        "purpose": "Usage label and policy switch titles."
+      },
+      "body-large": {
+        "displayName": "Body large",
+        "purpose": "Alert messages use medium weight; Material field text inherits body styling."
+      },
+      "body-medium": {
+        "displayName": "Body medium",
+        "purpose": "Explanations, totals, dates and request errors."
+      },
+      "body-small": {
+        "displayName": "Body small",
+        "purpose": "Timestamps and supporting guidance."
+      },
+      "label-large": {
+        "displayName": "Label large",
+        "purpose": "Actions and app version."
+      },
+      "label-medium": {
+        "displayName": "Label medium",
+        "purpose": "Alert status and activity duration."
+      },
+      "label-small": {
+        "displayName": "Label small",
+        "purpose": "Selector captions and chart annotations."
+      }
+    },
+    "elevation": {
+      "customSurfaces": "Flat Surface with no explicit shadowElevation or tonalElevation.",
+      "nativeComponents": "Retain Material defaults for navigation, menus, dialogs, buttons and snackbar."
+    },
+    "motionPolicy": "No custom animation timing or transition is defined. Native Material component behavior is inherited.",
+    "adaptiveScope": {
+      "implemented": "Phone single-column layout with four-destination bottom navigation.",
+      "expanded": "No tablet rail or expanded-width breakpoints implemented.",
+      "fontScale": "Scalable Material typography, scrolling content and minimum heights; current review includes 1.3."
+    },
+    "nativeBehavior": {
+      "insets": "enableEdgeToEdge, Scaffold content padding and imePadding.",
+      "back": "BackHandler returns subpages to Family, non-overview tabs to Overview and authentication subflows to login; predictive animation unverified.",
+      "touchTargets": "Preserve Material 48dp interactive sizing; principal actions and selectors use 52dp minimum, link rows 72dp.",
+      "feedback": "Snackbar for transient messages; dismissible error-container banner; linear progress while loading/busy.",
+      "confirmation": "AlertDialog for consequential policy changes and password-confirmed account deletion.",
+      "unconfiguredPush": "Account screen explains missing Firebase configuration; in-app alerts remain available. Setup deferred by user.",
+      "chart": "Seven-day bar row now uses heightIn(min = 136.dp); each day merges date and duration semantics."
+    },
+    "evidence": {
+      "date": "2026-11-09",
+      "device": "connected Redmi K30",
+      "captureType": "native Android screenshots",
+      "screens": [
+        "login",
+        "overview",
+        "activity",
+        "alerts",
+        "family",
+        "policy",
+        "account"
+      ],
+      "normalDark": "../../.impeccable/review/android/dark/phone-{screen}.png",
+      "largeDark": "../../.impeccable/review/android/large/phone-{screen}.png",
+      "fontScales": [
+        1,
+        1.3
+      ],
+      "light": "Code-defined only; physical light-theme review unavailable because MIUI retained night mode.",
+      "chartConfirmation": "Source minimum-height fix applied; final recapture confirmation pending finish review at extraction time.",
+      "detector": "No web detector ran; native review uses source and device evidence.",
+      "documenterSamples": [
+        "dark/phone-login.png",
+        "large/phone-overview.png",
+        "large/phone-policy.png"
+      ]
+    },
+    "nativeComponents": [
+      {
+        "name": "Button variants",
+        "source": "ui/ParentApp.kt",
+        "api": "Button / OutlinedButton / TextButton",
+        "states": "Native Material enabled, disabled, pressed and focus states; key mutation controls disabled while busy."
+      },
+      {
+        "name": "Field",
+        "source": "ui/ParentApp.kt",
+        "api": "OutlinedTextField",
+        "states": "Outlined native focus; labels and keyboard types; local validation text rather than isError border."
+      },
+      {
+        "name": "Selector",
+        "source": "ui/ParentApp.kt",
+        "api": "OutlinedButton + DropdownMenu + DropdownMenuItem",
+        "states": "Caption and selected child/device name; disabled while busy."
+      },
+      {
+        "name": "Navigation",
+        "source": "ui/ParentApp.kt",
+        "api": "NavigationBar + NavigationBarItem + TopAppBar",
+        "states": "Four destinations; bottom navigation hidden on subpages."
+      },
+      {
+        "name": "Filter",
+        "source": "ui/ParentApp.kt",
+        "api": "FilterChip",
+        "states": "Selected app/web, time range or unread filter."
+      },
+      {
+        "name": "Alert",
+        "source": "ui/ParentApp.kt",
+        "api": "Surface + TextButton",
+        "states": "Unread primaryContainer/read surface plus readable state label."
+      },
+      {
+        "name": "Policy",
+        "source": "ui/SettingsScreens.kt",
+        "api": "Switch + AlertDialog",
+        "states": "Named label, supporting explanation, native switch state; confirmation for consequential changes."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Filled action",
+      "kind": "button",
+      "refersTo": "button-primary-dark",
+      "description": "Panel illustration of the native Material filled action; Compose supplies actual shape and interaction states.",
+      "html": "<button class=\"ds-filled\">Đăng nhập</button>",
+      "css": ".ds-filled{width:100%;min-height:52px;padding:10px 24px;border:0;border-radius:999px;background:#ADC7FF;color:#002E6D;font:500 14px/20px Roboto,Arial,sans-serif;cursor:pointer}.ds-filled:hover{filter:brightness(1.06)}.ds-filled:focus-visible{outline:2px solid #ADC7FF;outline-offset:3px}.ds-filled:active{filter:brightness(.92)}.ds-filled:disabled{opacity:.38;cursor:default}"
+    },
+    {
+      "name": "Outlined action",
+      "kind": "button",
+      "refersTo": "button-outlined-dark",
+      "description": "Secondary action illustrated in dark mode; native Material defaults remain authoritative.",
+      "html": "<button class=\"ds-outlined\">Đăng xuất</button>",
+      "css": ".ds-outlined{width:100%;min-height:52px;padding:10px 24px;border:1px solid #8C9BB1;border-radius:999px;background:#101822;color:#ADC7FF;font:500 14px/20px Roboto,Arial,sans-serif;cursor:pointer}.ds-outlined:hover{background:#283547}.ds-outlined:focus-visible{outline:2px solid #ADC7FF;outline-offset:3px}.ds-outlined:active{background:#17477F}.ds-outlined:disabled{opacity:.38;cursor:default}"
+    },
+    {
+      "name": "Text action",
+      "kind": "button",
+      "refersTo": "button-text-dark",
+      "description": "Lightweight native action such as password recovery or cancellation.",
+      "html": "<button class=\"ds-text\">Quên mật khẩu?</button>",
+      "css": ".ds-text{min-height:48px;padding:10px 12px;border:0;border-radius:999px;background:#101822;color:#ADC7FF;font:500 14px/20px Roboto,Arial,sans-serif;cursor:pointer}.ds-text:hover{background:#283547}.ds-text:focus-visible{outline:2px solid #ADC7FF;outline-offset:2px}.ds-text:active{background:#17477F}"
+    },
+    {
+      "name": "Labelled field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "HTML documentation analogue of OutlinedTextField; native label motion and IME behavior are supplied by Compose.",
+      "html": "<label class=\"ds-field\">Email<input type=\"email\" autocomplete=\"email\" placeholder=\" \"></label>",
+      "css": ".ds-field{display:block;padding:8px 16px;border:1px solid #8C9BB1;border-radius:12px;background:#101822;color:#B7C4D7;font:400 12px/16px Roboto,Arial,sans-serif}.ds-field input{display:block;width:100%;min-height:32px;border:0;background:transparent;color:#E2E9F4;font:400 16px/24px Roboto,Arial,sans-serif;outline:none}.ds-field:hover{border-color:#E2E9F4}.ds-field:focus-within{outline:2px solid #ADC7FF;outline-offset:-1px;color:#ADC7FF}"
+    },
+    {
+      "name": "Usage summary",
+      "kind": "card",
+      "refersTo": "usage-dark",
+      "description": "Flat primary-container surface for today's total and the monthly context.",
+      "html": "<section class=\"ds-usage\" aria-label=\"Thời gian sử dụng laptop\"><p>Thời gian sử dụng laptop</p><strong>1 giờ 30 phút</strong><p>Tổng tháng này: 7 giờ 11 phút</p></section>",
+      "css": ".ds-usage{padding:20px;border-radius:16px;background:#17477F;color:#D8E5FF;font:400 14px/20px Roboto,Arial,sans-serif}.ds-usage p{margin:0}.ds-usage p:first-child{font-weight:500}.ds-usage strong{display:block;margin:8px 0;font-size:28px;line-height:36px;font-weight:700}"
+    },
+    {
+      "name": "Activity filter",
+      "kind": "chip",
+      "description": "Illustrative selected FilterChip; semantic secondary-container selection comes from Material defaults.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Ứng dụng</button>",
+      "css": ".ds-chip{min-height:48px;padding:8px 16px;border:0;border-radius:8px;background:#244D44;color:#D1F2E6;font:500 14px/20px Roboto,Arial,sans-serif;cursor:pointer}.ds-chip:hover{filter:brightness(1.1)}.ds-chip:focus-visible{outline:2px solid #ADC7FF;outline-offset:3px}.ds-chip:active{filter:brightness(.9)}"
+    },
+    {
+      "name": "Compact navigation",
+      "kind": "nav",
+      "description": "Four destinations with a selected pill and text labels. Panel approximation, not an Android screenshot or exact Material surface-container token.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Điều hướng chính\"><button aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"m3 10 9-7 9 7v11h-6v-7H9v7H3Z\"/></svg><span>Tổng quan</span></button><button><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 21V11h4v10M10 21V3h4v18M16 21V7h4v14\"/></svg><span>Hoạt động</span></button><button><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M4 18h16l-2-3V9a6 6 0 0 0-12 0v6ZM10 21h4\"/></svg><span>Cảnh báo</span></button><button><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path d=\"M2 21v-3c0-5 12-5 12 0v3M16 14c4 0 6 2 6 4v3\"/><circle cx=\"8\" cy=\"7\" r=\"4\"/><path d=\"M16 3a4 4 0 0 1 0 8\"/></svg><span>Gia đình</span></button></nav>",
+      "css": ".ds-nav{display:flex;gap:4px;padding:12px 4px;background:#151F2D}.ds-nav button{flex:1;min-width:0;min-height:56px;border:0;background:transparent;color:#B7C4D7;font:500 12px/16px Roboto,Arial,sans-serif;cursor:pointer}.ds-nav svg{display:block;width:24px;height:24px;margin:0 auto 4px;padding:4px 16px;fill:none;stroke:currentColor;stroke-width:2;border-radius:999px}.ds-nav [aria-current] svg{background:#244D44;color:#D1F2E6}.ds-nav [aria-current]{color:#E2E9F4}.ds-nav button:hover{background:#283547}.ds-nav button:focus-visible{outline:2px solid #ADC7FF;outline-offset:1px}.ds-nav button:active{background:#17477F}"
+    }
+  ],
+  "narrative": {
+    "northStar": "LaptopChildren blue, native Material 3",
+    "overview": "This is a direct extension of the established LaptopChildren identity, as recorded in DIRECTION.md. Blue actions, quiet surfaces, readable Vietnamese text and familiar Android controls support parents checking a child's laptop use. This descriptive direction records the accepted implementation; it introduces no new visual metaphor.\n\nUse a compact, single-column phone interface. Show the selected child before dependent information, let parents scan use and alerts, and name the child affected by policy changes. Brand expression lives in the color scheme, outlined laptop mark and measured spacing; structure and interaction use Jetpack Compose Material 3.",
+    "keyCharacteristics": [
+      "Blue emphasis with subdued green connection and selection roles.",
+      "System typography, visible labels and content that grows with font scale.",
+      "Native controls, quiet separators and tonal surfaces.",
+      "Clear selected-child context and honest loading, empty and unavailable states."
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Color Rule",
+        "body": "UI code reads `MaterialTheme.colorScheme` roles; it does not copy palette literals into individual screens.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do use semantic Material color roles and the inherited scalable typography.",
+      "Do keep the selected child visible and name the child affected by a policy change.",
+      "Do retain native Back, inset handling, labelled controls and at least 48dp touch targets.",
+      "Do let text and scrollable content grow at larger system font scales.",
+      "Do pair status color with readable labels and show empty, loading and unavailable states honestly."
+    ],
+    "donts": [
+      "Don't introduce a second visual identity or replace native Material controls with web imitations.",
+      "Don't hard-code light colors into screens that follow the system theme.",
+      "Don't force text-bearing layouts into fixed heights that clip larger fonts.",
+      "Don't claim light-theme, tablet, predictive-back-animation or configured-push verification from the current phone evidence."
+    ]
+  }
+}

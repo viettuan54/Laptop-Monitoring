@@ -214,3 +214,16 @@ test('a failed visible list refresh is retried without stopping badge updates', 
   assert.equal(renders, 2);
   assert.deepEqual(view.badgeText(), ['2', '2', '2']);
 });
+
+test('foreground alerts work pauses only list refresh; indicator and five-second timer continue', async () => {
+  const view = dashboard({ page: 'alerts', count: 3 });
+  const content = { alertsView: { pending: {} }, querySelector: () => ({}) };
+  view.context.document.querySelector = () => content;
+  let renders = 0; view.context.renderAlerts = async () => { renders++; };
+  view.context.startAlertPolling(); await flush();
+  assert.equal(renders, 0); assert.deepEqual(view.badgeText(), ['3', '3', '3']);
+  assert.equal(view.intervals.size, 1); assert.equal([...view.intervals.values()][0].ms, 5000);
+  content.alertsView.pending = null; await view.tick(); assert.equal(renders, 1);
+  view.state.page = 'activity'; await view.tick(); assert.equal(renders, 1);
+  assert.deepEqual(view.badgeText(), ['3', '3', '3']);
+});
