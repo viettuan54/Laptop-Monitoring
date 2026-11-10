@@ -188,11 +188,12 @@ Phiên có khoảng cách đã đo cố định:
 Phím điều khiển:
 
 - `Space`: bắt đầu/dừng ghi record.
-- `G`: tư thế tốt, xóa các nhãn đang chọn.
-- `1`: `forward_head`.
-- `2`: `trunk_lean`.
-- `3`: `shoulder_tilt_left`.
-- `4`: `shoulder_tilt_right`.
+- `G`: ngồi **ĐÚNG tư thế chuẩn (`good`)**, xóa các nhãn đang chọn (kiểm tra cả cổ $\le 25^\circ$, thân $\le 18^\circ$, vai $\le 12^\circ$ và thấy rõ tai/vai/hông).
+- `B`: ngồi **SAI tư thế (`bad`)** — chấp nhận bất kỳ tư thế nào lệch khỏi tư thế chuẩn và tự động ghi lại các góc lệch thực tế vào record.
+- `1`: `forward_head` (tùy chọn chi tiết).
+- `2`: `trunk_lean` (tùy chọn chi tiết).
+- `3`: `shoulder_tilt_left` (tùy chọn chi tiết).
+- `4`: `shoulder_tilt_right` (tùy chọn chi tiết).
 - `T`: bật/tắt frame chuyển tiếp.
 - `Q` hoặc `Esc`: kết thúc và ghi manifest.
 

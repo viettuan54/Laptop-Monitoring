@@ -51,18 +51,20 @@ import java.time.LocalDate
     }
     LaunchedEffect(s.notice) { s.notice?.let { snackbar.showSnackbar(it); vm.clearNotice() } }
     BackHandler(enabled = s.signedIn && (s.subpage != null || s.tab != 0)) {
-        vm.navigate(if (s.subpage != null) 3 else 0)
+        vm.back()
     }
     Scaffold(containerColor = MaterialTheme.colorScheme.background, snackbarHost = { SnackbarHost(snackbar) },
         topBar = {
             if (s.signedIn) TopAppBar(title = { Text(when(s.subpage) {
+                "breaks" -> "Lịch sử nhắc nghỉ"
+                "ai" -> "AI Advisor"
                 "policy" -> "Chính sách của con"
                 "account" -> "Tài khoản"
                 "add-child" -> "Thêm hồ sơ"
                 "edit-child" -> "Sửa hồ sơ"
                 else -> listOf("Tổng quan", "Hoạt động", "Cảnh báo", "Gia đình")[s.tab]
             }, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold) },
-                navigationIcon = { if (s.subpage != null) IconButton(onClick = { vm.navigate(3) }, enabled = !s.busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Quay lại") } },
+                navigationIcon = { if (s.subpage != null) IconButton(onClick = vm::back, enabled = !s.busy) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Quay lại") } },
                 actions = {
                     if (s.subpage == null) IconButton(onClick = { vm.loadFamily() }, enabled = !s.loading && !s.busy) { Icon(Icons.Outlined.Refresh, "Tải lại dữ liệu") }
                 }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background))
@@ -87,6 +89,8 @@ import java.time.LocalDate
             }
             if (!s.signedIn) AuthScreen(vm)
             else when(s.subpage) {
+                "breaks" -> BreakHistoryScreen(vm)
+                "ai" -> AiAdvisorScreen(vm)
                 "account" -> AccountScreen(vm)
                 "add-child", "edit-child" -> ChildEditor(vm, if (s.subpage == "edit-child") s.children.find { it.child_id == s.childId } else null)
                 "policy" -> PoliciesScreen(vm)
@@ -252,6 +256,7 @@ import java.time.LocalDate
         if (s.devices.isEmpty()) item { Text("Chưa có laptop được liên kết. Đăng ký thiết bị trên website rồi cài Windows Agent.", style = MaterialTheme.typography.bodyMedium) }
         items(s.devices, key = { it.device_id }) { device -> DeviceRow(device) }
         item { LinkRow(Icons.Outlined.Notifications, "Xem cảnh báo", "Kiểm tra những hoạt động cần chú ý") { vm.navigate(2) } }
+        item { LinkRow(Icons.Outlined.AutoAwesome, "AI Advisor", "Phân tích, báo cáo và trò chuyện") { vm.navigate(3, "ai") } }
         item { LinkRow(Icons.Outlined.Tune, "Điều chỉnh chính sách", "Thời gian sử dụng và nhóm nội dung") { vm.navigate(3, "policy") } }
         item { UpdatedText(s.updated) }
     }
@@ -338,6 +343,8 @@ import java.time.LocalDate
             Text(child?.age?.let { "$it tuổi" } ?: "Chưa cập nhật tuổi", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item { LinkRow(Icons.Outlined.Edit, "Sửa hồ sơ", "Tên và tuổi của con") { vm.navigate(3, "edit-child") } }
+        item { LinkRow(Icons.Outlined.History, "Lịch sử nhắc nghỉ", "Phản hồi gần nhất từ laptop của con") { vm.openBreakHistory() } }
+        item { LinkRow(Icons.Outlined.AutoAwesome, "AI Advisor", "Phân tích, báo cáo và trò chuyện") { vm.navigate(3, "ai") } }
         item { LinkRow(Icons.Outlined.Tune, "Chính sách sử dụng", "Giới hạn, lịch sử dụng và nội dung") { vm.navigate(3, "policy") } }
         item { SectionTitle("Thiết bị được liên kết") }
         items(s.devices, key = { it.device_id }) { DeviceRow(it) }

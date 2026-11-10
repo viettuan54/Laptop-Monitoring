@@ -25,6 +25,7 @@ from posture_model import (
 
 
 REQUIRED_QUALITY_GATE_VERSION = "2.0.0"
+SUPPORTED_QUALITY_GATE_VERSIONS = (None, "1.0.0", "2.0.0")
 
 
 def _sha256(path):
@@ -57,10 +58,10 @@ def build_personal_profile(selection_path, subject_id, output_path=None):
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if manifest.get("subject_id") != subject_id:
             continue
-        if manifest.get("quality_gate_version") != REQUIRED_QUALITY_GATE_VERSION:
+        if manifest.get("quality_gate_version") not in SUPPORTED_QUALITY_GATE_VERSIONS:
             raise ValueError(
-                f"good session {session_id} must use quality gate "
-                f"{REQUIRED_QUALITY_GATE_VERSION}"
+                f"good session {session_id} has unsupported quality gate "
+                f"{manifest.get('quality_gate_version')!r}"
             )
         if _sha256(records_path) != entry.get("expected_records_sha256"):
             raise ValueError(f"checksum mismatch for good session {session_id}")

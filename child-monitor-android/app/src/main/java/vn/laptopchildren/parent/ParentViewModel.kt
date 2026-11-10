@@ -17,6 +17,7 @@ data class ParentState(
     val childId: Long? = null, val devices: List<Device> = emptyList(), val deviceId: Long? = null,
     val usage: Usage? = null, val settings: Settings? = null, val policies: List<Policy> = emptyList(),
     val activity: List<ActivityLog> = emptyList(), val alerts: List<Alert> = emptyList(),
+    val breaks: List<BreakReminderEvent> = emptyList(), val breaksUpdated: String? = null, val breaksFromPolicy: Boolean = false,
     val screenshots: List<Screenshot> = emptyList(), val captureMonitor: CaptureMonitor? = null,
     val screenshot: Screenshot? = null, val imageLoading: Boolean = false, val imageError: String? = null,
     val hasMore: Boolean = false, val tab: Int = 0, val kind: String = "app", val days: Int = 1,
@@ -25,6 +26,7 @@ data class ParentState(
 
 class ParentViewModel(application: Application) : AndroidViewModel(application) {
     val graph = (application as ParentApplication).graph
+    val advisor = AiAdvisor({ graph.aiApi }, viewModelScope, { graph.session.generation }, { failure(it) })
     var state by mutableStateOf(ParentState(signedIn = graph.session.tokens != null)); private set
     private var loadJob: Job? = null
     private var pageJob: Job? = null
@@ -77,6 +79,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     private fun failure(t: Throwable) {
         if (t is CancellationException) throw t
         if (t is HttpException && t.code() == 401 && graph.session.tokens == null) {
+            advisor.reset()
             closeScreenshot()
             revision++; state = ParentState(error = "Phiên đã hết hạn. Vui lòng đăng nhập lại.")
             graph.scope.launch { graph.clearExpiredPush() }
@@ -94,6 +97,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun login(email: String, password: String) = action {
         graph.login(email, password)
+        advisor.reset()
         state = ParentState(signedIn = true, busy = true)
         loadFamily()
     }
@@ -114,6 +118,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
         }); done()
     }
     fun logout() = action {
+        advisor.reset()
         loadJob?.cancel(); pageJob?.cancel(); revision++
         graph.logout(); state = ParentState()
     }
@@ -128,7 +133,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
                 if (rev != revision) return@launch
                 val selected = children.find { it.child_id == preferChild }?.child_id ?: children.firstOrNull()?.child_id
                 if (selected != state.childId) state = state.copy(usage = null, settings = null, devices = emptyList(), deviceId = null,
-                    activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, policies = emptyList(), updated = null, hasMore = false)
+                    activity = emptyList(), alerts = emptyList(), breaks = emptyList(), breaksUpdated = null, screenshots = emptyList(), captureMonitor = null, policies = emptyList(), updated = null, hasMore = false)
                 state = state.copy(children = children, childId = selected)
                 loadChildData(selected, rev)
             } catch (t: Throwable) { if (rev == revision) failure(t) }
@@ -137,16 +142,22 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun selectChild(id: Long) {
         if (id == state.childId || state.busy) return
+        advisor.bindDevice(null)
         closeScreenshot()
         loadJob?.cancel(); pageJob?.cancel(); val rev = ++revision
         state = state.copy(childId = id, deviceId = null, devices = emptyList(), usage = null, settings = null,
-            policies = emptyList(), activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, hasMore = false, updated = null, error = null, loading = true)
+            policies = emptyList(), activity = emptyList(), alerts = emptyList(), breaks = emptyList(), breaksUpdated = null, screenshots = emptyList(), captureMonitor = null, hasMore = false, updated = null, error = null, loading = true)
         loadJob = viewModelScope.launch {
             try { loadChildData(id, rev) } catch (t: Throwable) { if (rev == revision) failure(t) }
             finally { if (rev == revision) state = state.copy(loading = false) }
         }
     }
     private suspend fun loadChildData(id: Long?, rev: Int) {
+        if (state.subpage == "breaks") {
+            if (id != null) loadBreakHistory(id, rev)
+            else state = state.copy(breaks = emptyList(), breaksUpdated = null)
+            return
+        }
         if (id == null) {
             state = state.copy(devices = emptyList(), deviceId = null, usage = null, settings = null, alerts = emptyList(), activity = emptyList())
             return
@@ -182,6 +193,28 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
         state = state.copy(tab = tab, subpage = subpage, loading = false, error = null, hasMore = false)
         if (subpage != "account") refresh()
     }
+    fun openBreakHistory(fromPolicy: Boolean = false) {
+        if (state.busy) return
+        state = state.copy(breaksFromPolicy = fromPolicy)
+        navigate(3, "breaks")
+    }
+    fun back() = navigate(if (state.subpage != null) 3 else 0,
+        if (state.subpage == "breaks" && state.breaksFromPolicy) "policy" else null)
+    private suspend fun loadBreakHistory(child: Long, rev: Int) {
+        val rows = graph.api.breakReminders(child).data
+        if (rev == revision && child == state.childId && state.subpage == "breaks")
+            state = state.copy(breaks = rows, breaksUpdated = Instant.now().toString())
+    }
+    fun refreshBreakHistory() {
+        if (!state.signedIn || state.subpage != "breaks" || state.loading || state.busy) return
+        val child = state.childId ?: return
+        val rev = revision
+        state = state.copy(loading = true, error = null)
+        pageJob = viewModelScope.launch {
+            try { loadBreakHistory(child, rev) } catch (t: Throwable) { if (rev == revision) failure(t) }
+            finally { if (rev == revision) state = state.copy(loading = false) }
+        }
+    }
     fun openAlerts(deviceId: Long? = null) {
         if (!state.signedIn) return
         closeScreenshot()
@@ -208,6 +241,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun selectDevice(id: Long) {
         if (state.busy || id == state.deviceId) return
+        advisor.bindDevice(null)
         closeScreenshot()
         pageJob?.cancel(); loadJob?.cancel(); revision++
         state = state.copy(deviceId = id, activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, hasMore = false)
@@ -293,12 +327,14 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     fun testPush() = action { graph.api.testPush(); state = state.copy(notice = "Đã gửi yêu cầu thử. Kiểm tra thông báo trên điện thoại.") }
     fun changePassword(old: String, new: String) = action {
         graph.api.changePassword(mapOf("oldPassword" to old, "newPassword" to new))
+        advisor.reset()
         graph.session.clear()
         graph.clearExpiredPush()
         state = ParentState(notice = "Đã đổi mật khẩu. Vui lòng đăng nhập lại.")
     }
     fun deleteAccount(password: String) = action {
         graph.api.deleteAccount(mapOf("password" to password))
+        advisor.reset()
         loadJob?.cancel(); pageJob?.cancel(); revision++
         graph.session.clear()
         graph.clearExpiredPush()

@@ -146,8 +146,8 @@ class CaptureLandmarksTest(unittest.TestCase):
         )
         self.assertTrue(valid["valid"])
 
-    def test_good_pose_requires_visible_hips_and_no_rule_violation(self):
-        missing_hips = evaluate_capture_quality(
+    def test_good_pose_accepts_missing_hips_and_rejects_rule_violation(self):
+        no_hips_good = evaluate_capture_quality(
             self._posture(
                 torso_angle_degrees=None,
                 is_bad=False,
@@ -155,8 +155,7 @@ class CaptureLandmarksTest(unittest.TestCase):
             ),
             set(),
         )
-        self.assertFalse(missing_hips["valid"])
-        self.assertIn("hips_not_visible", missing_hips["rejection_reasons"])
+        self.assertTrue(no_hips_good["valid"])
 
         rule_violation = evaluate_capture_quality(
             self._posture(
@@ -248,9 +247,35 @@ class CaptureLandmarksTest(unittest.TestCase):
 
     def test_cli_accepts_initial_class_preselection(self):
         parser = build_parser()
-        args = parser.parse_args(["--initial-class", "slouching"])
+        args = parser.parse_args(["--initial-class", "bad"])
         _validate_args(args)
-        self.assertEqual(args.initial_class, "slouching")
+        self.assertEqual(args.initial_class, "bad")
+
+    def test_bad_pose_gate_accepts_any_deviation_and_rejects_neutral_pose(self):
+        neutral = evaluate_capture_quality(
+            self._posture(
+                neck_angle_degrees=15.0,
+                torso_angle_degrees=8.0,
+                shoulder_tilt_degrees=4.0,
+                is_bad=False,
+                posture_labels=[],
+            ),
+            {"bad"},
+        )
+        self.assertFalse(neutral["valid"])
+        self.assertIn("bad_pose_needs_deviation", neutral["rejection_reasons"])
+
+        deviated = evaluate_capture_quality(
+            self._posture(
+                neck_angle_degrees=29.0,
+                torso_angle_degrees=8.0,
+                shoulder_tilt_degrees=4.0,
+                is_bad=True,
+                posture_labels=["forward_head"],
+            ),
+            {"bad"},
+        )
+        self.assertTrue(deviated["valid"])
 
     def test_jsonl_writer_emits_one_compact_record_per_line(self):
         record = self._record()

@@ -62,13 +62,21 @@ class PostureModelTest(unittest.TestCase):
             "deployment_approved": True,
         }
 
-    def test_extract_requires_full_visible_upper_body(self):
+    def test_extract_requires_ears_and_shoulders_not_hips(self):
         points = _pose()
         self.assertEqual(
             len(extract_posture_features(points, 640, 480)),
             len(FRAME_FEATURE_NAMES),
         )
+        # Missing hips (common on laptop webcams) still extracts valid features
         points[23]["visibility"] = 0.1
+        points[24]["visibility"] = 0.1
+        self.assertEqual(
+            len(extract_posture_features(points, 640, 480)),
+            len(FRAME_FEATURE_NAMES),
+        )
+        # Missing shoulder or ear returns None
+        points[11]["visibility"] = 0.1
         self.assertIsNone(extract_posture_features(points, 640, 480))
 
     def test_window_classifier_waits_then_returns_conclusive_prediction(self):
@@ -90,7 +98,9 @@ class PostureModelTest(unittest.TestCase):
         for _ in range(3):
             result = classifier.observe(points, 640, 480)
         self.assertFalse(result["conclusive"])
-        self.assertAlmostEqual(result["confidence"], 1.0 / 6.0, places=3)
+        self.assertAlmostEqual(
+            result["confidence"], 1.0 / len(PRIMARY_CLASSES), places=3
+        )
 
 
 if __name__ == "__main__":

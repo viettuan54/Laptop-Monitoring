@@ -20,6 +20,11 @@ RIGHT_HIP = 24
 
 PRIMARY_CLASSES = (
     "good",
+    "bad",
+)
+
+LEGACY_MULTICLASS_PRIMARY_CLASSES = (
+    "good",
     "forward_head",
     "trunk_lean",
     "shoulder_tilt_left",
@@ -27,8 +32,14 @@ PRIMARY_CLASSES = (
     "slouching",
 )
 
+SUPPORTED_CLASS_SETS = (
+    PRIMARY_CLASSES,
+    LEGACY_MULTICLASS_PRIMARY_CLASSES,
+)
+
 CLASS_LABELS = {
     "good": [],
+    "bad": ["bad"],
     "forward_head": ["forward_head"],
     "trunk_lean": ["trunk_lean"],
     "shoulder_tilt_left": ["shoulder_tilt_left"],
@@ -40,17 +51,15 @@ FRAME_FEATURE_NAMES = (
     "neck_dx",
     "neck_dy",
     "neck_dz",
-    "torso_dx",
-    "torso_dy",
-    "torso_dz",
     "shoulder_dy",
     "shoulder_dz",
-    "hip_dy",
     "ear_dy",
+    "ear_dz",
     "left_ear_shoulder_distance",
     "right_ear_shoulder_distance",
-    "torso_length",
-    "hip_width_ratio",
+    "shoulder_width_ratio",
+    "shoulder_center_y",
+    "ear_center_y",
 )
 
 
@@ -98,11 +107,10 @@ def extract_posture_features(
 ):
     """Return a translation/scale-normalized feature vector or ``None``.
 
-    A full upper body, including both hips, is required.  This makes every
-    static record observable for all supported posture labels and prevents a
-    missing hip from silently becoming a negative ``trunk_lean`` label.
+    Only both ears and both shoulders are required so the model works reliably
+    with standard laptop webcams where hips are outside the camera frame.
     """
-    if not pose_landmarks or len(pose_landmarks) <= RIGHT_HIP:
+    if not pose_landmarks or len(pose_landmarks) <= RIGHT_SHOULDER:
         return None
     width = _finite(image_width)
     height = _finite(image_height)
@@ -114,8 +122,6 @@ def extract_posture_features(
         RIGHT_EAR,
         LEFT_SHOULDER,
         RIGHT_SHOULDER,
-        LEFT_HIP,
-        RIGHT_HIP,
     )
     if any((_visibility(pose_landmarks[index]) or 0.0) < min_visibility for index in indices):
         return None
@@ -131,11 +137,8 @@ def extract_posture_features(
     right_ear = points[RIGHT_EAR]
     left_shoulder = points[LEFT_SHOULDER]
     right_shoulder = points[RIGHT_SHOULDER]
-    left_hip = points[LEFT_HIP]
-    right_hip = points[RIGHT_HIP]
     ears = _midpoint(left_ear, right_ear)
     shoulders = _midpoint(left_shoulder, right_shoulder)
-    hips = _midpoint(left_hip, right_hip)
 
     shoulder_width = _distance(left_shoulder, right_shoulder)
     if shoulder_width < 2.0:
@@ -145,26 +148,22 @@ def extract_posture_features(
         return tuple((a - b) / shoulder_width for a, b in zip(upper, lower))
 
     neck = normalized_delta(ears, shoulders)
-    torso = normalized_delta(shoulders, hips)
     shoulder_line = normalized_delta(right_shoulder, left_shoulder)
-    hip_line = normalized_delta(right_hip, left_hip)
     ear_line = normalized_delta(right_ear, left_ear)
 
     values = (
         neck[0],
         neck[1],
         neck[2],
-        torso[0],
-        torso[1],
-        torso[2],
         shoulder_line[1],
         shoulder_line[2],
-        hip_line[1],
         ear_line[1],
+        ear_line[2],
         _distance(left_ear, left_shoulder) / shoulder_width,
         _distance(right_ear, right_shoulder) / shoulder_width,
-        _distance(shoulders, hips) / shoulder_width,
-        _distance(left_hip, right_hip) / shoulder_width,
+        shoulder_width / width,
+        shoulders[1] / height,
+        ears[1] / height,
     )
     if any(not math.isfinite(value) for value in values):
         return None
@@ -203,7 +202,8 @@ def validate_posture_model(model):
         raise ValueError("posture model frame features are incompatible")
     if tuple(model.get("window_feature_names") or ()) != window_feature_names():
         raise ValueError("posture model window features are incompatible")
-    if tuple(model.get("classes") or ()) != PRIMARY_CLASSES:
+    model_classes = tuple(model.get("classes") or ())
+    if model_classes not in SUPPORTED_CLASS_SETS:
         raise ValueError("posture model classes are incompatible")
 
     window_size = model.get("window_size")
@@ -232,7 +232,7 @@ def validate_posture_model(model):
             raise ValueError("posture model scaler_scale must be positive")
 
     centroids = model.get("centroids")
-    if not isinstance(centroids, dict) or set(centroids) != set(PRIMARY_CLASSES):
+    if not isinstance(centroids, dict) or set(centroids) != set(model_classes):
         raise ValueError("posture model centroids are incomplete")
     for class_name, centroid in centroids.items():
         if not isinstance(centroid, list) or len(centroid) != vector_size:
@@ -330,7 +330,7 @@ class PostureBaselineClassifier:
             for index, value in enumerate(aggregated)
         ]
         distances = {}
-        for class_name in PRIMARY_CLASSES:
+        for class_name in self.model["classes"]:
             centroid = self.model["centroids"][class_name]
             distances[class_name] = sum(
                 (value - centroid[index]) ** 2

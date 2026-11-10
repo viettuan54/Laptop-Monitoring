@@ -1,5 +1,16 @@
 # Xác minh bản Android 0.1.0
 
+## Cập nhật AI Advisor — 0.3.0 (10/11/2026)
+
+- Build APK và APK instrumentation đạt. 18/18 unit tests đạt (8 kiểm thử trạng thái AI, 10 kiểm thử API/phiên). Android Lint cuối: 0 lỗi, 10 cảnh báo. Logs: `.runtime/android-tools/ai-final-verification.log` và `ai-package.log`.
+- Unit tests AI kiểm tra response cũ khi đổi laptop, phân tích POST thành công nhưng GET lỗi, không tự gửi lại POST chưa xác nhận, chat giữ draft khi lỗi và không gửi trùng, context đúng role/giới hạn 2.000 ký tự, đăng xuất chặn response đến muộn, refresh làm hết phiên và phân trang lịch sử. API tests kiểm tra endpoint, xác thực, device_id, period, limit/offset và JSON chat.
+- Redmi K30: luồng `AiAdvisorFlowTest` đạt ở sáng/font 1.0 (`ai-device-light.log`, 16,218 giây) và bảng màu tối/font 1.3 (`ai-device-dark-large.log`, 16,984 giây). Luồng gồm đăng nhập, lịch sử, chạy phân tích, báo cáo ngày lỗi rồi thử lại, báo cáo tuần, đổi trẻ không giữ báo cáo cũ, chat lỗi giữ câu hỏi rồi gửi lại, cuộc trò chuyện mới và đăng xuất.
+- Thiết bị dùng package riêng `vn.laptopchildren.parent.qa` và MockWebServer. Không dùng tài khoản thật, không gọi Gemini thật hoặc tạo phân tích trên backend thật. API thực tế đã được đối chiếu mã nguồn backend/dashboard; cấu hình, quota và phản hồi provider thật chưa được kiểm thử đầu cuối trong lượt này.
+- Captures nằm ở `.impeccable/review/android/ai-light/` và `ai-dark-large/`, mỗi bộ có `phone-ai-analysis.png`, `phone-ai-history.png`, `phone-ai-summary.png`, `phone-ai-chat.png`. Dữ liệu đều ghi nhãn kiểm thử. Bản tối dùng override `LocalConfiguration.uiMode` chỉ trong instrumentation do MIUI khóa night mode; không suy ra đã kiểm tra chuyển theme hệ thống hoặc màu status bar. Font scale được khôi phục về 1.0.
+- Documenter so sánh phần mới với hệ thống Material hiện có, xác nhận field 12dp và không cần sửa DESIGN.md/sidecar; DIRECTION.md ghi phạm vi extension. Các mục inventory cũ trong tài liệu vẫn mang tính lịch sử.
+- Reviewer độc lập trả **ship** cho toàn bộ extension AI trên phạm vi tám capture điện thoại đã cung cấp và source đã lấy mẫu; không còn material fixes. Phạm vi này không bao gồm tablet, chuyển theme hệ thống hoặc status bar tối trong bản test override.
+- Bản bàn giao là APK debug versionCode 3/versionName 0.3.0. Không thêm quyền quản trị vào app; không sửa backend/Agent hoặc đưa khóa AI vào APK. Lịch sử chat chỉ tồn tại trong RAM, tách khỏi phân tích theo laptop.
+
 ## Cập nhật ảnh màn hình — 0.2.0 (09/11/2026)
 
 - Build `assembleDebug`, 9/9 unit tests, Android Lint 0 lỗi / 18 cảnh báo: `.runtime/android-tools/screenshots-final-build.log`.

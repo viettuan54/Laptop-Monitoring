@@ -65,6 +65,7 @@ import vn.laptopchildren.parent.data.*
         }, enabled = !s.busy, modifier = Modifier.fillMaxWidth()) { Text("Lưu thời gian sử dụng") }
         HorizontalDivider()
         SectionTitle("Nhắc nghỉ")
+        OutlinedButton(onClick = { vm.openBreakHistory(fromPolicy = true) }, enabled = !s.busy) { Text("Lịch sử nhắc nghỉ") }
         ToggleRow("Nhắc con nghỉ ngơi", "Hiển thị lời nhắc trên laptop.", settings.enable_break_reminders, !s.busy) { vm.saveSettings(mapOf("enable_break_reminders" to it)) }
         if (settings.enable_break_reminders) {
             Field("Nhắc sau mỗi (5–180 phút)", interval, { interval = it }, KeyboardType.Number, !s.busy)
@@ -97,7 +98,7 @@ import vn.laptopchildren.parent.data.*
             if (it) confirm = "Bật webcam trên laptop để phân tích khoảng cách và tư thế? Hình ảnh webcam được xử lý trên laptop." to mapOf("enable_webcam_monitoring" to true)
             else vm.saveSettings(mapOf("enable_webcam_monitoring" to false))
         }
-        Text("Xem và bật/tắt chụp ảnh tại Hoạt động → Ảnh màn hình. Báo cáo AI hiện dùng trên website.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Xem và bật/tắt chụp ảnh tại Hoạt động → Ảnh màn hình. Phân tích và báo cáo nằm trong Gia đình → AI Advisor.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
     }
     confirm?.let { (message, body) -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text("Xác nhận thay đổi") },

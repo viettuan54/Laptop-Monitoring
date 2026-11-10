@@ -28,6 +28,7 @@ MIN_KEYPOINT_VISIBILITY = 0.55
 SESSION_ID_PATTERN = re.compile(r"^session-[A-Za-z0-9_-]+$")
 EXPECTED_LABELS_BY_CLASS = {
     "good": frozenset(),
+    "bad": "any_non_empty",
     "forward_head": frozenset({"forward_head"}),
     "trunk_lean": frozenset({"trunk_lean"}),
     "shoulder_tilt_left": frozenset({"shoulder_tilt_left"}),
@@ -85,7 +86,7 @@ def _ordered_counts(counter, preferred=()):
 def _labels_key(labels):
     label_set = set(labels or [])
     for primary_class, expected in EXPECTED_LABELS_BY_CLASS.items():
-        if label_set == expected:
+        if isinstance(expected, frozenset) and label_set == expected:
             return primary_class
     return "+".join(sorted(label_set)) or "good"
 
@@ -372,7 +373,10 @@ def audit_pilot_dataset(dataset_dir, selection, *, validator=None):
                     previous_timestamp = timestamp
 
                 labels = set(record.get("posture_labels") or [])
-                if labels != expected_labels:
+                if expected_labels == "any_non_empty":
+                    if not labels:
+                        local_primary_mismatches += 1
+                elif labels != expected_labels:
                     local_primary_mismatches += 1
                 for label in labels:
                     label_counts[label] += 1
@@ -426,10 +430,6 @@ def audit_pilot_dataset(dataset_dir, selection, *, validator=None):
                     if _keypoint_group_is_low(pose, indices):
                         keypoint_low[group] += 1
                 required_groups = {"ears", "shoulders"}
-                if labels & {"trunk_lean", "slouching"}:
-                    required_groups.add("hips")
-                if labels & {"shoulder_tilt_left", "shoulder_tilt_right"}:
-                    required_groups.add("shoulders")
                 for group in required_groups:
                     if _keypoint_group_is_low(pose, KEYPOINT_GROUPS[group]):
                         required_keypoint_low[group] += 1

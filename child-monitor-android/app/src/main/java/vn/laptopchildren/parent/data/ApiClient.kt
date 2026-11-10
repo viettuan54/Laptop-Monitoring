@@ -46,9 +46,9 @@ class RefreshAuthenticator(private val store: SessionStore, private val base: St
     }
 }
 
-fun createApi(base: String, store: SessionStore): ParentApi {
-    val raw = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(25, TimeUnit.SECONDS)
-        .callTimeout(35, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()
+fun createApi(base: String, store: SessionStore, ai: Boolean = false): ParentApi {
+    val raw = OkHttpClient.Builder().connectTimeout(15, TimeUnit.SECONDS).readTimeout(if (ai) 90 else 25, TimeUnit.SECONDS)
+        .callTimeout(if (ai) 100 else 35, TimeUnit.SECONDS).followRedirects(false).followSslRedirects(false).build()
     val authenticated = raw.newBuilder().addInterceptor { chain ->
         val request = chain.request()
         val public = request.url.encodedPath.startsWith("/api/auth/") && request.url.pathSegments.last() in publicPaths

@@ -46,7 +46,7 @@ from vision_metrics import (
     DEFAULT_MAX_TORSO_ANGLE_DEGREES,
     analyze_posture,
 )
-from posture_model import PRIMARY_CLASSES
+from posture_model import LEGACY_MULTICLASS_PRIMARY_CLASSES, PRIMARY_CLASSES
 
 
 WINDOW_TITLE = "Child Monitor - Landmark Pilot Collection"
@@ -56,12 +56,16 @@ QUALITY_GATE_VERSION = "2.0.0"
 DEFAULT_SAMPLE_RATE_HZ = 5.0
 PRIMARY_CLASS_TO_SELECTED_LABELS = {
     "good": frozenset(),
+    "bad": frozenset({"bad"}),
     "forward_head": frozenset({"forward_head"}),
     "trunk_lean": frozenset({"trunk_lean"}),
     "shoulder_tilt_left": frozenset({"shoulder_tilt_left"}),
     "shoulder_tilt_right": frozenset({"shoulder_tilt_right"}),
     "slouching": frozenset({"forward_head", "trunk_lean"}),
 }
+INITIAL_CLASS_CHOICES = tuple(
+    dict.fromkeys((*PRIMARY_CLASSES, *LEGACY_MULTICLASS_PRIMARY_CLASSES))
+)
 LABEL_KEY_MAP = {
     ord("1"): "forward_head",
     ord("2"): "trunk_lean",
@@ -70,7 +74,7 @@ LABEL_KEY_MAP = {
 }
 VISIBILITY_STATES = ("visible", "partially_visible", "not_visible")
 QUALITY_REASON_TEXT = {
-    "posture_not_visible": "body landmarks are not fully visible",
+    "posture_not_visible": "both ears and both shoulders must be visible",
     "neck_angle_unavailable": "neck angle is unavailable",
     "forward_head_too_weak": (
         f"neck angle must be > {DEFAULT_MAX_NECK_ANGLE_DEGREES:.0f} deg"
@@ -87,6 +91,9 @@ QUALITY_REASON_TEXT = {
     "shoulder_tilt_wrong_direction": "shoulder tilt direction does not match label",
     "unlabelled_rule_violation": "select every posture issue visible in this frame",
     "good_pose_violates_rules": "return to a neutral pose before labelling good",
+    "bad_pose_needs_deviation": (
+        "lean head (>25 deg) or tilt shoulder (>12 deg) for bad pose"
+    ),
 }
 
 
@@ -288,8 +295,7 @@ def evaluate_capture_quality(posture, selected_labels, *, transition=False):
     if transition:
         return {"valid": True, "rejection_reasons": []}
 
-    normalized = normalize_posture_annotation("visible", selected_labels)
-    labels = set(normalized["posture_labels"])
+    raw_selected = set(selected_labels or ())
     if posture.get("visibility_state") != "visible":
         return {
             "valid": False,
@@ -297,11 +303,14 @@ def evaluate_capture_quality(posture, selected_labels, *, transition=False):
         }
 
     reasons = []
-    # Every static training record must be observable for every supported
-    # label. Otherwise a missing hip would silently become a negative
-    # trunk_lean/slouching label in the multi-class baseline.
-    if posture.get("torso_angle_degrees") is None:
-        reasons.append("hips_not_visible")
+    if "bad" in raw_selected:
+        observed_rule_labels = set(posture.get("posture_labels") or [])
+        if not posture.get("is_bad") and not observed_rule_labels:
+            reasons.append("bad_pose_needs_deviation")
+        return {"valid": not reasons, "rejection_reasons": reasons}
+
+    normalized = normalize_posture_annotation("visible", raw_selected)
+    labels = set(normalized["posture_labels"])
 
     observed_rule_labels = set(posture.get("posture_labels") or [])
     unexpected_labels = observed_rule_labels - labels
@@ -683,11 +692,12 @@ def run_capture(args):
                         image_height=frame.shape[0],
                     )
                     visibility_state = posture["visibility_state"]
-                    record_labels = (
-                        selected_labels
-                        if visibility_state == "visible"
-                        else set()
-                    )
+                    if visibility_state != "visible":
+                        record_labels = set()
+                    elif "bad" in selected_labels:
+                        record_labels = set(posture.get("posture_labels") or [])
+                    else:
+                        record_labels = selected_labels
                     capture_quality = evaluate_capture_quality(
                         posture,
                         selected_labels,
@@ -759,14 +769,21 @@ def run_capture(args):
                         pose_landmarks,
                         mirrored=mirrored,
                     )
-                    selected_annotation = normalize_posture_annotation(
-                        "visible",
-                        selected_labels,
-                    )
-                    selected_text = (
-                        ",".join(selected_annotation["posture_labels"])
-                        or "good (no posture labels)"
-                    )
+                    if "bad" in selected_labels:
+                        observed_text = (
+                            ",".join(posture.get("posture_labels") or [])
+                            or "waiting for bad posture"
+                        )
+                        selected_text = f"bad ({observed_text})"
+                    else:
+                        selected_annotation = normalize_posture_annotation(
+                            "visible",
+                            selected_labels,
+                        )
+                        selected_text = (
+                            ",".join(selected_annotation["posture_labels"])
+                            or "good (no posture labels)"
+                        )
                     distance_text = (
                         f"{distance_measurement['actual_distance_cm']:.1f} cm "
                         f"({distance_measurement['distance_measurement_method']})"
@@ -796,8 +813,8 @@ def run_capture(args):
                             f"Distance: {distance_text} | "
                             f"transition={'ON' if transition else 'OFF'}"
                         ),
-                        "SPACE record | G good | 1 head | 2 trunk | 3 left shoulder | 4 right shoulder",
-                        "T transition | Q/ESC finish | left/right are anatomical (preview may be mirrored)",
+                        "SPACE record | G good (dung) | B bad (sai) | 1..4 specific labels",
+                        "T transition | Q/ESC finish | Keep both ears & shoulders visible",
                     ]
                     if recording and capture_quality["valid"]:
                         panel_color = (70, 230, 70)
@@ -816,9 +833,12 @@ def run_capture(args):
                             last_sample_attempt_at = 0.0
                     elif key in (ord("g"), ord("G")):
                         selected_labels.clear()
+                    elif key in (ord("b"), ord("B")):
+                        selected_labels = {"bad"}
                     elif key in (ord("t"), ord("T")):
                         transition = not transition
                     elif key in LABEL_KEY_MAP:
+                        selected_labels.discard("bad")
                         selected_labels = _toggle_label(
                             selected_labels,
                             LABEL_KEY_MAP[key],
@@ -910,8 +930,8 @@ def build_parser():
     )
     parser.add_argument(
         "--initial-class",
-        choices=PRIMARY_CLASSES,
-        help="Preselect the posture labels for a single primary class.",
+        choices=INITIAL_CLASS_CHOICES,
+        help="Preselect the posture labels for a single primary class (good or bad).",
     )
     return parser
 

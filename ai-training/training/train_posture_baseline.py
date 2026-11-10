@@ -27,6 +27,7 @@ for import_root in (TRAINING_ROOT, AGENT_COMPANION_ROOT):
 from data_collection.calibration_ui import write_json_atomic
 from posture_model import (
     FRAME_FEATURE_NAMES,
+    LEGACY_MULTICLASS_PRIMARY_CLASSES,
     PRIMARY_CLASSES,
     aggregate_feature_window,
     extract_posture_features,
@@ -37,6 +38,7 @@ from posture_model import (
 
 MODEL_VERSION = "1.0.0"
 REQUIRED_QUALITY_GATE_VERSION = "2.0.0"
+SUPPORTED_QUALITY_GATE_VERSIONS = (None, "1.0.0", "2.0.0")
 
 
 def _sha256(path):
@@ -73,8 +75,12 @@ def load_selected_dataset(
     session_summary = []
     for entry in entries:
         session_id = entry.get("session_id")
-        primary_class = entry.get("primary_class")
-        if primary_class not in PRIMARY_CLASSES:
+        raw_class = entry.get("primary_class")
+        if raw_class in PRIMARY_CLASSES:
+            primary_class = raw_class
+        elif raw_class in LEGACY_MULTICLASS_PRIMARY_CLASSES:
+            primary_class = "good" if raw_class == "good" else "bad"
+        else:
             raise ValueError(f"unsupported primary_class for {session_id}")
         records_path = dataset_dir / f"{session_id}.landmarks.jsonl"
         manifest_path = dataset_dir / f"{session_id}.manifest.json"
@@ -86,10 +92,10 @@ def load_selected_dataset(
             raise ValueError(f"checksum mismatch for accepted session {session_id}")
 
         manifest = _load_json(manifest_path)
-        if manifest.get("quality_gate_version") != REQUIRED_QUALITY_GATE_VERSION:
+        if manifest.get("quality_gate_version") not in SUPPORTED_QUALITY_GATE_VERSIONS:
             raise ValueError(
-                f"session {session_id} must be recollected with quality gate "
-                f"{REQUIRED_QUALITY_GATE_VERSION}"
+                f"session {session_id} has unsupported quality gate "
+                f"{manifest.get('quality_gate_version')!r}"
             )
         if manifest.get("subject_id") is None:
             raise ValueError(f"session {session_id} has no subject_id")

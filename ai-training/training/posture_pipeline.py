@@ -32,6 +32,8 @@ from data_collection.build_posture_profile import build_personal_profile
 from data_collection.calibration_ui import write_json_atomic
 from evaluation.report_pilot_dataset import (
     EXPECTED_LABELS_BY_CLASS,
+    _record_conflicts,
+    _shoulder_tilt_signed_degrees,
     audit_pilot_dataset,
     load_selection,
     render_markdown,
@@ -39,6 +41,7 @@ from evaluation.report_pilot_dataset import (
 from posture_model import PRIMARY_CLASSES, extract_posture_features
 from training.train_posture_baseline import (
     REQUIRED_QUALITY_GATE_VERSION,
+    SUPPORTED_QUALITY_GATE_VERSIONS,
     load_selected_dataset,
     train_with_loso,
 )
@@ -46,28 +49,12 @@ from training.train_posture_baseline import (
 
 CLASS_INSTRUCTIONS_VI = {
     "good": (
-        "Tư thế TỐT (good): Ngồi thẳng lưng, đầu thẳng, hai vai cân bằng, "
-        "lùi ra xa để camera thấy rõ từ đầu đến cả HAI HÔNG."
+        "Ngồi ĐÚNG tư thế chuẩn (good): Ngồi thẳng lưng, đầu thẳng, hai vai cân bằng. "
+        "Chỉ cần camera thấy rõ ĐẦU (2 tai) và 2 VAI (không cần thấy hông)."
     ),
-    "forward_head": (
-        "Đầu rướn về trước (forward_head): Giữ lưng thẳng, đưa đầu/cổ rướn về phía "
-        "màn hình sao cho góc cổ (neck) > 25 độ."
-    ),
-    "trunk_lean": (
-        "Nghiêng/gập thân (trunk_lean): Giữ cổ không gập quá 25 độ, đổ thân trên "
-        "về trước hoặc ngả lưng sao cho góc thân (torso) > 18 độ."
-    ),
-    "shoulder_tilt_left": (
-        "Nghiêng vai TRÁI (shoulder_tilt_left): Hạ thấp vai bên TRÁI giải phẫu của bạn "
-        "xuống sao cho góc vai (shoulder) > 12 độ."
-    ),
-    "shoulder_tilt_right": (
-        "Nghiêng vai PHẢI (shoulder_tilt_right): Hạ thấp vai bên PHẢI giải phẫu của bạn "
-        "xuống sao cho góc vai (shoulder) > 12 độ."
-    ),
-    "slouching": (
-        "Gù lưng (slouching = forward_head + trunk_lean): Đồng thời vừa đổ thân/cong lưng "
-        "(torso > 18 độ) vừa rướn cổ về trước (neck > 25 độ)."
+    "bad": (
+        "Ngồi SAI tư thế (bad): Bất kỳ tư thế nào lệch khỏi tư thế chuẩn (cúi/rướn cổ > 25 độ, "
+        "nghiêng lệch vai > 12 độ, hoặc gù lưng). Chỉ cần camera thấy rõ ĐẦU (2 tai) và 2 VAI."
     ),
 }
 
@@ -123,15 +110,12 @@ def inspect_session(manifest_path, *, min_usable_records=6):
             "eligible": False,
             "reason": "lần chạy thử không có record",
         }
-    if gate_version != REQUIRED_QUALITY_GATE_VERSION:
+    if gate_version not in SUPPORTED_QUALITY_GATE_VERSIONS:
         return {
             "session_id": session_id,
             "subject_id": subject_id,
             "eligible": False,
-            "reason": (
-                f"thu bằng quality gate {gate_version or 'pre-v1'}, "
-                f"cần quality gate {REQUIRED_QUALITY_GATE_VERSION} (thấy rõ hai hông)"
-            ),
+            "reason": f"quality_gate_version {gate_version!r} không được hỗ trợ",
         }
 
     actual_hash = _sha256(records_path)
@@ -143,9 +127,10 @@ def inspect_session(manifest_path, *, min_usable_records=6):
             "reason": "checksum file record không khớp manifest",
         }
 
-    label_sets = set()
+    binary_states = set()
     usable_records = 0
     unobservable_records = 0
+    geometry_violations = 0
     total_records = 0
 
     try:
@@ -158,12 +143,24 @@ def inspect_session(manifest_path, *, min_usable_records=6):
                 if record.get("transition"):
                     continue
                 labels = frozenset(record.get("posture_labels") or ())
-                label_sets.add(labels)
+                binary_states.add("bad" if labels else "good")
+                if _record_conflicts(record):
+                    geometry_violations += 1
+                pose = record.get("pose_landmarks") or []
+                if labels & {"shoulder_tilt_left", "shoulder_tilt_right"}:
+                    shoulder_angle = _shoulder_tilt_signed_degrees(record, pose)
+                    if (
+                        shoulder_angle is None
+                        or abs(shoulder_angle) <= 12.0
+                        or ("shoulder_tilt_left" in labels and shoulder_angle >= 0)
+                        or ("shoulder_tilt_right" in labels and shoulder_angle <= 0)
+                    ):
+                        geometry_violations += 1
                 if record.get("visibility_state") != "visible":
                     unobservable_records += 1
                     continue
                 vector = extract_posture_features(
-                    record.get("pose_landmarks"),
+                    pose,
                     record.get("frame_width"),
                     record.get("frame_height"),
                 )
@@ -186,27 +183,22 @@ def inspect_session(manifest_path, *, min_usable_records=6):
             "eligible": False,
             "reason": f"số dòng record ({total_records}) lệch sample_count ({sample_count})",
         }
-    if len(label_sets) != 1:
+    if len(binary_states) != 1:
         return {
             "session_id": session_id,
             "subject_id": subject_id,
             "eligible": False,
-            "reason": "phiên có nhiều nhãn trộn lẫn, không phải phiên đơn lớp",
+            "reason": "phiên trộn lẫn cả ngồi đúng (good) và sai tư thế (bad)",
         }
 
-    only_labels = next(iter(label_sets))
-    primary_class = None
-    for candidate_class, expected_labels in EXPECTED_LABELS_BY_CLASS.items():
-        if only_labels == expected_labels:
-            primary_class = candidate_class
-            break
-
-    if primary_class is None:
+    primary_class = next(iter(binary_states))
+    if geometry_violations > 0:
         return {
             "session_id": session_id,
             "subject_id": subject_id,
+            "primary_class": primary_class,
             "eligible": False,
-            "reason": f"tổ hợp nhãn {sorted(only_labels)} không khớp 6 lớp chuẩn",
+            "reason": f"có {geometry_violations} record chưa đạt ngưỡng góc nghiêng vai (> 12 độ)",
         }
     if unobservable_records > 0:
         return {
@@ -214,7 +206,7 @@ def inspect_session(manifest_path, *, min_usable_records=6):
             "subject_id": subject_id,
             "primary_class": primary_class,
             "eligible": False,
-            "reason": f"có {unobservable_records} record thiếu visibility tai/vai/hông",
+            "reason": f"có {unobservable_records} record thiếu visibility 2 tai hoặc 2 vai",
         }
     if usable_records < min_usable_records:
         return {
@@ -387,21 +379,25 @@ def compute_readiness(eligible_sessions, *, target_subjects=("subject-001", "sub
 def print_status_table(dataset_dir):
     eligible, ineligible = scan_pilot_directory(dataset_dir)
     readiness = compute_readiness(eligible)
-    print("\n=== TRẠNG THÁI DỮ LIỆU TƯ THẾ (QUALITY GATE 2.0.0) ===")
+    print("\n=== TRẠNG THÁI DỮ LIỆU TƯ THẾ 2 NHÃN: ĐÚNG (GOOD) & SAI (BAD) ===")
     print(f"Thư mục: {Path(dataset_dir).resolve()}")
     print(f"Phiên hợp lệ (v2.0.0): {len(eligible)} | Phiên cũ/loại trừ: {len(ineligible)}")
-    print("-" * 78)
-    header = f"{'Subject':<14} | " + " | ".join(f"{cls[:8]:<8}" for cls in PRIMARY_CLASSES) + " | Trạng thái"
+    print("-" * 72)
+    header = (
+        f"{'Subject':<14} | "
+        + " | ".join(f"{cls + ' (2 phiên)':<18}" for cls in PRIMARY_CLASSES)
+        + " | Trạng thái"
+    )
     print(header)
-    print("-" * 78)
+    print("-" * 72)
     for subject_id, classes in readiness["matrix"].items():
         cells = []
         for cls in PRIMARY_CLASSES:
             info = classes[cls]
-            cells.append(f"{info['session_count']}/2 ({info['total_records']}r)"[:8].ljust(8))
+            cells.append(f"{info['session_count']}/2 ({info['total_records']} mẫu)".ljust(18))
         status_str = "ĐẠT" if subject_id in readiness["ready_subjects"] else "THIẾU"
         print(f"{subject_id:<14} | " + " | ".join(cells) + f" | {status_str}")
-    print("-" * 78)
+    print("-" * 72)
     print(
         f"Sẵn sàng huấn luyện LOSO (>= 3 subjects): "
         f"{'CÓ' if readiness['ready_for_loso'] else 'CHƯA'} "
@@ -509,7 +505,7 @@ def run_guided_capture(args):
 
     capture_script = TRAINING_ROOT / "data_collection" / "capture_landmarks.py"
     print(f"Cần thu thêm {len(plan)} phiên ngắn (mỗi phiên chỉ khoảng 10-15 giây).")
-    print("Lưu ý: Đặt laptop sao cho webcam thấy rõ từ ĐẦU đến cả HAI HÔNG.\n")
+    print("Lưu ý: Chỉ cần ngồi tự nhiên trước laptop sao cho webcam thấy rõ ĐẦU (2 tai) và 2 VAI.\n")
 
     for index, task in enumerate(plan, start=1):
         subject_id = task["subject_id"]

@@ -30,6 +30,20 @@ data class Policies(val policies: List<Policy> = emptyList())
 data class PushRegistration(val token: PushToken)
 data class PushToken(val push_token_id: Long)
 data class Message(val message: String = "")
+data class BreakReminderEvent(val event_id: Long, val device_id: Long, val device_name: String?,
+    val event_type: String, val interval_minutes: Int, val duration_minutes: Int, val occurred_at: String)
+fun breakReminderLabel(type: String): String = when (type) {
+    "shown" -> "Đã hiển thị lời nhắc"
+    "acknowledged" -> "Trẻ chọn nghỉ ngay"
+    "snoozed" -> "Nhắc lại sau 5 phút"
+    else -> "Phản hồi khác"
+}
+data class AiAnalysis(val analysis_id: Long, val device_id: Long, val behavior_type: String,
+    val risk_level: String, val suggestion: String, val analyzed_at: String)
+data class AiSummary(val device_id: Long, val period: String, val summary: String)
+data class ChatMessage(val role: String, val content: String)
+data class ChatRequest(val messages: List<ChatMessage>)
+data class ChatReply(val reply: String)
 data class Screenshot(val screenshot_id: Long, val device_id: Long, val captured_at: String,
     val thumbnail_base64: String? = null, val image_base64: String? = null)
 data class CaptureMonitor(val device_id: Long, val enabled: Boolean = false, val online: Boolean = false)

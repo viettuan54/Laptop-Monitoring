@@ -35,12 +35,15 @@ class AppGraph(val context: Context) {
         private set
     var api = createApi(server, session)
         private set
+    var aiApi = createApi(server, session, ai = true)
+        private set
     val firebaseReady: Boolean get() = FirebaseApp.getApps(context).isNotEmpty()
     fun setServer(value: String, persist: Boolean = true) {
         check(session.tokens == null) { "Đăng xuất trước khi đổi máy chủ." }
         server = normalizeServer(value, BuildConfig.DEBUG)
         if (persist) check(prefs.edit().putString("server", server).commit()) { "Không lưu được địa chỉ máy chủ." }
         api = createApi(server, session)
+        aiApi = createApi(server, session, ai = true)
     }
     suspend fun registerPush(tokenOverride: String? = null) = authLock.withLock {
         check(firebaseReady) { "Bản cài này chưa có cấu hình Firebase. Danh sách cảnh báo vẫn hoạt động khi mở app." }

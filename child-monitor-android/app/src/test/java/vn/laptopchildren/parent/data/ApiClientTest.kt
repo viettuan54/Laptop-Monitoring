@@ -15,6 +15,57 @@ class MemorySession : SessionStore {
 }
 
 class ApiClientTest {
+    @Test fun breakHistoryUsesChildScopeAndPreservesEventMeaning() = runBlocking {
+        val server = MockWebServer()
+        val store = MemorySession().apply { begin(Tokens("parent", "refresh")) }
+        server.enqueue(MockResponse().setBody("""{"data":[{"event_id":"9007199254740993","device_id":9,"device_name":"Laptop","event_type":"acknowledged","interval_minutes":30,"duration_minutes":5,"occurred_at":"2026-11-10T00:00:00Z"}]}"""))
+        server.start()
+        try {
+            val row = createApi(server.url("/").toString(), store).breakReminders(7).data.single()
+            val request = server.takeRequest()
+            assertEquals("/api/logs/break-reminders?child_id=7", request.path)
+            assertEquals("Bearer parent", request.getHeader("Authorization"))
+            assertEquals(9007199254740993L, row.event_id)
+            assertEquals(5, row.duration_minutes)
+            assertEquals("Trẻ chọn nghỉ ngay", breakReminderLabel(row.event_type))
+            assertEquals("Đã hiển thị lời nhắc", breakReminderLabel("shown"))
+            assertEquals("Nhắc lại sau 5 phút", breakReminderLabel("snoozed"))
+            assertEquals("Phản hồi khác", breakReminderLabel("future-type"))
+        } finally { server.shutdown() }
+    }
+    @Test fun advisorEndpointsPreserveDevicePeriodPaginationAndChatRoles() = runBlocking {
+        val server = MockWebServer()
+        val store = MemorySession().apply { begin(Tokens("parent-access", "refresh")) }
+        val row = """{"analysis_id":1,"device_id":7,"behavior_type":"Học tập","risk_level":"low","suggestion":"Gợi ý","analyzed_at":"2026-11-10T00:00:00Z"}"""
+        server.enqueue(MockResponse().setBody("""{"data":[$row],"count":1}"""))
+        server.enqueue(MockResponse().setBody(row))
+        server.enqueue(MockResponse().setBody("""{"message":"complete","analysis":$row}"""))
+        server.enqueue(MockResponse().setBody("""{"device_id":"7","period":"weekly","summary":"Báo cáo"}"""))
+        server.enqueue(MockResponse().setBody("""{"reply":"Trả lời"}"""))
+        server.start()
+        try {
+            val api = createApi(server.url("/").toString(), store, ai = true)
+            assertEquals(7L, api.analyses(7, offset = 20).data.single().device_id)
+            val history = server.takeRequest()
+            assertEquals("7", history.requestUrl!!.queryParameter("device_id"))
+            assertEquals("20", history.requestUrl!!.queryParameter("offset"))
+            assertEquals("20", history.requestUrl!!.queryParameter("limit"))
+            assertEquals("Bearer parent-access", history.getHeader("Authorization"))
+            assertEquals(1L, api.latestAnalysis(7).analysis_id)
+            assertEquals("/api/ai-analysis/latest/7", server.takeRequest().path)
+            api.analyze(7)
+            val post = server.takeRequest()
+            assertEquals("POST", post.method)
+            assertEquals("/api/ai-analysis/analyze/7", post.path)
+            assertEquals("weekly", api.summary(7, "weekly").period)
+            assertEquals("/api/ai-analysis/summary/7?period=weekly", server.takeRequest().path)
+            assertEquals("Trả lời", api.chat(ChatRequest(listOf(ChatMessage("user", "Câu hỏi")))).reply)
+            val chat = server.takeRequest()
+            assertEquals("/api/ai-analysis/chat", chat.path)
+            assertTrue(chat.body.readUtf8().contains("\"role\":\"user\""))
+            assertEquals("Bearer parent-access", chat.getHeader("Authorization"))
+        } finally { server.shutdown() }
+    }
     @Test fun screenshotsUseAuthenticatedDeviceScopeAndSeparateImageDeleteEndpoints() = runBlocking {
         val server = MockWebServer()
         val store = MemorySession().apply { begin(Tokens("parent-access", "refresh")) }

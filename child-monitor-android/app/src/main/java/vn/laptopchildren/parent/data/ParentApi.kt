@@ -3,6 +3,13 @@ package vn.laptopchildren.parent.data
 import retrofit2.http.*
 
 interface ParentApi {
+    @GET("api/logs/break-reminders") suspend fun breakReminders(@Query("child_id") child: Long): Page<BreakReminderEvent>
+    @GET("api/ai-analysis") suspend fun analyses(@Query("device_id") device: Long,
+        @Query("limit") limit: Int = 20, @Query("offset") offset: Int = 0): Page<AiAnalysis>
+    @GET("api/ai-analysis/latest/{id}") suspend fun latestAnalysis(@Path("id") device: Long): AiAnalysis
+    @POST("api/ai-analysis/analyze/{id}") suspend fun analyze(@Path("id") device: Long): Message
+    @GET("api/ai-analysis/summary/{id}") suspend fun summary(@Path("id") device: Long, @Query("period") period: String): AiSummary
+    @POST("api/ai-analysis/chat") suspend fun chat(@Body body: ChatRequest): ChatReply
     @GET("api/logs/screenshots") suspend fun screenshots(@Query("device_id") device: Long,
         @Query("limit") limit: Int = 12, @Query("offset") offset: Int = 0): ScreenshotPage
     @GET("api/logs/screenshots/{id}") suspend fun screenshot(@Path("id") id: Long): Screenshot

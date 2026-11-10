@@ -1,6 +1,6 @@
 # LaptopChildren — Android cho phụ huynh
 
-App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản: `0.2.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
+App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản: `0.3.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
 
 ## Chức năng đã triển khai
 
@@ -15,7 +15,19 @@ App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-ba
 - Tích hợp FCM có điều kiện: đăng ký token, token thay đổi, thông báo thử, mở mục cảnh báo. Bản không có Firebase vẫn build được và hiển thị rõ chưa cấu hình push.
 - Giao diện tiếng Việt, màu sáng/tối theo hệ thống, cuộn khi bàn phím hoặc cỡ chữ lớn, trạng thái lỗi/rỗng/đang tải.
 
-AI Advisor, đăng ký laptop và cấu hình Agent hiện dùng website. App không thực hiện thu thập dữ liệu trên điện thoại; Windows Agent tiếp tục chịu trách nhiệm giám sát laptop. Quản trị viên chỉ dùng dashboard web.
+Đăng ký laptop và cấu hình Agent hiện dùng website. App không thực hiện thu thập dữ liệu trên điện thoại; Windows Agent tiếp tục chịu trách nhiệm giám sát laptop. Quản trị viên chỉ dùng dashboard web.
+
+## AI Advisor (0.3.0)
+
+Mở **Gia đình → AI Advisor** (hoặc liên kết trong Tổng quan).
+
+- **Phân tích:** chọn hồ sơ/laptop, chạy phân tích mới, xem kết quả mới nhất và lịch sử phân trang 20 mục. Nếu POST hết thời gian chờ, app không tự gửi lại; tải lịch sử để kiểm tra trước khi chạy lại. Nếu phân tích đã thành công nhưng GET lịch sử lỗi, app báo rõ hai trạng thái này.
+- **Tổng hợp:** báo cáo ngày/tuần theo laptop đang chọn; đổi laptop sẽ xóa báo cáo cũ. Lỗi có nút thử lại.
+- **Trò chuyện:** tư vấn chung như dashboard, không gửi device_id hoặc tự đính kèm log. Lỗi giữ nguyên câu hỏi để gửi lại. Mỗi câu hỏi tối đa 2.000 ký tự; context gửi tối đa 9 cặp hỏi/đáp và câu hỏi mới, mỗi nội dung giới hạn 2.000 ký tự theo API. Câu trả lời đầy đủ vẫn hiển thị trong app. App giữ tối đa 40 tin nhắn gần nhất trong RAM, không lưu lịch sử chat xuống đĩa. Cuộc trò chuyện dùng chung trong phiên tài khoản, không gắn với trẻ đang chọn. “Cuộc trò chuyện mới”, đăng xuất hoặc đóng tiến trình sẽ xóa lịch sử cục bộ.
+
+Kết quả AI chỉ tham khảo; cần đối chiếu với hoạt động thực tế. App dùng backend hiện có; Gemini credential và model thuộc cấu hình backend, không đưa khóa AI vào APK. Client AI có timeout riêng: đọc 90 giây, toàn yêu cầu 100 giây; các API khác giữ timeout cũ. Firebase không cần thiết cho AI Advisor.
+
+Kiểm thử thiết bị AI dùng `-PisolatedQa=true` và lớp `vn.laptopchildren.parent.AiAdvisorFlowTest`; MockWebServer trả kết quả có nhãn kiểm thử, không gọi provider thật. Có thể truyền `-e darkTheme true` cho instrumentation để kiểm tra bảng màu tối khi MIUI khóa lệnh đổi theme.
 
 ## Ảnh màn hình (0.2.0)
 

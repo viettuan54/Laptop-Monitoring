@@ -39,7 +39,11 @@ def _pose_for_class(primary_class, subject_offset=0.0):
     left_shoulder_y = 0.45
     right_shoulder_y = 0.45
 
-    if primary_class == "forward_head":
+    if primary_class in ("bad", "slouching"):
+        shoulder_x_shift = 0.12
+        ear_x_shift = 0.24
+        ear_z_shift = -0.20
+    elif primary_class == "forward_head":
         ear_x_shift = 0.12
         ear_z_shift = -0.18
     elif primary_class == "trunk_lean":
@@ -51,10 +55,6 @@ def _pose_for_class(primary_class, subject_offset=0.0):
     elif primary_class == "shoulder_tilt_right":
         left_shoulder_y = 0.41
         right_shoulder_y = 0.53
-    elif primary_class == "slouching":
-        shoulder_x_shift = 0.12
-        ear_x_shift = 0.24
-        ear_z_shift = -0.20
 
     points[7].update(
         x=0.43 + ear_x_shift + subject_offset,
@@ -100,7 +100,10 @@ class PosturePipelineTest(unittest.TestCase):
         quality_gate_version="2.0.0",
         subject_offset=0.0,
     ):
-        labels = list(PRIMARY_CLASS_TO_SELECTED_LABELS[primary_class])
+        if primary_class == "bad":
+            labels = ["forward_head", "trunk_lean"]
+        else:
+            labels = list(PRIMARY_CLASS_TO_SELECTED_LABELS[primary_class])
         records_path = root / f"{session_id}.landmarks.jsonl"
         lines = []
         label_counts = {
@@ -166,13 +169,13 @@ class PosturePipelineTest(unittest.TestCase):
     def test_sync_and_full_build_succeeds_for_three_subjects(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            # Legacy v1 session should be automatically excluded
+            # Empty trial session should be automatically excluded
             self._write_session(
                 root,
-                session_id="session-legacy-v1",
+                session_id="session-empty-trial",
                 subject_id="subject-001",
                 primary_class="good",
-                quality_gate_version="1.0.0",
+                record_count=0,
             )
 
             for s_idx in range(3):
@@ -191,7 +194,7 @@ class PosturePipelineTest(unittest.TestCase):
                         )
 
             selection, eligible, ineligible = sync_selection_file(root)
-            self.assertEqual(len(eligible), 36)
+            self.assertEqual(len(eligible), 12)
             self.assertEqual(len(ineligible), 1)
             readiness = compute_readiness(eligible)
             self.assertTrue(readiness["ready_for_loso"])
