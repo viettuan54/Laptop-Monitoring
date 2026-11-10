@@ -3,6 +3,10 @@ package vn.laptopchildren.parent.data
 import retrofit2.http.*
 
 interface ParentApi {
+    @GET("api/logs/screenshots") suspend fun screenshots(@Query("device_id") device: Long,
+        @Query("limit") limit: Int = 12, @Query("offset") offset: Int = 0): ScreenshotPage
+    @GET("api/logs/screenshots/{id}") suspend fun screenshot(@Path("id") id: Long): Screenshot
+    @DELETE("api/logs/screenshots/{id}") suspend fun deleteScreenshot(@Path("id") id: Long): Message
     @POST("api/auth/login") suspend fun login(@Body body: Map<String, String>): Tokens
     @POST("api/auth/register") suspend fun register(@Body body: Map<String, String>): Message
     @POST("api/auth/forgot-password") suspend fun forgot(@Body body: Map<String, String>): Message

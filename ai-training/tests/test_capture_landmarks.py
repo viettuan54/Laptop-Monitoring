@@ -246,6 +246,12 @@ class CaptureLandmarksTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "distance-cm is required"):
             _validate_args(invalid_args)
 
+    def test_cli_accepts_initial_class_preselection(self):
+        parser = build_parser()
+        args = parser.parse_args(["--initial-class", "slouching"])
+        _validate_args(args)
+        self.assertEqual(args.initial_class, "slouching")
+
     def test_jsonl_writer_emits_one_compact_record_per_line(self):
         record = self._record()
         stream = io.StringIO()

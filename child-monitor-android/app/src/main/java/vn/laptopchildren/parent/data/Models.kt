@@ -30,6 +30,11 @@ data class Policies(val policies: List<Policy> = emptyList())
 data class PushRegistration(val token: PushToken)
 data class PushToken(val push_token_id: Long)
 data class Message(val message: String = "")
+data class Screenshot(val screenshot_id: Long, val device_id: Long, val captured_at: String,
+    val thumbnail_base64: String? = null, val image_base64: String? = null)
+data class CaptureMonitor(val device_id: Long, val enabled: Boolean = false, val online: Boolean = false)
+data class ScreenshotPage(val data: List<Screenshot> = emptyList(), val total: Int = 0,
+    val devices: List<CaptureMonitor> = emptyList())
 
 val VietnamZone: ZoneId = ZoneId.of("Asia/Ho_Chi_Minh")
 fun durationText(seconds: Long): String {

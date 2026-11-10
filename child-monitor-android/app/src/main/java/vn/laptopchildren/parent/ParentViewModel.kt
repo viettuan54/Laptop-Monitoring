@@ -17,6 +17,8 @@ data class ParentState(
     val childId: Long? = null, val devices: List<Device> = emptyList(), val deviceId: Long? = null,
     val usage: Usage? = null, val settings: Settings? = null, val policies: List<Policy> = emptyList(),
     val activity: List<ActivityLog> = emptyList(), val alerts: List<Alert> = emptyList(),
+    val screenshots: List<Screenshot> = emptyList(), val captureMonitor: CaptureMonitor? = null,
+    val screenshot: Screenshot? = null, val imageLoading: Boolean = false, val imageError: String? = null,
     val hasMore: Boolean = false, val tab: Int = 0, val kind: String = "app", val days: Int = 1,
     val unreadOnly: Boolean = false, val updated: String? = null, val subpage: String? = null
 )
@@ -26,6 +28,47 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     var state by mutableStateOf(ParentState(signedIn = graph.session.tokens != null)); private set
     private var loadJob: Job? = null
     private var pageJob: Job? = null
+    private var imageJob: Job? = null
+    private var imageRevision = 0
+    fun closeScreenshot() {
+        imageJob?.cancel(); imageRevision++
+        state = state.copy(screenshot = null, imageLoading = false, imageError = null)
+    }
+    fun openScreenshot(row: Screenshot) {
+        closeScreenshot()
+        if (row.device_id != state.deviceId || state.busy) return
+        val version = imageRevision
+        state = state.copy(screenshot = row, imageLoading = true)
+        imageJob = viewModelScope.launch {
+            try {
+                val result = graph.api.screenshot(row.screenshot_id)
+                check(result.device_id == row.device_id) { "Ảnh không thuộc laptop đang chọn." }
+                if (version == imageRevision) state = state.copy(screenshot = result)
+            } catch (t: Throwable) {
+                if (t is CancellationException) throw t
+                if (version == imageRevision) {
+                    if (t is HttpException && t.code() == 401) failure(t)
+                    else state = state.copy(imageError = if (t is HttpException && t.code() == 404)
+                        "Ảnh đã bị xóa hoặc hết hạn." else "Không tải được ảnh. Hãy thử lại.")
+                }
+            } finally { if (version == imageRevision) state = state.copy(imageLoading = false) }
+        }
+    }
+    fun deleteScreenshot(row: Screenshot) = action {
+        if (row.device_id != state.deviceId || state.screenshots.none { it.screenshot_id == row.screenshot_id }) return@action
+        graph.api.deleteScreenshot(row.screenshot_id)
+        closeScreenshot()
+        state = state.copy(screenshots = state.screenshots.filterNot { it.screenshot_id == row.screenshot_id }, notice = "Đã xóa ảnh khỏi máy chủ.")
+        loadRows(false, revision)
+    }
+    fun setCapture(enabled: Boolean) = action {
+        val child = state.childId ?: return@action
+        val monitor = state.captureMonitor ?: return@action
+        val settings = graph.api.saveSettings(child, mapOf("enable_screenshot_review" to enabled))
+        state = state.copy(settings = settings, captureMonitor = monitor.copy(enabled = settings.enable_screenshot_review),
+            notice = if (enabled) "Đã bật chụp cho hồ sơ này. Chờ laptop nhận cấu hình và gửi ảnh."
+                else "Đã tắt chụp cho hồ sơ này. Laptop sẽ dừng khi đồng bộ; ảnh đã lưu vẫn được giữ.")
+    }
     private var revision = 0
     private var lastResume = 0L
     init { if (state.signedIn) loadFamily() }
@@ -34,12 +77,14 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     private fun failure(t: Throwable) {
         if (t is CancellationException) throw t
         if (t is HttpException && t.code() == 401 && graph.session.tokens == null) {
+            closeScreenshot()
             revision++; state = ParentState(error = "Phiên đã hết hạn. Vui lòng đăng nhập lại.")
             graph.scope.launch { graph.clearExpiredPush() }
         } else state = state.copy(error = friendlyError(t), loading = false)
     }
     fun action(block: suspend () -> Unit) {
         if (state.busy) return
+        closeScreenshot()
         viewModelScope.launch {
             loadJob?.cancel(); pageJob?.cancel(); revision++
             state = state.copy(busy = true, loading = false, error = null)
@@ -73,6 +118,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
         graph.logout(); state = ParentState()
     }
     fun loadFamily(preferChild: Long? = state.childId) {
+        closeScreenshot()
         loadJob?.cancel(); pageJob?.cancel(); val rev = ++revision
         loadJob = viewModelScope.launch {
             state = state.copy(loading = true, error = null)
@@ -82,7 +128,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
                 if (rev != revision) return@launch
                 val selected = children.find { it.child_id == preferChild }?.child_id ?: children.firstOrNull()?.child_id
                 if (selected != state.childId) state = state.copy(usage = null, settings = null, devices = emptyList(), deviceId = null,
-                    activity = emptyList(), alerts = emptyList(), policies = emptyList(), updated = null, hasMore = false)
+                    activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, policies = emptyList(), updated = null, hasMore = false)
                 state = state.copy(children = children, childId = selected)
                 loadChildData(selected, rev)
             } catch (t: Throwable) { if (rev == revision) failure(t) }
@@ -91,9 +137,10 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun selectChild(id: Long) {
         if (id == state.childId || state.busy) return
+        closeScreenshot()
         loadJob?.cancel(); pageJob?.cancel(); val rev = ++revision
         state = state.copy(childId = id, deviceId = null, devices = emptyList(), usage = null, settings = null,
-            policies = emptyList(), activity = emptyList(), alerts = emptyList(), hasMore = false, updated = null, error = null, loading = true)
+            policies = emptyList(), activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, hasMore = false, updated = null, error = null, loading = true)
         loadJob = viewModelScope.launch {
             try { loadChildData(id, rev) } catch (t: Throwable) { if (rev == revision) failure(t) }
             finally { if (rev == revision) state = state.copy(loading = false) }
@@ -107,7 +154,12 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
         val devices = mutableListOf<Device>()
         do { val batch = graph.api.devices(id, offset = devices.size).data; devices.addAll(batch) } while (batch.size == 200)
         if (rev != revision) return
-        state = state.copy(devices = devices, deviceId = devices.find { it.device_id == state.deviceId }?.device_id ?: devices.firstOrNull()?.device_id)
+        val selectedDevice = devices.find { it.device_id == state.deviceId }?.device_id ?: devices.firstOrNull()?.device_id
+        if (selectedDevice != state.deviceId) {
+            closeScreenshot()
+            state = state.copy(activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, hasMore = false)
+        }
+        state = state.copy(devices = devices, deviceId = selectedDevice)
         when (state.tab) {
             0 -> {
                 val usage = graph.api.usage(id, YearMonth.now(VietnamZone).toString())
@@ -125,12 +177,14 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun navigate(tab: Int, subpage: String? = null) {
         if (state.busy) return
+        closeScreenshot()
         loadJob?.cancel(); pageJob?.cancel(); revision++
         state = state.copy(tab = tab, subpage = subpage, loading = false, error = null, hasMore = false)
         if (subpage != "account") refresh()
     }
     fun openAlerts(deviceId: Long? = null) {
         if (!state.signedIn) return
+        closeScreenshot()
         if (deviceId == null) { navigate(2); return }
         loadJob?.cancel(); pageJob?.cancel(); val rev = ++revision
         state = state.copy(tab = 2, subpage = null, loading = true, alerts = emptyList(), error = null)
@@ -145,7 +199,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
                 if (rev == revision) {
                     state = state.copy(children = children, childId = target.child_id, deviceId = target.device_id,
                         devices = devices.filter { it.child_id == target.child_id }, usage = null, settings = null,
-                        policies = emptyList(), activity = emptyList(), unreadOnly = false, hasMore = false)
+                        policies = emptyList(), activity = emptyList(), screenshots = emptyList(), captureMonitor = null, unreadOnly = false, hasMore = false)
                     loadRows(false, rev)
                 }
             } catch (t: Throwable) { if (rev == revision) failure(t) }
@@ -154,11 +208,14 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun selectDevice(id: Long) {
         if (state.busy || id == state.deviceId) return
+        closeScreenshot()
         pageJob?.cancel(); loadJob?.cancel(); revision++
-        state = state.copy(deviceId = id, activity = emptyList(), alerts = emptyList(), hasMore = false)
+        state = state.copy(deviceId = id, activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, hasMore = false)
         refreshRows()
     }
     fun setActivityFilter(kind: String = state.kind, days: Int = state.days) {
+        if (state.busy) return
+        closeScreenshot()
         pageJob?.cancel(); loadJob?.cancel(); revision++
         state = state.copy(kind = kind, days = days, activity = emptyList(), hasMore = false)
         refreshRows()
@@ -193,7 +250,13 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     private suspend fun loadRows(more: Boolean, rev: Int) {
         val device = state.deviceId ?: return
-        if (state.tab == 1) {
+        if (state.tab == 1 && state.kind == "screenshots") {
+            val offset = if (more) state.screenshots.size else 0
+            val result = graph.api.screenshots(device, offset = offset)
+            if (rev == revision) state = state.copy(
+                screenshots = if (more) (state.screenshots + result.data).distinctBy { it.screenshot_id } else result.data,
+                captureMonitor = result.devices.find { it.device_id == device }, hasMore = offset + result.data.size < result.total)
+        } else if (state.tab == 1) {
             val start = LocalDate.now(VietnamZone).minusDays((state.days - 1).toLong()).atStartOfDay(VietnamZone).toInstant().toString()
             val rows = graph.api.activity(state.kind, device, start, Instant.now().toString(), offset = if (more) state.activity.size else 0).data
             if (rev == revision) state = state.copy(activity = if (more) (state.activity + rows).distinctBy { it.log_id } else rows, hasMore = rows.size == 30)

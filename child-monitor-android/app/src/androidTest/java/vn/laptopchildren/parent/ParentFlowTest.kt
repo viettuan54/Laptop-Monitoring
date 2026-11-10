@@ -1,6 +1,12 @@
 package vn.laptopchildren.parent
 
 import android.graphics.Bitmap
+import android.content.res.Configuration
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.lifecycle.ViewModelProvider
+import vn.laptopchildren.parent.ui.ParentApp
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.core.app.ApplicationProvider
@@ -22,6 +28,21 @@ class ParentFlowTest {
     private val server = MockWebServer()
     private var originalServer = ""
     private var read = false
+    private var captureEnabled = false
+    private var screenshotDeleted = false
+    private var imageRequests = 0
+    private var deleteRequests = 0
+    private val fixtureImage by lazy {
+        val bitmap = Bitmap.createBitmap(960, 540, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bitmap)
+        canvas.drawColor(android.graphics.Color.rgb(23, 78, 166))
+        val paint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE; textSize = 40f; isAntiAlias = true }
+        canvas.drawText("LAPTOP - DU LIEU KIEM THU", 48f, 100f, paint)
+        canvas.drawText("Bai hoc hom nay", 48f, 200f, paint)
+        val bytes = java.io.ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, bytes); bitmap.recycle()
+        android.util.Base64.encodeToString(bytes.toByteArray(), android.util.Base64.NO_WRAP)
+    }
     private val writes = CopyOnWriteArrayList<String>()
     private val fixture = object : ExternalResource() {
         override fun before() {
@@ -38,6 +59,23 @@ class ParentFlowTest {
                     val daily = (6 downTo 0).joinToString(",") { i -> """{"date":"${LocalDate.now(VietnamZone).minusDays(i.toLong())}","duration_seconds":${listOf(3600, 2400, 4500, 1800, 3000, 4200, 5400)[6-i]}}""" }
                     val child = request.requestUrl!!.queryParameter("child_id") ?: "1"
                     val response = when {
+                        path == "/api/logs/screenshots/101" && request.method == "DELETE" -> {
+                            if (++deleteRequests == 1) return MockResponse().setResponseCode(500).setBody("""{"message":"Fixture delete failure"}""")
+                            screenshotDeleted = true; """{"deleted":1}"""
+                        }
+                        path == "/api/logs/screenshots/101" -> {
+                            if (++imageRequests == 1) return MockResponse().setResponseCode(404).setBody("{}")
+                            """{"screenshot_id":101,"device_id":1,"captured_at":"$now","image_base64":"$fixtureImage"}"""
+                        }
+                        path == "/api/logs/screenshots" -> {
+                            val selected = request.requestUrl!!.queryParameter("device_id")
+                            val rows = if (!screenshotDeleted && selected == "1") """{"screenshot_id":101,"device_id":1,"captured_at":"$now","thumbnail_base64":"$fixtureImage"}""" else ""
+                            """{"data":[$rows],"total":${if (rows.isEmpty()) 0 else 1},"devices":[{"device_id":1,"enabled":$captureEnabled,"online":true},{"device_id":2,"enabled":false,"online":true}]}"""
+                        }
+                        path == "/api/settings/1" && request.method == "PUT" && request.body.clone().readUtf8().contains("enable_screenshot_review") -> {
+                            captureEnabled = request.body.clone().readUtf8().contains(":true")
+                            """{"child_id":1,"enable_screenshot_review":$captureEnabled}"""
+                        }
                         path == "/api/auth/login" -> """{"accessToken":"fixture-access","refreshToken":"fixture-refresh"}"""
                         path == "/api/auth/logout" -> """{"message":"Logged out"}"""
                         path == "/api/children" -> """[{"child_id":1,"name":"Minh An · kiểm thử","age":10},{"child_id":2,"name":"Bảo Anh · kiểm thử","age":8}]"""
@@ -68,6 +106,7 @@ class ParentFlowTest {
 
     private fun waitFor(text: String) {
         compose.waitUntil(20_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(20_000) { compose.onAllNodesWithContentDescription("Đang tải").fetchSemanticsNodes().isEmpty() }
         compose.waitForIdle()
     }
     private fun capture(name: String) {
@@ -81,6 +120,19 @@ class ParentFlowTest {
         bitmap.recycle()
     }
     @Test fun parentCanSignInSwitchChildReadActivityAndSavePolicy() {
+        // MIUI can lock the OS night-mode command. Override only the test composition,
+        // exercising the production dark palette without altering the real app or OS setting.
+        if (InstrumentationRegistry.getArguments().getString("darkTheme") == "true") {
+            compose.runOnUiThread {
+                val vm = ViewModelProvider(compose.activity)[ParentViewModel::class.java]
+                compose.activity.setContent {
+                    val config = Configuration(LocalConfiguration.current).apply {
+                        uiMode = (uiMode and Configuration.UI_MODE_NIGHT_MASK.inv()) or Configuration.UI_MODE_NIGHT_YES
+                    }
+                    CompositionLocalProvider(LocalConfiguration provides config) { ParentApp(vm) }
+                }
+            }
+        }
         capture("phone-login")
         compose.onNodeWithTag("email").performTextInput("parent@example.test")
         compose.onNodeWithTag("password").performTextInput("Fixture123!")
@@ -98,6 +150,53 @@ class ParentFlowTest {
         capture("phone-activity")
         compose.onNodeWithText("Website").performClick()
         waitFor("example.test")
+        compose.onNodeWithText("Ảnh màn hình").performClick()
+        waitFor("Ảnh màn hình laptop")
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("screenshot-101").fetchSemanticsNodes().isNotEmpty() }
+        capture("phone-screenshots")
+        compose.onNodeWithTag("screenshot-101").performScrollTo().performClick()
+        waitFor("Đóng ảnh")
+        waitFor("Ảnh đã bị xóa hoặc hết hạn.")
+        compose.onNodeWithText("Thử lại").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithText("Phóng to").fetchSemanticsNodes().any { it.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Disabled).not() } }
+        compose.onNodeWithText("Phóng to").performClick()
+        capture("phone-screenshot-zoom")
+        compose.onNodeWithText("Đặt lại").performClick()
+        compose.onNodeWithText("Đóng ảnh").performClick()
+        compose.onNodeWithText("Bật chụp").performScrollTo().performClick()
+        compose.onNodeWithText("Hủy").performClick()
+        Assert.assertFalse(captureEnabled)
+        compose.onNodeWithText("Bật chụp").performClick()
+        compose.onNodeWithText("Xác nhận").performClick()
+        waitFor("Chụp định kỳ: đã bật")
+        Assert.assertTrue(captureEnabled)
+        compose.onNodeWithText("Tắt chụp").performClick()
+        compose.onNodeWithText("Xác nhận").performClick()
+        waitFor("Chụp định kỳ: đã tắt")
+        Assert.assertFalse(captureEnabled)
+        compose.onNodeWithText("Minh An · kiểm thử").performClick()
+        compose.onNodeWithText("Bảo Anh · kiểm thử").performClick()
+        waitFor("Chưa có ảnh cho laptop này. Khi bật chụp, ảnh sẽ xuất hiện sau khi Agent gửi lên.")
+        compose.onNodeWithTag("screenshot-101").assertDoesNotExist()
+        compose.onNodeWithText("Bảo Anh · kiểm thử").performClick()
+        compose.onNodeWithText("Minh An · kiểm thử").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("delete-screenshot-101").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(10_000) { compose.onAllNodesWithContentDescription("Đang tải").fetchSemanticsNodes().isEmpty() }
+        // Let the temporary capture-save snackbar clear before tapping the lower image action.
+        compose.waitUntil(15_000) { compose.onAllNodesWithText("Đã tắt chụp cho hồ sơ này.", substring = true).fetchSemanticsNodes().isEmpty() }
+        compose.onNodeWithTag("delete-screenshot-101").performScrollTo().performClick()
+        waitFor("Xóa ảnh này?")
+        compose.onNodeWithText("Hủy").performClick()
+        Assert.assertFalse(screenshotDeleted)
+        compose.onNodeWithTag("delete-screenshot-101").performClick()
+        compose.onNodeWithTag("confirm-delete-screenshot").performClick()
+        waitFor("Máy chủ đang gặp sự cố. Hãy thử lại sau.")
+        Assert.assertFalse(screenshotDeleted)
+        compose.onNodeWithTag("delete-screenshot-101").performScrollTo().performClick()
+        compose.onNodeWithTag("confirm-delete-screenshot").performClick()
+        waitFor("Chưa có ảnh cho laptop này. Khi bật chụp, ảnh sẽ xuất hiện sau khi Agent gửi lên.")
+        Assert.assertTrue(screenshotDeleted)
+        compose.waitUntil(15_000) { compose.onAllNodesWithText("Đã xóa ảnh khỏi máy chủ.").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("tab-2").performClick()
         waitFor("Cảnh báo minh họa cho kiểm thử")
         capture("phone-alerts")
@@ -111,7 +210,8 @@ class ParentFlowTest {
         waitFor("Giới hạn mỗi ngày (phút)")
         capture("phone-policy")
         compose.onNodeWithText("Giới hạn mỗi ngày (phút)").performTextReplacement("90")
-        compose.onNodeWithText("Lưu thời gian sử dụng").performScrollTo().performClick()
+        compose.onNodeWithText("Lưu thời gian sử dụng").performScrollTo()
+            .performSemanticsAction(androidx.compose.ui.semantics.SemanticsActions.OnClick) { it() }
         compose.waitUntil(10_000) { writes.any { it.contains("daily_limit_minutes") && it.contains("90") } }
         Assert.assertTrue(writes.any { it.startsWith("PUT /api/settings/1") && it.contains("90") })
         compose.onNodeWithContentDescription("Quay lại").performClick()

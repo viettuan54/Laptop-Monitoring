@@ -97,7 +97,7 @@ import vn.laptopchildren.parent.data.*
             if (it) confirm = "Bật webcam trên laptop để phân tích khoảng cách và tư thế? Hình ảnh webcam được xử lý trên laptop." to mapOf("enable_webcam_monitoring" to true)
             else vm.saveSettings(mapOf("enable_webcam_monitoring" to false))
         }
-        Text("Ảnh màn hình và báo cáo AI hiện có trên website; chúng sẽ được bổ sung vào app trong bản tiếp theo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Xem và bật/tắt chụp ảnh tại Hoạt động → Ảnh màn hình. Báo cáo AI hiện dùng trên website.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
     }
     confirm?.let { (message, body) -> AlertDialog(onDismissRequest = { confirm = null }, title = { Text("Xác nhận thay đổi") },

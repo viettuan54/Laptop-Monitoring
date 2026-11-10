@@ -157,7 +157,7 @@
         1.3
       ],
       "light": "Code-defined only; physical light-theme review unavailable because MIUI retained night mode.",
-      "chartConfirmation": "Source minimum-height fix applied; final recapture confirmation pending finish review at extraction time.",
+      "chartConfirmation": "Final Redmi K30 capture at font scale 1.3 and independent finish review confirm aligned bar and date baselines. Ship verdict applies to this chart fix; see TESTING.md for full verification limits.",
       "detector": "No web detector ran; native review uses source and device evidence.",
       "documenterSamples": [
         "dark/phone-login.png",

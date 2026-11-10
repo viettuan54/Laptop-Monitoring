@@ -15,3 +15,7 @@ FIRST VIEWPORT: Login shows a laptop brand mark, LaptopChildren, a short purpose
 FORM: Direct adaptation of the accepted four-tab structure within the incumbent visual world; no new-world seed or concept tournament. The signature interaction is changing the selected child and updating every dependent section without showing the previous child's data.
 
 FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+
+## Screenshot extension (0.2.0)
+
+Operate mode; keep the incumbent Material system. Activity adds an “Ảnh màn hình” filter after apps and websites. Child and laptop selectors remain visible above a scrollable gallery. The first gallery viewport states retention and the child-wide capture scope before the toggle and image previews. Viewing opens a full-screen native dialog with pinch/pan, explicit zoom/reset and close controls. Deletion requires confirmation naming the laptop and capture time. Capture configuration also requires confirmation naming the child; server save is never described as Agent execution. Errors preserve retry paths. Image bytes remain in memory, never in disk caches. Admin remains web-only. The finish target is the connected Redmi K30, with isolated fixture tests preserving the parent's real login.

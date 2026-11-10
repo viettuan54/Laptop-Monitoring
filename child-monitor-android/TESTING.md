@@ -1,5 +1,19 @@
 # Xác minh bản Android 0.1.0
 
+## Cập nhật ảnh màn hình — 0.2.0 (09/11/2026)
+
+- Build `assembleDebug`, 9/9 unit tests, Android Lint 0 lỗi / 18 cảnh báo: `.runtime/android-tools/screenshots-final-build.log`.
+- Unit test mới xác minh token xác thực, bộ lọc laptop, offset/limit, ID ảnh lớn dạng chuỗi từ PostgreSQL, endpoint tải ảnh và xóa đúng ID.
+- Luồng thiết bị cuối đạt `OK (1 test)` trong 31,605 giây: xem ảnh, retry ảnh 404, phóng to/đặt lại, hủy/bật/tắt chụp, đổi trẻ không giữ ảnh cũ, hủy xóa, lỗi xóa 500 giữ ảnh và thử lại thành công; tiếp tục kiểm tra cảnh báo, lưu giới hạn và đăng xuất. Log: `.runtime/android-tools/screenshots-device-final.log`. Test chờ request/thông báo tạm kết thúc trước khi bấm nút tiếp theo; nút lưu giới hạn được kích hoạt qua semantics để tránh bàn phím che tọa độ.
+- Kiểm thử thiết bị dùng package riêng `vn.laptopchildren.parent.qa` và MockWebServer; không đọc, xóa ảnh thật hoặc thay đổi chính sách thật. Phiên đăng nhập của package chính được giữ nguyên khi cập nhật.
+- Màn hình sáng/font 1.0: `.impeccable/review/android/screenshots/`. Màn hình tối/font 1.3: `.impeccable/review/android/screenshots-dark-large/`. Ảnh trong gallery là fixture do test tạo, không phải dữ liệu trẻ thật hoặc asset đóng gói trong app.
+- MIUI khóa lệnh đổi night mode. Bản test dùng `-e darkTheme true` để override `LocalConfiguration.uiMode` trong composition kiểm thử, chạy đúng bảng màu tối của app. Bằng chứng này xác minh nội dung app ở chế độ tối; không xác minh chuyển theme hệ thống hay màu thanh trạng thái. Font scale hệ thống được khôi phục về 1.0 sau kiểm thử.
+- Reviewer độc lập trả `ship` cho yêu cầu bổ sung bằng chứng tối/chữ lớn: nội dung xuống dòng, vùng ảnh, nút phóng to/đặt lại/đóng đọc được. Đây là verdict cho mục đã yêu cầu kiểm chứng, không phải tuyên bố kiểm thử mọi thiết bị.
+- Documenter xác nhận phần mới tiếp tục dùng hệ thống Material hiện có; giữ nguyên DESIGN.md và sidecar. Phạm vi extension được ghi trong DIRECTION.md.
+- APK cài thử: versionCode 2, versionName 0.2.0; chưa ký khóa phát hành. Không thay backend hoặc Agent. Chưa kiểm thử đường đi từ Agent thật gửi ảnh đến app; test thiết bị kiểm chứng bằng fixture.
+
+Phần bên dưới là bằng chứng lịch sử của bản 0.1.0.
+
 Ngày: 09/11/2026. Thiết bị thật: Redmi K30, Android 10 (API 29), 1080 × 2400, density override 388. Package `vn.laptopchildren.parent`.
 
 ## Kết quả

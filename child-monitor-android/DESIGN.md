@@ -223,7 +223,7 @@ The account screen states when Firebase notifications are unconfigured and leave
 
 ### Assets and evidence
 
-The shipped visuals use Compose outlined vector icons and Android vector resources; no shipping raster art is present. Review PNGs are evidence, not app assets. Dark-theme captures for login, overview, activity, alerts, family, policy and account live in `../.impeccable/review/android/dark/`; the same names in `../.impeccable/review/android/large/` cover font scale 1.3. The large overview capture initially showed a baseline issue; source now uses a minimum row height, with final confirmation delegated to the finish review. No web design detector ran for this native app.
+The shipped visuals use Compose outlined vector icons and Android vector resources; no shipping raster art is present. Review PNGs are evidence, not app assets. Dark-theme captures for login, overview, activity, alerts, family, policy and account live in `../.impeccable/review/android/dark/`; the same names in `../.impeccable/review/android/large/` cover font scale 1.3. The large overview capture initially showed a baseline issue; source now uses a minimum row height. The final device capture and independent finish review confirm aligned bars and date labels at font scale 1.3. That review's ship verdict covers this chart fix; see TESTING.md for verification scope and remaining limits. No web design detector ran for this native app.
 
 The companion `.impeccable/design.json` carries source locations, evidence limits and panel previews. Its HTML/CSS samples illustrate the native patterns for documentation only; the Compose implementation and device captures remain the rendering authority.
 

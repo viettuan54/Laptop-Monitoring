@@ -46,6 +46,7 @@ from vision_metrics import (
     DEFAULT_MAX_TORSO_ANGLE_DEGREES,
     analyze_posture,
 )
+from posture_model import PRIMARY_CLASSES
 
 
 WINDOW_TITLE = "Child Monitor - Landmark Pilot Collection"
@@ -53,6 +54,14 @@ LANDMARK_SCHEMA_VERSION = "1.1.0"
 COLLECTION_SESSION_VERSION = "1.0.0"
 QUALITY_GATE_VERSION = "2.0.0"
 DEFAULT_SAMPLE_RATE_HZ = 5.0
+PRIMARY_CLASS_TO_SELECTED_LABELS = {
+    "good": frozenset(),
+    "forward_head": frozenset({"forward_head"}),
+    "trunk_lean": frozenset({"trunk_lean"}),
+    "shoulder_tilt_left": frozenset({"shoulder_tilt_left"}),
+    "shoulder_tilt_right": frozenset({"shoulder_tilt_right"}),
+    "slouching": frozenset({"forward_head", "trunk_lean"}),
+}
 LABEL_KEY_MAP = {
     ord("1"): "forward_head",
     ord("2"): "trunk_lean",
@@ -600,7 +609,10 @@ def run_capture(args):
         write_json_atomic(manifest_path, manifest)
 
         recording = False
-        selected_labels = set()
+        initial_class = getattr(args, "initial_class", None)
+        selected_labels = set(
+            PRIMARY_CLASS_TO_SELECTED_LABELS.get(initial_class, ())
+        )
         transition = False
         session_started_at = time.monotonic()
         last_sample_attempt_at = 0.0
@@ -895,6 +907,11 @@ def build_parser():
         "--no-mirror-preview",
         action="store_true",
         help="Show the camera preview without horizontal mirroring.",
+    )
+    parser.add_argument(
+        "--initial-class",
+        choices=PRIMARY_CLASSES,
+        help="Preselect the posture labels for a single primary class.",
     )
     return parser
 

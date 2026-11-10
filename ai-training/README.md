@@ -294,3 +294,19 @@ Tạo profile trung tính riêng từ ít nhất hai session `good` đã accepte
 
 Profile được ghi cạnh dataset và phải được cài đúng máy/camera của subject.
 Model hoặc profile thiếu/không hợp lệ không làm mất rule-based safety fallback.
+
+### Thu nhanh và đồng bộ tự động bằng `posture_pipeline.py`
+
+Thay vì chọn nhãn thủ công và chép từng SHA-256 vào `accepted_sessions.json`, có thể dùng công cụ điều phối tự động:
+
+```powershell
+# 1. Xem bảng tiến độ theo từng subject và từng lớp (Quality Gate 2.0.0)
+.\ai-training\.venv\Scripts\python.exe .\ai-training\training\posture_pipeline.py status
+
+# 2. Mở trình hướng dẫn thu liên hoàn các phiên còn thiếu (tự động chọn sẵn nhãn --initial-class)
+.\ai-training\.venv\Scripts\python.exe .\ai-training\training\posture_pipeline.py guided-capture --subject-id subject-001
+
+# 3. Khi đủ 3 subject: tự động cập nhật accepted_sessions.json, xuất báo cáo kiểm định,
+#    huấn luyện LOSO, tạo profile cá nhân kèm .sha256 và triển khai sang child-monitor-agent/models/
+.\ai-training\.venv\Scripts\python.exe .\ai-training\training\posture_pipeline.py build-all
+```

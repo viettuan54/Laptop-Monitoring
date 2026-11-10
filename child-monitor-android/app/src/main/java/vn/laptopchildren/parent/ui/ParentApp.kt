@@ -278,10 +278,14 @@ import java.time.LocalDate
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(s.kind == "app", { vm.setActivityFilter(kind = "app") }, { Text("Ứng dụng") })
             FilterChip(s.kind == "web", { vm.setActivityFilter(kind = "web") }, { Text("Website") })
+            FilterChip(s.kind == "screenshots", { vm.setActivityFilter(kind = "screenshots") }, { Text("Ảnh màn hình") }, enabled = !s.busy)
+            if (s.kind != "screenshots") {
             VerticalDivider(Modifier.height(40.dp).padding(8.dp))
             FilterChip(s.days == 1, { vm.setActivityFilter(days = 1) }, { Text("Hôm nay") })
             FilterChip(s.days == 7, { vm.setActivityFilter(days = 7) }, { Text("7 ngày") })
+            }
         }
+        if (s.kind == "screenshots") { ScreenshotsScreen(vm); return@Column }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
             if (s.activity.isEmpty() && !s.loading) item { EmptyScreen("Chưa có hoạt động", "Không có dữ liệu trong khoảng thời gian đã chọn.") }
             items(s.activity, key = { it.log_id }) { row ->

@@ -15,6 +15,32 @@ class MemorySession : SessionStore {
 }
 
 class ApiClientTest {
+    @Test fun screenshotsUseAuthenticatedDeviceScopeAndSeparateImageDeleteEndpoints() = runBlocking {
+        val server = MockWebServer()
+        val store = MemorySession().apply { begin(Tokens("parent-access", "refresh")) }
+        server.enqueue(MockResponse().setBody("""{"data":[{"screenshot_id":"9007199254740993","device_id":7,"captured_at":"2026-11-09T00:00:00Z","thumbnail_base64":"thumb"}],"total":13,"devices":[{"device_id":7,"enabled":true,"online":false}]}"""))
+        server.enqueue(MockResponse().setBody("""{"screenshot_id":"9007199254740993","device_id":7,"captured_at":"2026-11-09T00:00:00Z","image_base64":"full"}"""))
+        server.enqueue(MockResponse().setBody("""{"deleted":1}"""))
+        server.start()
+        try {
+            val api = createApi(server.url("/").toString(), store)
+            val page = api.screenshots(7, offset = 12)
+            assertEquals(9007199254740993L, page.data.single().screenshot_id)
+            assertTrue(page.devices.single().enabled)
+            val list = server.takeRequest()
+            assertEquals("7", list.requestUrl!!.queryParameter("device_id"))
+            assertEquals("12", list.requestUrl!!.queryParameter("offset"))
+            assertEquals("12", list.requestUrl!!.queryParameter("limit"))
+            assertEquals("Bearer parent-access", list.getHeader("Authorization"))
+            assertEquals("full", api.screenshot(page.data.single().screenshot_id).image_base64)
+            assertEquals("/api/logs/screenshots/9007199254740993", server.takeRequest().path)
+            api.deleteScreenshot(page.data.single().screenshot_id)
+            val deletion = server.takeRequest()
+            assertEquals("DELETE", deletion.method)
+            assertEquals("/api/logs/screenshots/9007199254740993", deletion.path)
+            assertEquals("Bearer parent-access", deletion.getHeader("Authorization"))
+        } finally { server.shutdown() }
+    }
     @Test fun refreshRotatesBothTokensAndRetriesOriginalRequest() = runBlocking {
         val server = MockWebServer()
         val store = MemorySession().apply { begin(Tokens("old-access", "old-refresh")) }

@@ -1,6 +1,6 @@
 # LaptopChildren — Android cho phụ huynh
 
-App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản đầu: `0.1.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
+App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản: `0.2.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
 
 ## Chức năng đã triển khai
 
@@ -15,7 +15,17 @@ App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-ba
 - Tích hợp FCM có điều kiện: đăng ký token, token thay đổi, thông báo thử, mở mục cảnh báo. Bản không có Firebase vẫn build được và hiển thị rõ chưa cấu hình push.
 - Giao diện tiếng Việt, màu sáng/tối theo hệ thống, cuộn khi bàn phím hoặc cỡ chữ lớn, trạng thái lỗi/rỗng/đang tải.
 
-Ảnh màn hình, AI Advisor, đăng ký laptop và cấu hình Agent hiện dùng website. App không thực hiện thu thập dữ liệu trên điện thoại; Windows Agent tiếp tục chịu trách nhiệm giám sát laptop.
+AI Advisor, đăng ký laptop và cấu hình Agent hiện dùng website. App không thực hiện thu thập dữ liệu trên điện thoại; Windows Agent tiếp tục chịu trách nhiệm giám sát laptop. Quản trị viên chỉ dùng dashboard web.
+
+## Ảnh màn hình (0.2.0)
+
+Vào **Hoạt động → Ảnh màn hình**, chọn hồ sơ trẻ và laptop. Danh sách tải 12 ảnh mỗi trang; bấm **Tải thêm ảnh** hoặc **Tải lại ảnh**. API giữ ảnh tối đa 7 ngày. Chạm ảnh để mở toàn màn hình; dùng hai ngón để phóng/kéo hoặc nút **Phóng to**, **Đặt lại**, **Đóng ảnh**.
+
+**Xóa ảnh** yêu cầu xác nhận laptop và thời điểm chụp. Khi xóa thất bại, ảnh vẫn ở danh sách để thử lại. Bản này xóa từng ảnh, chưa có xóa hàng loạt. Ảnh chỉ nằm trong RAM, không có bộ nhớ đệm trên đĩa hoặc tự lưu vào thư viện.
+
+**Bật chụp/Tắt chụp** thay đổi chính sách cho **tất cả laptop thuộc hồ sơ trẻ**, theo API hiện có. Hộp thoại nêu rõ phạm vi này; bật chụp nhắc trao đổi với con vì ảnh có thể chứa thông tin riêng tư. Lưu thành công không có nghĩa Agent đã áp dụng; laptop cần kết nối và đồng bộ. Tắt chụp không xóa ảnh cũ. App không tự yêu cầu chụp ngay hoặc làm mới nền; dùng Tải lại ảnh để xem ảnh mới.
+
+Để kiểm thử thiết bị mà không đụng phiên thật, build với `-PisolatedQa=true`; application ID sẽ là `vn.laptopchildren.parent.qa`. Cài APK app và test tương ứng rồi chạy instrumentation trên `vn.laptopchildren.parent.qa.test`. Khi build bản bàn giao phải bỏ cờ này.
 
 ## Build
 

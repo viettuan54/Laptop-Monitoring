@@ -193,7 +193,7 @@ def extract_features(resource_type: str, key: str, config: dict) -> Counter:
     for token in tokens:
         if len(token) >= 2:
             features[f"token:{token}"] += 1
-        for part in ALPHA_NUMERIC_PART_RE.findall(token):
+        for part in ALPHA_NUMERIC_PART_RE.findall(token): 
             if len(part) >= 2:
                 features[f"part:{part}"] += 1
     features[f"length:{min(12, len(key) // 5)}"] = 1
