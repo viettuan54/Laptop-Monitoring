@@ -1,4 +1,15 @@
-# Xác minh bản Android 0.1.0
+# Xác minh app Android
+
+## Lịch sử nhắc nghỉ — 0.4.0 (10/11/2026)
+
+- Build bản chính và bản QA đạt; 19/19 unit tests đạt (8 AI, 11 API/phiên), Android Lint 0 lỗi và 10 cảnh báo. Logs: `.runtime/android-tools/mobile-current-build.log`, `mobile-qa-ready.log`, `mobile-final-build.log`.
+- Kiểm thử API bổ sung xác minh child_id, Bearer token, ID lớn dạng chuỗi và ý nghĩa shown/acknowledged/snoozed/unknown.
+- Luồng thiết bị Redmi K30 đạt `OK (1 test)` mỗi lần: sáng/font 1.0 (24,298 giây), tối/font 1.3 (24,609 giây). Kiểm tra mở từ Gia đình, ba loại phản hồi, lỗi 503 giữ dữ liệu và thử lại, đổi trẻ không giữ dữ liệu trẻ cũ, trạng thái rỗng, tự tải lại sau 15 giây, vào từ chính sách khi tắt nhắc nghỉ và quay lại đúng trang. Logs: `break-device-light.log`, `break-device-dark-large.log` trong `.runtime/android-tools/`.
+- Sáu ảnh bằng chứng: `.impeccable/review/android/break-light/` và `break-dark-large/`. Chế độ tối dùng override LocalConfiguration trong test; không kiểm chứng chuyển theme hệ thống hoặc thanh trạng thái MIUI. Font hệ thống đã trả về 1.0.
+- Sau rà soát giao diện: bản ghi dùng đường phân cách, bỏ dấu tích thành công chung cho mọi phản hồi, thông báo dữ liệu cũ dùng cặp màu errorContainer/onErrorContainer. Kiểm thử lại đạt ở sáng (24,077 giây) và tối/chữ lớn (24,772 giây); sáu ảnh trên đã cập nhật. Logs cuối: `break-device-light-final.log`, `break-device-dark-large-final.log`, `break-final-package.log`. Build và lint bản giao cuối đạt.
+- Test dùng package `vn.laptopchildren.parent.qa`, MockWebServer và dữ liệu có nhãn kiểm thử; không thay chính sách hoặc dữ liệu tài khoản thật. Chưa kiểm chứng đầu cuối từ Windows Agent thật gửi phản hồi đến API và app.
+- APK chính `vn.laptopchildren.parent`, versionCode 4/versionName 0.4.0, đã cài cập nhật bằng `adb install -r` trên Redmi K30, giữ dữ liệu app. Đây là bản debug, Firebase chưa cấu hình theo lựa chọn của người dùng.
+- Reviewer kết luận `ship` cho ba sửa đổi nêu trên: cả ba resolved; đây không phải phê duyệt toàn app. Tương phản cảnh báo dữ liệu cũ khoảng 6,80:1 sáng và 6,93:1 tối. Documenter xác nhận dùng token hiện có, giữ nguyên DESIGN.md/sidecar; sai lệch thiết kế chung có từ trước không được sửa trong phạm vi này.
 
 ## Cập nhật AI Advisor — 0.3.0 (10/11/2026)
 

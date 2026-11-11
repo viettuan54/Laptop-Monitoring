@@ -1,6 +1,6 @@
 # LaptopChildren — Android cho phụ huynh
 
-App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản: `0.3.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
+App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản: `0.4.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
 
 ## Chức năng đã triển khai
 
@@ -16,6 +16,12 @@ App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-ba
 - Giao diện tiếng Việt, màu sáng/tối theo hệ thống, cuộn khi bàn phím hoặc cỡ chữ lớn, trạng thái lỗi/rỗng/đang tải.
 
 Đăng ký laptop và cấu hình Agent hiện dùng website. App không thực hiện thu thập dữ liệu trên điện thoại; Windows Agent tiếp tục chịu trách nhiệm giám sát laptop. Quản trị viên chỉ dùng dashboard web.
+
+## Lịch sử nhắc nghỉ (0.4.0)
+
+Vào **Gia đình → Lịch sử nhắc nghỉ**, hoặc **Chính sách sử dụng → Nhắc nghỉ giải lao → Lịch sử**. Chọn hồ sơ trẻ để xem 10 phản hồi gần nhất từ tất cả laptop của trẻ, gồm lời nhắc đã hiển thị, trẻ chọn nghỉ ngay và nhắc lại sau 5 phút. Chọn nghỉ ngay chưa chứng minh trẻ đã thực sự nghỉ.
+
+Mỗi phản hồi có tên laptop, thời điểm và khoảng nhắc/thời lượng nghỉ đã cấu hình. Màn hình tự tải lại mỗi 15 giây khi đang mở, có nút làm mới thủ công. Khi lỗi mạng, dữ liệu lần tải thành công được giữ kèm thông báo; đổi trẻ sẽ xóa dữ liệu cũ. Lịch sử vẫn xem được khi tắt nhắc nghỉ. Backend hiện trả tối đa 10 mục, chưa hỗ trợ phân trang hoặc lọc ngày.
 
 ## AI Advisor (0.3.0)
 

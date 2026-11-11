@@ -17,6 +17,7 @@ data class ParentState(
     val childId: Long? = null, val devices: List<Device> = emptyList(), val deviceId: Long? = null,
     val usage: Usage? = null, val settings: Settings? = null, val policies: List<Policy> = emptyList(),
     val activity: List<ActivityLog> = emptyList(), val alerts: List<Alert> = emptyList(),
+    val unreadAlertCount: Int = 0,
     val breaks: List<BreakReminderEvent> = emptyList(), val breaksUpdated: String? = null, val breaksFromPolicy: Boolean = false,
     val screenshots: List<Screenshot> = emptyList(), val captureMonitor: CaptureMonitor? = null,
     val screenshot: Screenshot? = null, val imageLoading: Boolean = false, val imageError: String? = null,
@@ -133,7 +134,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
                 if (rev != revision) return@launch
                 val selected = children.find { it.child_id == preferChild }?.child_id ?: children.firstOrNull()?.child_id
                 if (selected != state.childId) state = state.copy(usage = null, settings = null, devices = emptyList(), deviceId = null,
-                    activity = emptyList(), alerts = emptyList(), breaks = emptyList(), breaksUpdated = null, screenshots = emptyList(), captureMonitor = null, policies = emptyList(), updated = null, hasMore = false)
+                    activity = emptyList(), alerts = emptyList(), unreadAlertCount = 0, breaks = emptyList(), breaksUpdated = null, screenshots = emptyList(), captureMonitor = null, policies = emptyList(), updated = null, hasMore = false)
                 state = state.copy(children = children, childId = selected)
                 loadChildData(selected, rev)
             } catch (t: Throwable) { if (rev == revision) failure(t) }
@@ -146,10 +147,21 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
         closeScreenshot()
         loadJob?.cancel(); pageJob?.cancel(); val rev = ++revision
         state = state.copy(childId = id, deviceId = null, devices = emptyList(), usage = null, settings = null,
-            policies = emptyList(), activity = emptyList(), alerts = emptyList(), breaks = emptyList(), breaksUpdated = null, screenshots = emptyList(), captureMonitor = null, hasMore = false, updated = null, error = null, loading = true)
+            policies = emptyList(), activity = emptyList(), alerts = emptyList(), unreadAlertCount = 0, breaks = emptyList(), breaksUpdated = null, screenshots = emptyList(), captureMonitor = null, hasMore = false, updated = null, error = null, loading = true)
         loadJob = viewModelScope.launch {
             try { loadChildData(id, rev) } catch (t: Throwable) { if (rev == revision) failure(t) }
             finally { if (rev == revision) state = state.copy(loading = false) }
+        }
+    }
+    private suspend fun syncUnreadAlertCount(deviceId: Long?, rev: Int) {
+        if (deviceId == null) {
+            if (rev == revision) state = state.copy(unreadAlertCount = 0)
+            return
+        }
+        runCatching {
+            graph.api.alerts(deviceId, read = false, limit = 100).data.count { !it.is_read }
+        }.onSuccess { count ->
+            if (rev == revision) state = state.copy(unreadAlertCount = count)
         }
     }
     private suspend fun loadChildData(id: Long?, rev: Int) {
@@ -159,7 +171,7 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         if (id == null) {
-            state = state.copy(devices = emptyList(), deviceId = null, usage = null, settings = null, alerts = emptyList(), activity = emptyList())
+            state = state.copy(devices = emptyList(), deviceId = null, usage = null, settings = null, alerts = emptyList(), unreadAlertCount = 0, activity = emptyList())
             return
         }
         val devices = mutableListOf<Device>()
@@ -168,9 +180,10 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
         val selectedDevice = devices.find { it.device_id == state.deviceId }?.device_id ?: devices.firstOrNull()?.device_id
         if (selectedDevice != state.deviceId) {
             closeScreenshot()
-            state = state.copy(activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, hasMore = false)
+            state = state.copy(activity = emptyList(), alerts = emptyList(), unreadAlertCount = 0, screenshots = emptyList(), captureMonitor = null, hasMore = false)
         }
         state = state.copy(devices = devices, deviceId = selectedDevice)
+        syncUnreadAlertCount(selectedDevice, rev)
         when (state.tab) {
             0 -> {
                 val usage = graph.api.usage(id, YearMonth.now(VietnamZone).toString())
@@ -243,8 +256,9 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
         if (state.busy || id == state.deviceId) return
         advisor.bindDevice(null)
         closeScreenshot()
-        pageJob?.cancel(); loadJob?.cancel(); revision++
-        state = state.copy(deviceId = id, activity = emptyList(), alerts = emptyList(), screenshots = emptyList(), captureMonitor = null, hasMore = false)
+        pageJob?.cancel(); loadJob?.cancel(); val rev = ++revision
+        state = state.copy(deviceId = id, activity = emptyList(), alerts = emptyList(), unreadAlertCount = 0, screenshots = emptyList(), captureMonitor = null, hasMore = false)
+        viewModelScope.launch { syncUnreadAlertCount(id, rev) }
         refreshRows()
     }
     fun setActivityFilter(kind: String = state.kind, days: Int = state.days) {
@@ -296,14 +310,21 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
             if (rev == revision) state = state.copy(activity = if (more) (state.activity + rows).distinctBy { it.log_id } else rows, hasMore = rows.size == 30)
         } else if (state.tab == 2) {
             val rows = graph.api.alerts(device, if (state.unreadOnly) false else null, offset = if (more) state.alerts.size else 0).data
-            if (rev == revision) state = state.copy(alerts = if (more) (state.alerts + rows).distinctBy { it.alert_id } else rows, hasMore = rows.size == 30)
+            if (rev == revision) {
+                val combined = if (more) (state.alerts + rows).distinctBy { it.alert_id } else rows
+                state = state.copy(alerts = combined, hasMore = rows.size == 30)
+                syncUnreadAlertCount(device, rev)
+            }
         }
         if (rev == revision) state = state.copy(updated = Instant.now().toString())
     }
     fun markRead(alert: Alert) = action {
         val rev = revision
         val updated = graph.api.readAlert(alert.alert_id)
-        if (rev == revision) state = state.copy(alerts = state.alerts.map { if (it.alert_id == updated.alert_id) updated else it }.filter { !state.unreadOnly || !it.is_read })
+        if (rev == revision) state = state.copy(
+            alerts = state.alerts.map { if (it.alert_id == updated.alert_id) updated else it }.filter { !state.unreadOnly || !it.is_read },
+            unreadAlertCount = (state.unreadAlertCount - 1).coerceAtLeast(0)
+        )
     }
     fun saveChild(id: Long?, name: String, age: Int) = action {
         val body = mapOf("name" to name.trim(), "age" to age)
