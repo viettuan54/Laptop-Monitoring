@@ -1724,7 +1724,8 @@ async function renderDeviceControls(content) {
               ${switchRow('is_locked', 'Yêu cầu khóa thiết bị', 'Áp dụng cho tất cả thiết bị thuộc hồ sơ đã chọn, không riêng một máy. Sau khi lưu, thiết bị có thể bị khóa khi Agent nhận và áp dụng cấu hình.', settings.is_locked)}
               <p class="control-lock-state ${settings.is_locked ? 'is-locked' : ''}">Đã lưu: ${settings.is_locked ? 'Cấu hình khóa đang bật' : 'Cấu hình khóa đang tắt'}</p>
             </div>
-            ${switchRow('enable_webcam_monitoring', 'Theo dõi tư thế qua webcam', 'Dùng camera trên máy để nhận biết tư thế và khoảng cách nhìn màn hình.', settings.enable_webcam_monitoring)}
+            ${switchRow('enable_posture_monitoring', 'Theo dõi tư thế', 'Dùng webcam để phát hiện và nhắc nhở khi con ngồi sai tư thế.', settings.enable_posture_monitoring ?? settings.enable_webcam_monitoring)}
+            ${switchRow('enable_eye_distance_monitoring', 'Cảnh báo khoảng cách mắt', 'Dùng webcam để nhắc nhở khi mắt con ở quá gần màn hình.', settings.enable_eye_distance_monitoring ?? settings.enable_webcam_monitoring)}
             ${switchRow('enable_screenshot_review', 'Bật chụp màn hình định kỳ', 'Chụp màn hình chính theo định kỳ khi Agent đang hoạt động. Xem ảnh tại Hoạt động → Giám sát màn hình; ảnh được lưu 7 ngày.', settings.enable_screenshot_review)}
           </section>
           <div class="form-actions control-save-bar"><span><strong>${escapeHtml(controlScope)}</strong><small data-control-save-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1">Thay đổi chỉ được lưu khi bấm “Lưu điều khiển”.</small></span><button class="btn" type="submit">Lưu điều khiển</button></div>
@@ -3731,7 +3732,8 @@ async function handleSubmit(event) {
     } else if (form.id === 'device-control-form') {
       const controlFields = [
         'is_locked',
-        'enable_webcam_monitoring',
+        'enable_posture_monitoring',
+        'enable_eye_distance_monitoring',
         'enable_screenshot_review',
         'enable_break_reminders',
       ];

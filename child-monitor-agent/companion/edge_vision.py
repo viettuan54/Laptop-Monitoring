@@ -32,6 +32,8 @@ from runtime_paths import agent_root
 
 DEFAULT_CONFIG = {
     "enabled": False,
+    "posture_enabled": False,
+    "eye_distance_enabled": False,
     "camera_index": 0,
     "sample_interval_seconds": 0.5,
     "alert_hold_seconds": 5.0,
@@ -62,8 +64,13 @@ def normalize_vision_config(config):
         subject_id,
     ):
         subject_id = None
+    legacy = source.get("enabled") is True
+    posture = source.get("posture_enabled", legacy) is True
+    distance = source.get("eye_distance_enabled", legacy) is True
     return {
-        "enabled": source.get("enabled") is True,
+        "enabled": posture or distance,
+        "posture_enabled": posture,
+        "eye_distance_enabled": distance,
         "subject_id": subject_id,
         "camera_index": int(_bounded_number(source.get("camera_index"), 0, 0, 8)),
         "sample_interval_seconds": _bounded_number(
@@ -339,93 +346,101 @@ class EdgeVisionMonitor:
         posture_classifier=None,
     ):
         now = time.monotonic()
-        face_landmarks = (
-            face_result.face_landmarks[0]
-            if face_result and face_result.face_landmarks
-            else None
-        )
-        if distance_profile is not None:
-            eye_metrics = analyze_calibrated_eye_distance(
-                face_landmarks,
-                width,
-                height,
-                distance_profile,
+        if config["eye_distance_enabled"]:
+            face_landmarks = (
+                face_result.face_landmarks[0]
+                if face_result and face_result.face_landmarks
+                else None
             )
-            eye_metrics["profile_sha256"] = distance_profile_sha256
-            policy = distance_profile["decision_policy"]
-            eye_zone = eye_metrics["decision_zone"]
-            # "uncertain" implements continue_sampling: it neither adds a
-            # warning vote nor clears warning observations in the hold window.
-            eye_too_close = (
-                True
-                if eye_zone == "warning"
-                else False if eye_zone == "safe" else None
-            )
-        else:
-            eye_distance = estimate_eye_distance_cm(
-                face_landmarks,
-                width,
-                image_height=height,
-                horizontal_fov_degrees=config["camera_horizontal_fov_degrees"],
-                assumed_ipd_cm=config["assumed_ipd_cm"],
-                calibration_scale_cm=config["eye_distance_calibration_scale_cm"],
-            )
-            eye_too_close = (
-                None
-                if eye_distance is None
-                else eye_distance < config["min_eye_distance_cm"]
-            )
-            eye_metrics = {
-                "reliable": eye_distance is not None,
-                "estimated_distance_cm": eye_distance,
-                "estimation_method": (
-                    "calibrated_eye_scale"
-                    if config["eye_distance_calibration_scale_cm"] >= 1.0
-                    else "pinhole_fov_ipd"
-                ),
-                "profile_version": None,
-                "decision_zone": (
-                    "unknown"
+            if distance_profile is not None:
+                eye_metrics = analyze_calibrated_eye_distance(
+                    face_landmarks,
+                    width,
+                    height,
+                    distance_profile,
+                )
+                eye_metrics["profile_sha256"] = distance_profile_sha256
+                policy = distance_profile["decision_policy"]
+                eye_zone = eye_metrics["decision_zone"]
+                # "uncertain" implements continue_sampling: it neither adds a
+                # warning vote nor clears warning observations in the hold window.
+                eye_too_close = (
+                    True
+                    if eye_zone == "warning"
+                    else False if eye_zone == "safe" else None
+                )
+            else:
+                eye_distance = estimate_eye_distance_cm(
+                    face_landmarks,
+                    width,
+                    image_height=height,
+                    horizontal_fov_degrees=config["camera_horizontal_fov_degrees"],
+                    assumed_ipd_cm=config["assumed_ipd_cm"],
+                    calibration_scale_cm=config["eye_distance_calibration_scale_cm"],
+                )
+                eye_too_close = (
+                    None
                     if eye_distance is None
-                    else "warning" if eye_too_close else "safe"
-                ),
-                "outside_feature_range": None,
-            }
-            policy = {
-                "threshold_cm": config["min_eye_distance_cm"],
-                "warning_below_cm": config["min_eye_distance_cm"],
-                "safe_at_or_above_cm": config["min_eye_distance_cm"],
-                "uncertain_action": "not_available_in_fallback",
-            }
+                    else eye_distance < config["min_eye_distance_cm"]
+                )
+                eye_metrics = {
+                    "reliable": eye_distance is not None,
+                    "estimated_distance_cm": eye_distance,
+                    "estimation_method": (
+                        "calibrated_eye_scale"
+                        if config["eye_distance_calibration_scale_cm"] >= 1.0
+                        else "pinhole_fov_ipd"
+                    ),
+                    "profile_version": None,
+                    "decision_zone": (
+                        "unknown"
+                        if eye_distance is None
+                        else "warning" if eye_too_close else "safe"
+                    ),
+                    "outside_feature_range": None,
+                }
+                policy = {
+                    "threshold_cm": config["min_eye_distance_cm"],
+                    "warning_below_cm": config["min_eye_distance_cm"],
+                    "safe_at_or_above_cm": config["min_eye_distance_cm"],
+                    "uncertain_action": "not_available_in_fallback",
+                }
 
-        if self._gate.observe(
-            "eye_distance",
-            eye_too_close,
-            now,
-            config["alert_hold_seconds"],
-            config["alert_cooldown_seconds"],
-        ):
-            eye_distance = eye_metrics["estimated_distance_cm"]
-            message = (
-                f"Khoảng cách mắt ước tính {eye_distance:.1f} cm, "
-                f"thấp hơn vùng cảnh báo {policy['warning_below_cm']:.1f} cm."
-            )
-            # Keep landmark-derived geometry in memory. Only the minimum
-            # diagnostic metadata crosses the local Named Pipe.
-            alert_metrics = {
-                "estimated_distance_cm": eye_distance,
-                "estimation_method": eye_metrics["estimation_method"],
-                "decision_zone": eye_metrics["decision_zone"],
-                "profile_version": eye_metrics["profile_version"],
-                "profile_sha256": eye_metrics.get("profile_sha256"),
-                "outside_feature_range": eye_metrics["outside_feature_range"],
-                "decision_policy": policy.copy(),
-            }
-            self._send_alert(
-                "eye_distance_warning",
-                message,
-                alert_metrics,
-            )
+            if self._gate.observe(
+                "eye_distance",
+                eye_too_close,
+                now,
+                config["alert_hold_seconds"],
+                config["alert_cooldown_seconds"],
+            ):
+                eye_distance = eye_metrics["estimated_distance_cm"]
+                message = (
+                    f"Khoảng cách mắt ước tính {eye_distance:.1f} cm, "
+                    f"thấp hơn vùng cảnh báo {policy['warning_below_cm']:.1f} cm."
+                )
+                # Keep landmark-derived geometry in memory. Only the minimum
+                # diagnostic metadata crosses the local Named Pipe.
+                alert_metrics = {
+                    "estimated_distance_cm": eye_distance,
+                    "estimation_method": eye_metrics["estimation_method"],
+                    "decision_zone": eye_metrics["decision_zone"],
+                    "profile_version": eye_metrics["profile_version"],
+                    "profile_sha256": eye_metrics.get("profile_sha256"),
+                    "outside_feature_range": eye_metrics["outside_feature_range"],
+                    "decision_policy": policy.copy(),
+                }
+                self._send_alert(
+                    "eye_distance_warning",
+                    message,
+                    alert_metrics,
+                )
+
+        else:
+            self._gate.reset("eye_distance")
+
+        if not config["posture_enabled"]:
+            self._gate.reset("posture")
+            return
 
         pose_landmarks = (
             pose_result.pose_landmarks[0]
@@ -561,6 +576,7 @@ class EdgeVisionMonitor:
         posture_classifier = None
         posture_model_checked = False
         self._gate.reset("eye_distance")
+        self._gate.reset("posture")
         try:
             with (
                 vision.FaceLandmarker.create_from_options(face_options) as face_landmarker,
@@ -569,6 +585,9 @@ class EdgeVisionMonitor:
                 while not self._stop_event.is_set():
                     current_config = self._get_config()
                     if not current_config["enabled"]:
+                        break
+                    if any(current_config[key] != config[key] for key in
+                           ("posture_enabled", "eye_distance_enabled")):
                         break
                     if current_config["camera_index"] != config["camera_index"]:
                         logging.info("Camera selection changed; reopening Edge AI camera.")
@@ -615,8 +634,10 @@ class EdgeVisionMonitor:
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
                     timestamp_ms = int(now * 1000)
-                    face_result = face_landmarker.detect_for_video(image, timestamp_ms)
-                    pose_result = pose_landmarker.detect_for_video(image, timestamp_ms)
+                    face_result = (face_landmarker.detect_for_video(image, timestamp_ms)
+                                   if current_config["eye_distance_enabled"] else None)
+                    pose_result = (pose_landmarker.detect_for_video(image, timestamp_ms)
+                                   if current_config["posture_enabled"] else None)
                     self._evaluate(
                         face_result,
                         pose_result,

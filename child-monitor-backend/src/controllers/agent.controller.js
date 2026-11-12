@@ -449,12 +449,18 @@ exports.sendVisionAlert = async (req, res) => {
   try {
     // ── Bảo mật: Kiểm tra xem phụ huynh có BẬT tính năng giám sát webcam không ──
     const settingsCheck = await adminPool.query(
-      'SELECT enable_webcam_monitoring FROM settings WHERE child_id = $1',
+      'SELECT enable_webcam_monitoring, enable_posture_monitoring, enable_eye_distance_monitoring FROM settings WHERE child_id = $1',
       [req.device.child_id]
     );
     const hasWebcamEnabled = settingsCheck.rows[0]?.enable_webcam_monitoring ?? false;
 
-    if (!hasWebcamEnabled) {
+    const visionSettings = settingsCheck.rows[0] || {};
+    const featureEnabled = alert_type === 'posture_warning'
+      ? (visionSettings.enable_posture_monitoring ?? hasWebcamEnabled)
+      : alert_type === 'eye_distance_warning'
+        ? (visionSettings.enable_eye_distance_monitoring ?? hasWebcamEnabled)
+        : hasWebcamEnabled;
+    if (!featureEnabled) {
       return res.status(403).json({
         message: 'Webcam monitoring feature is disabled for this child. Vision alert rejected.',
       });

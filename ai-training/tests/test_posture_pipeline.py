@@ -58,12 +58,12 @@ def _pose_for_class(primary_class, subject_offset=0.0):
 
     points[7].update(
         x=0.43 + ear_x_shift + subject_offset,
-        y=0.25,
+        y=0.19,
         z=ear_z_shift,
     )
     points[8].update(
         x=0.57 + ear_x_shift + subject_offset,
-        y=0.25,
+        y=0.19,
         z=ear_z_shift,
     )
     points[11].update(

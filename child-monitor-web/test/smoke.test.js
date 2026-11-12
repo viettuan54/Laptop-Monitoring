@@ -266,7 +266,8 @@ test('device controls live on a dedicated page and save independently from polic
 
   for (const field of [
     'is_locked',
-    'enable_webcam_monitoring',
+    'enable_posture_monitoring',
+    'enable_eye_distance_monitoring',
     'enable_screenshot_review',
     'enable_break_reminders',
   ]) {

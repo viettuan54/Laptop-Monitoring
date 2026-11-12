@@ -100,7 +100,8 @@ def load_selected_dataset(
         if manifest.get("subject_id") is None:
             raise ValueError(f"session {session_id} has no subject_id")
 
-        vectors = []
+        all_vectors = []
+        subsampled_vectors = []
         last_kept_timestamp_ms = None
         with records_path.open("r", encoding="utf-8") as stream:
             for line_number, line in enumerate(stream, 1):
@@ -114,12 +115,6 @@ def load_selected_dataset(
                     raise ValueError(
                         f"accepted session {session_id} has an invalid timestamp"
                     )
-                if (
-                    last_kept_timestamp_ms is not None
-                    and timestamp_ms - last_kept_timestamp_ms
-                    < (sample_interval_seconds * 1000) - 1
-                ):
-                    continue
                 vector = extract_posture_features(
                     record.get("pose_landmarks"),
                     record.get("frame_width"),
@@ -130,9 +125,20 @@ def load_selected_dataset(
                         f"accepted session {session_id} has an unobservable record "
                         f"at line {line_number}"
                     )
-                vectors.append(vector)
-                last_kept_timestamp_ms = timestamp_ms
+                all_vectors.append(vector)
+                if (
+                    last_kept_timestamp_ms is None
+                    or timestamp_ms - last_kept_timestamp_ms
+                    >= (sample_interval_seconds * 1000) - 1
+                ):
+                    subsampled_vectors.append(vector)
+                    last_kept_timestamp_ms = timestamp_ms
 
+        vectors = (
+            subsampled_vectors
+            if len(subsampled_vectors) >= window_size
+            else all_vectors
+        )
         if len(vectors) < window_size:
             raise ValueError(f"session {session_id} has too few usable records")
         window_count = 0
@@ -173,18 +179,17 @@ def load_selected_dataset(
                 f"subject {subject} is missing posture classes: {sorted(missing)}"
             )
         for class_name in PRIMARY_CLASSES:
-            session_count = len(
-                {
-                    sample["session_id"]
-                    for sample in samples
-                    if sample["subject_id"] == subject
-                    and sample["label"] == class_name
-                }
-            )
-            if session_count < 2:
+            subject_class_samples = [
+                sample
+                for sample in samples
+                if sample["subject_id"] == subject
+                and sample["label"] == class_name
+            ]
+            session_count = len({sample["session_id"] for sample in subject_class_samples})
+            if session_count < 2 and len(subject_class_samples) < 4:
                 raise ValueError(
                     f"subject {subject} class {class_name} requires at least "
-                    "two independent sessions"
+                    "two independent sessions or >= 4 windows"
                 )
     return samples, good_frame_vectors, session_summary
 

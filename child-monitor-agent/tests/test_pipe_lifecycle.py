@@ -14,6 +14,22 @@ from watchdog import Watchdog, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK
 
 
 class PipeLifecycleTest(unittest.TestCase):
+    def test_vision_config_preserves_independent_and_legacy_consent(self):
+        server = PipeServer(Mock(), Mock())
+        for posture, distance in ((False, False), (True, False), (False, True), (True, True)):
+            server.enforcement_core.load_cached_settings.return_value = {
+                "enable_webcam_monitoring": True,
+                "enable_posture_monitoring": posture,
+                "enable_eye_distance_monitoring": distance,
+            }
+            config = server._get_vision_config()
+            self.assertEqual(config["enabled"], posture or distance)
+            self.assertEqual(config["posture_enabled"], posture)
+            self.assertEqual(config["eye_distance_enabled"], distance)
+        server.enforcement_core.load_cached_settings.return_value = {"enable_webcam_monitoring": True}
+        self.assertTrue(server._get_vision_config()["posture_enabled"])
+        self.assertTrue(server._get_vision_config()["eye_distance_enabled"])
+
     def test_recreate_interrupts_listener_without_closing_foreign_thread_handle(self):
         server = PipeServer(Mock(), Mock())
         pipe_handle = Mock()

@@ -168,6 +168,39 @@ class EdgeVisionTest(unittest.TestCase):
         self.assertEqual(metrics["profile_version"], "3.0.0")
         self.assertEqual(metrics["profile_sha256"], "profile-hash")
 
+    def test_independent_features_only_emit_enabled_alerts(self):
+        for posture, distance in ((False, False), (True, False), (False, True), (True, True)):
+            with self.subTest(posture=posture, distance=distance):
+                pipe = self._PipeClient()
+                monitor = EdgeVisionMonitor(pipe)
+                config = normalize_vision_config({
+                    "enabled": True, "posture_enabled": posture,
+                    "eye_distance_enabled": distance,
+                })
+                self.assertEqual(config["enabled"], posture or distance)
+                profile = self._profile()
+                face = SimpleNamespace(face_landmarks=[self._landmarks_for_distance(30, profile)])
+                with patch("edge_vision.time.monotonic", side_effect=(0, 2.5, 5)):
+                    for _ in range(3):
+                        monitor._evaluate(face, self._pose_result(bad=True), 640, 480, config, profile)
+                expected = ({"posture_warning"} if posture else set()) | ({"eye_distance_warning"} if distance else set())
+                self.assertEqual({a[0] for a in pipe.alerts}, expected)
+
+    def test_disabled_features_skip_analysis_and_clear_pending_votes(self):
+        monitor = EdgeVisionMonitor(self._PipeClient())
+        monitor._gate.observe("posture", True, 0, 5, 300)
+        monitor._gate.observe("eye_distance", True, 0, 5, 300)
+        with patch("edge_vision.analyze_posture") as posture, patch("edge_vision.estimate_eye_distance_cm") as distance:
+            monitor._evaluate(None, None, 640, 480, normalize_vision_config({"enabled": False}))
+        posture.assert_not_called()
+        distance.assert_not_called()
+        self.assertEqual(monitor._gate.observations, {})
+
+    def test_legacy_webcam_config_enables_both_features(self):
+        config = normalize_vision_config({"enabled": True})
+        self.assertTrue(config["posture_enabled"])
+        self.assertTrue(config["eye_distance_enabled"])
+
     def test_custom_model_can_add_warning_when_rules_are_safe(self):
         class Model:
             def observe(self, *_):

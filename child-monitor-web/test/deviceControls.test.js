@@ -12,6 +12,37 @@ const config = {
   enable_break_reminders: true, break_interval_minutes: 45, break_duration_minutes: 10,
 };
 
+test('vision controls render and save all independent combinations', async () => {
+  for (const posture of [false, true]) {
+    for (const distance of [false, true]) {
+      const view = controlView([], { settings: { ...config, enable_webcam_monitoring: true,
+        enable_posture_monitoring: posture, enable_eye_distance_monitoring: distance } });
+      await view.render();
+      for (const [field, checked] of [['enable_posture_monitoring', posture], ['enable_eye_distance_monitoring', distance]]) {
+        const input = view.content.innerHTML.match(new RegExp(`<input[^>]*name="${field}"[^>]*>`));
+        assert.ok(input, field);
+        assert.equal(/\bchecked\b/.test(input[0]), checked);
+      }
+      assert.doesNotMatch(view.content.innerHTML, /name="enable_webcam_monitoring"/);
+      const save = saveView(async () => ({}));
+      save.form.elements.enable_posture_monitoring.checked = posture;
+      save.form.elements.enable_eye_distance_monitoring.checked = distance;
+      await save.submit();
+      assert.equal(save.requests[0].body.enable_posture_monitoring, posture);
+      assert.equal(save.requests[0].body.enable_eye_distance_monitoring, distance);
+      assert.equal(save.requests[0].body.enable_webcam_monitoring, undefined);
+    }
+  }
+});
+
+test('legacy webcam consent populates both new controls', async () => {
+  const view = controlView([], { settings: { ...config, enable_webcam_monitoring: true } });
+  await view.render();
+  for (const name of ['enable_posture_monitoring', 'enable_eye_distance_monitoring']) {
+    assert.match(view.content.innerHTML, new RegExp(`name="${name}"[^>]*checked`));
+  }
+});
+
 function controlView(devices, { deviceError, settings = config } = {}) {
   const sandbox = vm.createContext({
     api: async url => {
@@ -119,7 +150,8 @@ function saveView(api, remindersEnabled = true, { savedLocked = true, locked = t
       this.button = new Element('type="submit"', 'Lưu điều khiển');
       this.elements = {
         is_locked: Object.assign(new Element(), { checked: locked }),
-        enable_webcam_monitoring: Object.assign(new Element(), { checked: false }),
+        enable_posture_monitoring: Object.assign(new Element(), { checked: false }),
+        enable_eye_distance_monitoring: Object.assign(new Element(), { checked: false }),
         enable_screenshot_review: Object.assign(new Element(), { checked: true }),
         enable_break_reminders: Object.assign(new Element(), { checked: remindersEnabled }),
       };
@@ -293,6 +325,12 @@ for (const remindersEnabled of [true, false]) {
     assert.equal(view.renders.length, 0);
     const expected = { ...config, enable_break_reminders: remindersEnabled };
     delete expected.child_id;
+    delete expected.enable_webcam_monitoring;
+    expected.enable_posture_monitoring = false;
+    expected.enable_eye_distance_monitoring = false;
+    delete expected.enable_webcam_monitoring;
+    expected.enable_posture_monitoring = false;
+    expected.enable_eye_distance_monitoring = false;
     if (!remindersEnabled) {
       delete expected.break_interval_minutes;
       delete expected.break_duration_minutes;

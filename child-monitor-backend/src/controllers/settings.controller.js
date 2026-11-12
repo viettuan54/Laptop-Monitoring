@@ -18,7 +18,7 @@ exports.getSettings = async (req, res) => {
     // 1. Tìm cấu hình hiện tại của đứa trẻ (được bảo vệ bởi RLS)
     let result = await req.db.query(
       `SELECT setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+              is_locked, enable_posture_monitoring, enable_eye_distance_monitoring, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
               enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at
        FROM settings WHERE child_id = $1`,
       [child_id]
@@ -37,7 +37,7 @@ exports.getSettings = async (req, res) => {
         `INSERT INTO settings(child_id)
          VALUES($1)
          RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-                   is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+                   is_locked, enable_posture_monitoring, enable_eye_distance_monitoring, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
                    enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at`,
         [child_id]
       );
@@ -58,6 +58,8 @@ exports.updateSettings = async (req, res) => {
     allowed_end_time,
     is_locked,
     enable_webcam_monitoring,
+    enable_posture_monitoring,
+    enable_eye_distance_monitoring,
     enable_screenshot_review,
     enable_break_reminders,
     enable_app_classification,
@@ -97,6 +99,8 @@ exports.updateSettings = async (req, res) => {
   const boolFields = {
     is_locked,
     enable_webcam_monitoring,
+    enable_posture_monitoring,
+    enable_eye_distance_monitoring,
     enable_screenshot_review,
     enable_break_reminders,
     enable_app_classification,
@@ -122,7 +126,7 @@ exports.updateSettings = async (req, res) => {
          child_id, daily_limit_minutes, allowed_start_time, allowed_end_time, is_locked,
          enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
          enable_app_classification, enable_web_classification, enable_text_moderation,
-         break_interval_minutes, break_duration_minutes
+         break_interval_minutes, break_duration_minutes, enable_posture_monitoring, enable_eye_distance_monitoring
        )
        VALUES (
          $1,
@@ -130,14 +134,16 @@ exports.updateSettings = async (req, res) => {
          COALESCE($3, '07:00:00'::TIME),
          COALESCE($4, '21:00:00'::TIME),
          COALESCE($5, FALSE),
-         COALESCE($6, FALSE),
+         (COALESCE($14, $6, FALSE) OR COALESCE($15, $6, FALSE)),
          COALESCE($7, FALSE),
          COALESCE($8, FALSE),
          COALESCE($9, FALSE),
          COALESCE($10, FALSE),
          COALESCE($11, FALSE),
          COALESCE($12, 30),
-         COALESCE($13, 5)
+         COALESCE($13, 5),
+         COALESCE($14, $6, FALSE),
+         COALESCE($15, $6, FALSE)
        )
        ON CONFLICT (child_id)
        DO UPDATE SET
@@ -145,7 +151,9 @@ exports.updateSettings = async (req, res) => {
          allowed_start_time        = COALESCE($3, settings.allowed_start_time),
          allowed_end_time          = COALESCE($4, settings.allowed_end_time),
          is_locked                 = COALESCE($5, settings.is_locked),
-         enable_webcam_monitoring  = COALESCE($6, settings.enable_webcam_monitoring),
+         enable_webcam_monitoring  = (COALESCE($14, $6, settings.enable_posture_monitoring) OR COALESCE($15, $6, settings.enable_eye_distance_monitoring)),
+         enable_posture_monitoring = COALESCE($14, $6, settings.enable_posture_monitoring),
+         enable_eye_distance_monitoring = COALESCE($15, $6, settings.enable_eye_distance_monitoring),
          enable_screenshot_review  = COALESCE($7, settings.enable_screenshot_review),
          enable_break_reminders     = COALESCE($8, settings.enable_break_reminders),
          enable_app_classification = COALESCE($9, settings.enable_app_classification),
@@ -155,7 +163,7 @@ exports.updateSettings = async (req, res) => {
          break_duration_minutes    = COALESCE($13, settings.break_duration_minutes),
          updated_at                = CURRENT_TIMESTAMP
        RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
-                 is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+                 is_locked, enable_posture_monitoring, enable_eye_distance_monitoring, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
                  enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at`,
       [
         child_id,
@@ -171,6 +179,8 @@ exports.updateSettings = async (req, res) => {
         enable_text_moderation,
         break_interval_minutes,
         break_duration_minutes,
+        enable_posture_monitoring,
+        enable_eye_distance_monitoring,
       ]
     );
 
@@ -180,6 +190,8 @@ exports.updateSettings = async (req, res) => {
       allowed_end_time,
       is_locked,
       enable_webcam_monitoring,
+      enable_posture_monitoring,
+      enable_eye_distance_monitoring,
       enable_screenshot_review,
       enable_break_reminders,
       enable_app_classification,

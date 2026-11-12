@@ -5,6 +5,8 @@ const DEFAULT_AGENT_CONFIG = Object.freeze({
   allowed_end_time: '21:00:00',
   is_locked: false,
   enable_webcam_monitoring: false,
+  enable_posture_monitoring: false,
+  enable_eye_distance_monitoring: false,
   enable_screenshot_review: false,
   enable_keylog: false, // Retired; old Agents must never receive an enabled value.
   enable_break_reminders: false,
@@ -33,7 +35,7 @@ async function getAgentPolicyConfig(db, childId) {
   const [settingsResult, policyResult] = await Promise.all([
     db.query(
       `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
+              is_locked, enable_webcam_monitoring, enable_posture_monitoring, enable_eye_distance_monitoring, enable_screenshot_review, enable_break_reminders,
               break_interval_minutes, break_duration_minutes,
               enable_app_classification, enable_web_classification, enable_text_moderation, updated_at
        FROM settings

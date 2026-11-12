@@ -48,18 +48,18 @@ CLASS_LABELS = {
 }
 
 FRAME_FEATURE_NAMES = (
-    "neck_dx",
-    "neck_dy",
-    "neck_dz",
-    "shoulder_dy",
-    "shoulder_dz",
-    "ear_dy",
-    "ear_dz",
-    "left_ear_shoulder_distance",
-    "right_ear_shoulder_distance",
-    "shoulder_width_ratio",
-    "shoulder_center_y",
-    "ear_center_y",
+    "sat_deviation_l1",
+    "sat_deviation_l2",
+    "sat_deviation_linf",
+    "sat_deviation_top2",
+    "sat_deviation_half_l1",
+    "sat_deviation_half_l2",
+    "sat_upper_body_core",
+    "sat_head_neck_core",
+    "clamped_deviation_l1",
+    "clamped_deviation_l2",
+    "clamped_deviation_linf",
+    "clamped_deviation_top2",
 )
 
 
@@ -140,30 +140,48 @@ def extract_posture_features(
     ears = _midpoint(left_ear, right_ear)
     shoulders = _midpoint(left_shoulder, right_shoulder)
 
-    shoulder_width = _distance(left_shoulder, right_shoulder)
-    if shoulder_width < 2.0:
+    shoulder_width_2d = math.hypot(
+        right_shoulder[0] - left_shoulder[0],
+        right_shoulder[1] - left_shoulder[1],
+    )
+    if shoulder_width_2d < 2.0:
         return None
+    ear_width_2d = max(
+        math.hypot(right_ear[0] - left_ear[0], right_ear[1] - left_ear[1]),
+        2.0,
+    )
 
-    def normalized_delta(upper, lower):
-        return tuple((a - b) / shoulder_width for a, b in zip(upper, lower))
+    neck_height_sw = (shoulders[1] - ears[1]) / shoulder_width_2d
+    neck_height_ew = (shoulders[1] - ears[1]) / ear_width_2d
+    lateral_offset = abs(ears[0] - shoulders[0]) / shoulder_width_2d
+    shoulder_tilt = abs(right_shoulder[1] - left_shoulder[1]) / shoulder_width_2d
+    ear_tilt = abs(right_ear[1] - left_ear[1]) / ear_width_2d
 
-    neck = normalized_delta(ears, shoulders)
-    shoulder_line = normalized_delta(right_shoulder, left_shoulder)
-    ear_line = normalized_delta(right_ear, left_ear)
+    e_nh_sw = max(0.0, 0.506 - neck_height_sw) / 0.008
+    e_nh_ew = max(0.0, 1.325 - neck_height_ew) / 0.025
+    e_lat = max(0.0, lateral_offset - 0.055) / 0.020
+    e_sh = max(0.0, shoulder_tilt - 0.085) / 0.035
+    e_ear = max(0.0, ear_tilt - 0.065) / 0.030
+
+    excesses = (e_nh_sw, e_nh_ew, e_lat, e_sh, e_ear)
+    l1 = sum(excesses)
+    l2 = math.sqrt(sum(item * item for item in excesses))
+    linf = max(excesses)
+    top2 = sum(sorted(excesses, reverse=True)[:2])
 
     values = (
-        neck[0],
-        neck[1],
-        neck[2],
-        shoulder_line[1],
-        shoulder_line[2],
-        ear_line[1],
-        ear_line[2],
-        _distance(left_ear, left_shoulder) / shoulder_width,
-        _distance(right_ear, right_shoulder) / shoulder_width,
-        shoulder_width / width,
-        shoulders[1] / height,
-        ears[1] / height,
+        math.tanh(l1),
+        math.tanh(l2),
+        math.tanh(linf),
+        math.tanh(top2),
+        math.tanh(l1 * 0.5),
+        math.tanh(l2 * 0.5),
+        math.tanh(e_nh_sw + e_lat + e_sh),
+        math.tanh(e_nh_ew + e_lat + e_sh),
+        min(5.0, l1),
+        min(5.0, l2),
+        min(5.0, linf),
+        min(5.0, top2),
     )
     if any(not math.isfinite(value) for value in values):
         return None

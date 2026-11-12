@@ -940,8 +940,13 @@ class PipeServer:
     def _get_vision_config(self):
         """Chỉ bật camera khi cờ đồng thuận đã được cache từ backend."""
         settings = self.enforcement_core.load_cached_settings()
+        legacy = settings.get("enable_webcam_monitoring") is True
+        posture = settings.get("enable_posture_monitoring", legacy) is True
+        distance = settings.get("enable_eye_distance_monitoring", legacy) is True
         return {
-            "enabled": settings.get("enable_webcam_monitoring") is True,
+            "enabled": posture or distance,
+            "posture_enabled": posture,
+            "eye_distance_enabled": distance,
             "subject_id": self.vision_subject_id,
             "camera_index": settings.get("vision_camera_index", 0),
             "sample_interval_seconds": settings.get("vision_sample_interval_seconds", 0.5),

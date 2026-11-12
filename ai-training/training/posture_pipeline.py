@@ -75,7 +75,7 @@ def _write_sha256_sidecar(asset_path):
     return sidecar, digest
 
 
-def inspect_session(manifest_path, *, min_usable_records=6):
+def inspect_session(manifest_path, *, min_usable_records=12):
     """Evaluate whether a session in datasets/pilot is eligible for LOSO training."""
     manifest_path = Path(manifest_path).resolve()
     dataset_dir = manifest_path.parent
@@ -231,7 +231,7 @@ def inspect_session(manifest_path, *, min_usable_records=6):
     }
 
 
-def scan_pilot_directory(dataset_dir, *, min_usable_records=6):
+def scan_pilot_directory(dataset_dir, *, min_usable_records=12):
     dataset_dir = Path(dataset_dir).resolve()
     manifest_paths = sorted(dataset_dir.glob("*.manifest.json"))
     inspected = [
@@ -248,7 +248,7 @@ def sync_selection_file(
     selection_path=None,
     *,
     dataset_id="posture-pilot-loso-v2",
-    min_usable_records=6,
+    min_usable_records=12,
 ):
     """Build and write accepted_sessions.json from all eligible v2.0.0 sessions."""
     dataset_dir = Path(dataset_dir).resolve()
@@ -338,12 +338,15 @@ def compute_readiness(eligible_sessions, *, target_subjects=("subject-001", "sub
             sessions = by_subject_class[subject_id][class_name]
             count = len(sessions)
             total_records = sum(item["sample_count"] for item in sessions)
-            needed_sessions = max(0, 2 - count)
             min_records_target = 60 if class_name == "good" else 30
+            is_ready = (count >= 2 or total_records >= 60) and (
+                class_name != "good" or total_records >= 50
+            )
+            needed_sessions = 0 if is_ready else max(0, 2 - count)
             matrix[subject_id][class_name] = {
                 "session_count": count,
                 "total_records": total_records,
-                "ready": count >= 2 and (class_name != "good" or total_records >= 50),
+                "ready": is_ready,
                 "needed_sessions": needed_sessions,
             }
             for _ in range(needed_sessions):

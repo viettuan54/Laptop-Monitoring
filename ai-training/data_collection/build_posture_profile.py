@@ -86,9 +86,9 @@ def build_personal_profile(selection_path, subject_id, output_path=None):
                 vectors.append(vector)
         source_sessions.append(session_id)
 
-    if len(source_sessions) < 2:
+    if len(source_sessions) < 2 and len(vectors) < 60:
         raise ValueError(
-            "a personal posture profile requires at least two accepted good sessions"
+            "a personal posture profile requires at least two accepted good sessions or >= 60 records"
         )
     if len(camera_ids) != 1 or len(resolutions) != 1:
         raise ValueError("personal posture sessions must use one camera and resolution")
