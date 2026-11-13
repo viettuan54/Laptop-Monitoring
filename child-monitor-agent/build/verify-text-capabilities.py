@@ -23,10 +23,13 @@ REQUIRED = {
         "windows_app_process": {"WindowsAppProcesses", "WindowsAppTarget", "client_allowed", "terminate"},
         "enforcement_core": {"get_text_moderation_policy", "get_screenshot_policy"},
         "screenshot_upload": {"ScreenshotUploader", "enqueue", "upload"},
-        "pipe_server": {"validate_text_moderation_record"},
+        "pipe_server": {"validate_text_moderation_record", "_get_vision_config",
+                        "enable_posture_monitoring", "enable_eye_distance_monitoring",
+                        "posture_enabled", "eye_distance_enabled"},
         "text_privacy": {"eligible_timestamp", "protect_text", "unprotect_text"},
     },
     "companion/ChildMonitorCompanion.exe": {
+        "edge_vision": {"normalize_vision_config", "_evaluate", "posture_enabled", "eye_distance_enabled"},
         "break_monitor": {"BreakReminderMonitor", "idle_seconds", "GetLastInputInfo"},
         "ui_alerts": {"show_break_reminder"},
         "break_notice": {"show_break_notice", "check_break_notice_support", "CreateDialogIndirect"},
@@ -45,6 +48,10 @@ def symbols(code):
     for value in code.co_consts:
         if isinstance(value, types.CodeType):
             found.update(symbols(value))
+        elif isinstance(value, str):
+            found.add(value)
+        elif isinstance(value, tuple):
+            found.update(item for item in value if isinstance(item, str))
     return found
 
 
@@ -69,7 +76,8 @@ def verify(root, version):
             "required_modules": sorted(required_modules)})
     return {"version": version, "text_capabilities_verified": True,
         "screenshot_capabilities_verified": True, "app_enforcement_capabilities_verified": True,
-        "break_reminder_capabilities_verified": True, "binaries": checked,
+        "break_reminder_capabilities_verified": True,
+        "independent_vision_controls_verified": True, "binaries": checked,
         "installed_agent_tested": False}
 
 

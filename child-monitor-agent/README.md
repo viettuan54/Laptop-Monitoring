@@ -1,5 +1,8 @@
 # Child Monitor Agent
 
+Agent **1.0.25** hỗ trợ [bật riêng tư thế và khoảng cách mắt](docs/agent_1_0_25_vision_controls.md).
+Mỗi chức năng có cấu hình riêng; tắt cả hai sẽ đóng webcam sau khi đồng bộ.
+
 Agent **1.0.24** giảm độ trễ cảnh báo văn bản: quét lịch sử mỗi 3 giây và gửi
 truy vấn qua luồng riêng ngay khi vào hàng đợi, không chờ đồng bộ app/web 60 giây.
 
@@ -88,7 +91,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.24"
+  -Version "1.0.25"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -96,14 +99,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.24.exe
+build\output\ChildMonitorSetup-1.0.25.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.24" `
+  -Version "1.0.25" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -250,7 +253,8 @@ dữ liệu production khi chưa được cho phép.
 
 ## Edge AI: khoảng cách mắt và tư thế
 
-Khi phụ huynh bật `enable_webcam_monitoring`, Companion trong phiên đăng nhập
+Từ 1.0.25, khi phụ huynh bật `enable_posture_monitoring` hoặc
+`enable_eye_distance_monitoring`, Companion trong phiên đăng nhập
 người dùng sẽ mở webcam và chạy MediaPipe Face/Pose Landmarker bằng OpenCV.
 Pipeline mặc định lấy mẫu 2 lần/giây và chỉ cảnh báo khi tín hiệu xấu kéo dài
 ít nhất 5 giây:

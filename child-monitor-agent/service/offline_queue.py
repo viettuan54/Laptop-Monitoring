@@ -40,6 +40,8 @@ class OfflineQueue:
         self._text_lock = threading.RLock()
         self._text_sync_lock = threading.Lock()
         self.text_sync_requested = threading.Event()
+        self.vision_sync_requested = threading.Event()
+        self._vision_sync_lock = threading.Lock()
         self._text_policy_provider = None
         self._text_storage_allowed = not secure_file
         self.init_db()
@@ -686,6 +688,7 @@ class OfflineQueue:
                     (alert_type, cutoff),
                 ).fetchone()
                 if existing:
+                    self.vision_sync_requested.set()
                     return existing[0], False
                 cursor.execute("""
                 INSERT OR IGNORE INTO vision_alerts
@@ -699,6 +702,7 @@ class OfflineQueue:
                 ))
                 inserted = cursor.rowcount == 1
                 conn.commit()
+            self.vision_sync_requested.set()
             return client_record_id, inserted
         except Exception as e:
             logging.error(f"Failed to enqueue vision alert: {e}")
@@ -808,7 +812,7 @@ class OfflineQueue:
         self._sync_app_enforcement(api_client)
         self._sync_apps(api_client)
         self._sync_webs(api_client)
-        self._sync_vision_alerts(api_client)
+        self.sync_vision_alerts(api_client)
         self.cleanup_synced_logs(days=7)
 
     def get_app_classification(self, cache_key, model_version):
@@ -1027,6 +1031,16 @@ class OfflineQueue:
                 logging.error(f"Error during web logs sync: {e}")
                 break
 
+    def sync_vision_alerts(self, api_client):
+        """Deliver alerts independently of slow usage uploads, with one sender."""
+        if not self._vision_sync_lock.acquire(blocking=False):
+            return
+        try:
+            if not api_client.suspended:
+                self._sync_vision_alerts(api_client)
+        finally:
+            self._vision_sync_lock.release()
+
     def _sync_vision_alerts(self, api_client):
         """Gửi tuần tự cảnh báo Edge AI vì backend tự chống trùng trong 5 phút."""
         while True:
@@ -1046,12 +1060,17 @@ class OfflineQueue:
                         "message": row["message"],
                     })
                     if response is None:
+                        logging.warning("Vision alert delivery deferred: type=%s; no backend response", row["alert_type"])
                         return
 
                     # 200 includes backend duplicate suppression; 201 means inserted.
                     # A stale local policy may race with a parent disabling webcam;
                     # discard 400/403 rather than retrying sensitive telemetry forever.
                     if response.status_code in (200, 201, 400, 403):
+                        if response.status_code in (400, 403):
+                            logging.warning("Vision alert rejected: type=%s HTTP=%s; record discarded", row["alert_type"], response.status_code)
+                        else:
+                            logging.info("Vision alert delivery acknowledged: type=%s HTTP=%s", row["alert_type"], response.status_code)
                         with self.get_connection() as conn:
                             conn.execute(
                                 "UPDATE vision_alerts SET synced = 1 WHERE client_record_id = ?",
@@ -1060,6 +1079,7 @@ class OfflineQueue:
                             conn.commit()
                         made_progress = True
                     else:
+                        logging.warning("Vision alert delivery deferred: type=%s HTTP=%s", row["alert_type"], response.status_code)
                         return
                 if not made_progress:
                     break

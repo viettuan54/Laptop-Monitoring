@@ -104,6 +104,7 @@ class ChildMonitorService(ServiceBaseClass):
         self.stop_event.set()
         if self.offline_queue:
             self.offline_queue.text_sync_requested.set()
+            self.offline_queue.vision_sync_requested.set()
         if self.pipe_server:
             self.pipe_server.stop()
         if self.blocked_web_monitor:
@@ -199,6 +200,11 @@ class ChildMonitorService(ServiceBaseClass):
 
         # 3. Khởi tạo các Worker Thread tự phục hồi (run_forever)
         threads = [
+            threading.Thread(
+                target=self._vision_sync_loop,
+                name="VisionAlertSync",
+                daemon=True,
+            ),
             threading.Thread(
                 target=self._text_sync_loop,
                 name="TextModerationSync",
@@ -303,6 +309,20 @@ class ChildMonitorService(ServiceBaseClass):
     def _offline_sync_loop_step(self):
         """Offline Log Sync Loop (60s): Đồng bộ log trong SQLite queue lên backend."""
         self.offline_queue.sync_offline_data(self.api_client)
+
+    def _vision_sync_loop(self):
+        """Send committed camera alerts promptly; retry offline records every 5s."""
+        requested = self.offline_queue.vision_sync_requested
+        while not self.stop_event.is_set():
+            requested.wait(timeout=5)
+            requested.clear()
+            if self.stop_event.is_set():
+                break
+            try:
+                self.offline_queue.sync_vision_alerts(self.api_client)
+            except Exception as error:
+                logging.warning("Vision sync worker failed (%s)", type(error).__name__)
+                self.stop_event.wait(5)
 
     def _text_sync_loop(self):
         """Wake on a committed query; retry retained records without the 60s queue."""

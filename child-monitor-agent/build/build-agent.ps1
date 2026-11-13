@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.24",
+    [string]$Version = "1.0.25",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,

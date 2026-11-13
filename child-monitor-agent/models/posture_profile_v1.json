@@ -1,0 +1,55 @@
+{
+  "profile_version": "1.0.0",
+  "profile_scope": "subject_camera",
+  "created_at": "2026-11-11T14:07:55.435171+00:00",
+  "subject_id": "subject-001",
+  "camera_id": "camera-1ca79cc6dce06ef4",
+  "frame_width": 640,
+  "frame_height": 480,
+  "sample_count": 100,
+  "source_session_ids": [
+    "session-20260804T021225Z-4a0b4b16"
+  ],
+  "frame_feature_names": [
+    "sat_deviation_l1",
+    "sat_deviation_l2",
+    "sat_deviation_linf",
+    "sat_deviation_top2",
+    "sat_deviation_half_l1",
+    "sat_deviation_half_l2",
+    "sat_upper_body_core",
+    "sat_head_neck_core",
+    "clamped_deviation_l1",
+    "clamped_deviation_l2",
+    "clamped_deviation_linf",
+    "clamped_deviation_top2"
+  ],
+  "baseline_frame_features": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "median_absolute_deviation": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ]
+}

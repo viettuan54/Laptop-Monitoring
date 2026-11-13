@@ -17,6 +17,18 @@ App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-ba
 
 Đăng ký laptop và cấu hình Agent hiện dùng website. App không thực hiện thu thập dữ liệu trên điện thoại; Windows Agent tiếp tục chịu trách nhiệm giám sát laptop. Quản trị viên chỉ dùng dashboard web.
 
+## Bật riêng tư thế và khoảng cách mắt
+
+Trong **Chính sách sử dụng → Giám sát tư thế & Khoảng cách**, hai công tắc
+**Theo dõi tư thế** và **Cảnh báo khoảng cách mắt** được lưu độc lập. Bật mỗi
+chức năng có xác nhận sử dụng webcam; tắt một chức năng không đổi chức năng còn
+lại. Tắt cả hai sẽ dừng webcam sau khi Agent nhận cấu hình mới.
+
+Cần backend đã áp dụng migration V30 và Agent hỗ trợ hai trường cấu hình riêng
+(xem `../child-monitor-backend/VISION_CONTROLS.md`). App đọc được cấu hình cũ để
+hiển thị, nhưng cần cập nhật backend để lưu lựa chọn riêng. Lưu thành công chỉ
+xác nhận cấu hình trên máy chủ, chưa xác nhận laptop đã áp dụng.
+
 ## Lịch sử nhắc nghỉ (0.4.0)
 
 Vào **Gia đình → Lịch sử nhắc nghỉ**, hoặc **Chính sách sử dụng → Nhắc nghỉ giải lao → Lịch sử**. Chọn hồ sơ trẻ để xem 10 phản hồi gần nhất từ tất cả laptop của trẻ, gồm lời nhắc đã hiển thị, trẻ chọn nghỉ ngay và nhắc lại sau 5 phút. Chọn nghỉ ngay chưa chứng minh trẻ đã thực sự nghỉ.

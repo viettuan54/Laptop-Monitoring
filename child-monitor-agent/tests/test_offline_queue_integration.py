@@ -443,6 +443,39 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         self.assertEqual(api.calls[0][0], "/api/agent/vision-alert")
         self.assertNotIn("image", api.calls[0][1])
 
+    def test_distance_alert_wakes_sender_and_retries_offline_without_usage_upload(self):
+        record_id, inserted = self.queue.enqueue_vision_alert("eye_distance_warning", "Distance 30 cm")
+        self.assertTrue(inserted)
+        self.assertTrue(self.queue.vision_sync_requested.is_set())
+        api = Mock(suspended=False)
+        api.post.return_value = None
+        self.queue.sync_vision_alerts(api)
+        with self.queue.get_connection() as conn:
+            self.assertEqual(conn.execute("SELECT synced FROM vision_alerts WHERE client_record_id=?", (record_id,)).fetchone()[0], 0)
+        api.post.return_value = Mock(status_code=201)
+        with patch.object(self.queue, "_sync_apps") as apps, patch.object(self.queue, "_sync_webs") as webs:
+            self.queue.sync_vision_alerts(api)
+        apps.assert_not_called()
+        webs.assert_not_called()
+        self.assertEqual(api.post.call_args.kwargs["data"]["alert_type"], "eye_distance_warning")
+        with self.queue.get_connection() as conn:
+            self.assertEqual(conn.execute("SELECT synced FROM vision_alerts WHERE client_record_id=?", (record_id,)).fetchone()[0], 1)
+
+    def test_vision_delivery_lock_prevents_concurrent_senders(self):
+        with self.queue._vision_sync_lock, patch.object(self.queue, "_sync_vision_alerts") as send:
+            self.queue.sync_vision_alerts(Mock(suspended=False))
+        send.assert_not_called()
+
+    def test_revoked_distance_consent_is_logged_and_not_retried(self):
+        self.queue.enqueue_vision_alert("eye_distance_warning", "Distance 30 cm")
+        api = Mock(suspended=False)
+        api.post.return_value = Mock(status_code=403)
+        with self.assertLogs(level="WARNING") as captured:
+            self.queue.sync_vision_alerts(api)
+        self.assertTrue(any("eye_distance_warning HTTP=403" in line for line in captured.output))
+        self.queue.sync_vision_alerts(api)
+        self.assertEqual(api.post.call_count, 1)
+
     def test_duplicate_vision_alert_is_suppressed_locally(self):
         first_id, inserted = self.queue.enqueue_vision_alert(
             "eye_distance_warning",

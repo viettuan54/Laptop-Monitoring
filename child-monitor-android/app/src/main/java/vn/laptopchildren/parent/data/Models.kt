@@ -24,7 +24,12 @@ data class Settings(val child_id: Long = 0, val daily_limit_minutes: Int = 120,
     val enable_web_classification: Boolean = false, val enable_text_moderation: Boolean = false,
     val enable_webcam_monitoring: Boolean = false, val enable_screenshot_review: Boolean = false,
     val enable_break_reminders: Boolean = false, val break_interval_minutes: Int = 30,
-    val break_duration_minutes: Int = 5)
+    val break_duration_minutes: Int = 5,
+    val enable_posture_monitoring: Boolean? = null,
+    val enable_eye_distance_monitoring: Boolean? = null) {
+    val postureMonitoringEnabled: Boolean get() = enable_posture_monitoring ?: enable_webcam_monitoring
+    val eyeDistanceMonitoringEnabled: Boolean get() = enable_eye_distance_monitoring ?: enable_webcam_monitoring
+}
 data class Policy(val resource_type: String, val category: String, val action: String)
 data class Policies(val policies: List<Policy> = emptyList())
 data class PushRegistration(val token: PushToken)

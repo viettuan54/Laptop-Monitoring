@@ -40,7 +40,7 @@ import vn.laptopchildren.parent.data.*
     var start by remember(settings.child_id, settings.allowed_start_time) { mutableStateOf(settings.allowed_start_time.take(5)) }
     var end by remember(settings.child_id, settings.allowed_end_time) { mutableStateOf(settings.allowed_end_time.take(5)) }
     var error by remember { mutableStateOf<String?>(null) }
-    var confirm by remember { mutableStateOf<Pair<String, Map<String, Any>>?>(null) }
+    var confirm by remember(settings.child_id) { mutableStateOf<Pair<String, Map<String, Any>>?>(null) }
     var interval by remember(settings.child_id, settings.break_interval_minutes) { mutableStateOf(settings.break_interval_minutes.toString()) }
     var breakTime by remember(settings.child_id, settings.break_duration_minutes) { mutableStateOf(settings.break_duration_minutes.toString()) }
 
@@ -221,10 +221,17 @@ import vn.laptopchildren.parent.data.*
                     Spacer(Modifier.width(8.dp))
                     Text("Giám sát tư thế & Khoảng cách", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
-                ToggleRow("Khoảng cách và tư thế ngồi", "Sử dụng webcam laptop; hình ảnh chỉ xử lý nội bộ trên máy, chỉ gửi tín hiệu cảnh báo.", settings.enable_webcam_monitoring, !s.busy) {
-                    if (it) confirm = "Bật webcam trên laptop để phân tích khoảng cách và tư thế? Hình ảnh webcam được xử lý hoàn toàn trên laptop của con." to mapOf("enable_webcam_monitoring" to true)
-                    else vm.saveSettings(mapOf("enable_webcam_monitoring" to false))
+                Text("Hình ảnh webcam chỉ được xử lý trên laptop của con; chỉ gửi tín hiệu cảnh báo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                ToggleRow("Theo dõi tư thế", "Nhắc nhở khi con ngồi sai tư thế.", settings.postureMonitoringEnabled, !s.busy) {
+                    if (it) confirm = "Bật webcam trên các laptop của con để phát hiện và cảnh báo tư thế ngồi? Lựa chọn khoảng cách mắt được giữ nguyên." to mapOf("enable_posture_monitoring" to true)
+                    else vm.saveSettings(mapOf("enable_posture_monitoring" to false))
                 }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                ToggleRow("Cảnh báo khoảng cách mắt", "Nhắc nhở khi mắt con ở quá gần màn hình.", settings.eyeDistanceMonitoringEnabled, !s.busy) {
+                    if (it) confirm = "Bật webcam trên các laptop của con để ước lượng và cảnh báo khoảng cách mắt? Lựa chọn tư thế được giữ nguyên." to mapOf("enable_eye_distance_monitoring" to true)
+                    else vm.saveSettings(mapOf("enable_eye_distance_monitoring" to false))
+                }
+                Text("Tắt cả hai chức năng để dừng webcam sau khi laptop đồng bộ cấu hình.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         Spacer(Modifier.height(16.dp))
