@@ -5,6 +5,8 @@ const DEFAULT_AGENT_CONFIG = Object.freeze({
   allowed_end_time: '21:00:00',
   is_locked: false,
   enable_webcam_monitoring: false,
+  vision_session_minutes: 5,
+  vision_session_id: null,
   enable_posture_monitoring: false,
   enable_eye_distance_monitoring: false,
   enable_screenshot_review: false,
@@ -36,7 +38,7 @@ async function getAgentPolicyConfig(db, childId) {
     db.query(
       `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
               is_locked, enable_webcam_monitoring, enable_posture_monitoring, enable_eye_distance_monitoring, enable_screenshot_review, enable_break_reminders,
-              break_interval_minutes, break_duration_minutes,
+              break_interval_minutes, break_duration_minutes, vision_session_minutes, vision_session_id,
               enable_app_classification, enable_web_classification, enable_text_moderation, updated_at
        FROM settings
        WHERE child_id = $1`,

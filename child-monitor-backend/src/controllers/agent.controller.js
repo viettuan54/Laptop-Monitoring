@@ -429,6 +429,10 @@ exports.backfillWebDomain = async (req, res) => {
 exports.sendVisionAlert = async (req, res) => {
   const { device_id } = req.device;
   const { alert_type, message } = req.body;
+  const sessionId = req.body.session_id || null;
+  if (sessionId !== null && (typeof sessionId !== 'string' || !UUID_PATTERN.test(sessionId))) {
+    return res.status(400).json({ message: 'Invalid vision session_id' });
+  }
 
   // Chỉ chấp nhận các alert_type liên quan đến Computer Vision
   const VALID_VISION_ALERT_TYPES = ['posture_warning', 'stranger_detected', 'eye_distance_warning'];
@@ -470,9 +474,10 @@ exports.sendVisionAlert = async (req, res) => {
     // Tránh tạo hàng nghìn alert trùng lặp khi Agent phát hiện liên tục.
     const recentAlert = await adminPool.query(
       `SELECT alert_id FROM alerts
-       WHERE device_id = $1 AND alert_type = $2 AND created_at > NOW() - INTERVAL '5 minutes'
+       WHERE device_id = $1 AND (($3::uuid IS NOT NULL AND vision_session_id = $3)
+         OR ($3::uuid IS NULL AND alert_type = $2 AND created_at > NOW() - INTERVAL '5 minutes'))
        LIMIT 1`,
-      [device_id, alert_type]
+      [device_id, alert_type, sessionId]
     );
 
     if (recentAlert.rows.length > 0) {
@@ -484,11 +489,13 @@ exports.sendVisionAlert = async (req, res) => {
     }
 
     const result = await adminPool.query(
-      `INSERT INTO alerts(device_id, alert_type, message)
-       VALUES($1, $2, $3)
+      `INSERT INTO alerts(device_id, alert_type, message, vision_session_id)
+       VALUES($1, $2, $3, $4)
+       ON CONFLICT DO NOTHING
        RETURNING alert_id, device_id, alert_type, message, is_read, created_at`,
-      [device_id, alert_type, trimmedMessage]
+      [device_id, alert_type, trimmedMessage, sessionId]
     );
+    if (!result.rows.length) return res.status(200).json({ suppressed: true });
 
     // Truy vấn lấy user_id của phụ huynh để gửi thông báo đẩy
     const childResult = await adminPool.query(

@@ -1,3 +1,4 @@
+const { randomUUID } = require('node:crypto');
 const { recordAudit } = require('../services/audit.service');
 
 const POLICY_CATEGORIES = Object.freeze({
@@ -19,7 +20,7 @@ exports.getSettings = async (req, res) => {
     let result = await req.db.query(
       `SELECT setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
               is_locked, enable_posture_monitoring, enable_eye_distance_monitoring, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
-              enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at
+              enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, vision_session_minutes, vision_session_id, updated_at
        FROM settings WHERE child_id = $1`,
       [child_id]
     );
@@ -38,7 +39,7 @@ exports.getSettings = async (req, res) => {
          VALUES($1)
          RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
                    is_locked, enable_posture_monitoring, enable_eye_distance_monitoring, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
-                   enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at`,
+                   enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, vision_session_minutes, vision_session_id, updated_at`,
         [child_id]
       );
     }
@@ -67,11 +68,14 @@ exports.updateSettings = async (req, res) => {
     enable_text_moderation,
     break_interval_minutes,
     break_duration_minutes,
+    vision_session_minutes,
+    start_vision_session,
   } = req.body;
 
   for (const [key, value, min, max] of [
     ['break_interval_minutes', break_interval_minutes, 5, 180],
     ['break_duration_minutes', break_duration_minutes, 1, 30],
+    ['vision_session_minutes', vision_session_minutes, 1, 60],
   ]) {
     if (value !== undefined && (!Number.isInteger(value) || value < min || value > max)) {
       return res.status(400).json({ message: `${key} must be an integer between ${min} and ${max}` });
@@ -97,6 +101,7 @@ exports.updateSettings = async (req, res) => {
 
   // Validate boolean fields (bao gồm is_locked để tránh lỗi kiểu dữ liệu ở DB)
   const boolFields = {
+    start_vision_session,
     is_locked,
     enable_webcam_monitoring,
     enable_posture_monitoring,
@@ -120,13 +125,23 @@ exports.updateSettings = async (req, res) => {
       return res.status(404).json({ message: 'Child not found or access denied' });
     }
 
+    if (start_vision_session === true) {
+      const current = await req.db.query('SELECT enable_posture_monitoring, enable_eye_distance_monitoring FROM settings WHERE child_id = $1', [child_id]);
+      const stored = current.rows[0] || {};
+      if (!(enable_posture_monitoring ?? enable_webcam_monitoring ?? stored.enable_posture_monitoring ?? false)
+          && !(enable_eye_distance_monitoring ?? enable_webcam_monitoring ?? stored.enable_eye_distance_monitoring ?? false)) {
+        return res.status(400).json({ message: 'Select at least one vision feature before starting a session' });
+      }
+    }
+
     // Sử dụng INSERT ... ON CONFLICT để cập nhật hoặc tạo mới nếu chưa tồn tại cấu hình
     const result = await req.db.query(
       `INSERT INTO settings (
          child_id, daily_limit_minutes, allowed_start_time, allowed_end_time, is_locked,
          enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
          enable_app_classification, enable_web_classification, enable_text_moderation,
-         break_interval_minutes, break_duration_minutes, enable_posture_monitoring, enable_eye_distance_monitoring
+         break_interval_minutes, break_duration_minutes, enable_posture_monitoring, enable_eye_distance_monitoring,
+         vision_session_minutes, vision_session_id
        )
        VALUES (
          $1,
@@ -143,7 +158,9 @@ exports.updateSettings = async (req, res) => {
          COALESCE($12, 30),
          COALESCE($13, 5),
          COALESCE($14, $6, FALSE),
-         COALESCE($15, $6, FALSE)
+         COALESCE($15, $6, FALSE),
+         COALESCE($16, 5),
+         CASE WHEN COALESCE($14, $6, FALSE) OR COALESCE($15, $6, FALSE) THEN $17::uuid ELSE NULL END
        )
        ON CONFLICT (child_id)
        DO UPDATE SET
@@ -161,10 +178,18 @@ exports.updateSettings = async (req, res) => {
          enable_text_moderation     = COALESCE($11, settings.enable_text_moderation),
          break_interval_minutes    = COALESCE($12, settings.break_interval_minutes),
          break_duration_minutes    = COALESCE($13, settings.break_duration_minutes),
+         vision_session_minutes    = COALESCE($16, settings.vision_session_minutes),
+         vision_session_id = CASE
+           WHEN NOT (COALESCE($14, $6, settings.enable_posture_monitoring) OR COALESCE($15, $6, settings.enable_eye_distance_monitoring)) THEN NULL
+           WHEN COALESCE($18, FALSE)
+             OR (COALESCE($14, $6, FALSE) AND NOT settings.enable_posture_monitoring)
+             OR (COALESCE($15, $6, FALSE) AND NOT settings.enable_eye_distance_monitoring)
+             THEN $17::uuid
+           ELSE settings.vision_session_id END,
          updated_at                = CURRENT_TIMESTAMP
        RETURNING setting_id, child_id, daily_limit_minutes, allowed_start_time, allowed_end_time,
                  is_locked, enable_posture_monitoring, enable_eye_distance_monitoring, enable_webcam_monitoring, enable_screenshot_review, enable_break_reminders,
-                 enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, updated_at`,
+                 enable_app_classification, enable_web_classification, enable_text_moderation, break_interval_minutes, break_duration_minutes, vision_session_minutes, vision_session_id, updated_at`,
       [
         child_id,
         daily_limit_minutes,
@@ -181,6 +206,9 @@ exports.updateSettings = async (req, res) => {
         break_duration_minutes,
         enable_posture_monitoring,
         enable_eye_distance_monitoring,
+        vision_session_minutes,
+        randomUUID(),
+        start_vision_session,
       ]
     );
 
@@ -199,6 +227,8 @@ exports.updateSettings = async (req, res) => {
       enable_text_moderation,
       break_interval_minutes,
       break_duration_minutes,
+      vision_session_minutes,
+      start_vision_session,
     })
       .filter(([, value]) => value !== undefined && value !== null)
       .map(([field]) => field);

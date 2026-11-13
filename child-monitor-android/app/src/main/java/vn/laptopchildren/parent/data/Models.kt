@@ -8,7 +8,8 @@ import java.time.format.DateTimeFormatter
 data class Tokens(val accessToken: String = "", val refreshToken: String = "")
 data class Child(val child_id: Long, val name: String, val age: Int? = null)
 data class Device(val device_id: Long, val child_id: Long, val device_name: String,
-    val online: Boolean = false, val last_seen_at: String? = null)
+    val online: Boolean = false, val last_seen_at: String? = null,
+    val vision_session_id: String? = null, val vision_session_status: String? = null)
 data class Page<T>(val data: List<T> = emptyList(), val count: Int = 0)
 data class DayUsage(val date: String, val duration_seconds: Long)
 data class Usage(val today_seconds: Long = 0, val month_total_seconds: Long = 0,
@@ -26,7 +27,8 @@ data class Settings(val child_id: Long = 0, val daily_limit_minutes: Int = 120,
     val enable_break_reminders: Boolean = false, val break_interval_minutes: Int = 30,
     val break_duration_minutes: Int = 5,
     val enable_posture_monitoring: Boolean? = null,
-    val enable_eye_distance_monitoring: Boolean? = null) {
+    val enable_eye_distance_monitoring: Boolean? = null,
+    val vision_session_minutes: Int = 5, val vision_session_id: String? = null) {
     val postureMonitoringEnabled: Boolean get() = enable_posture_monitoring ?: enable_webcam_monitoring
     val eyeDistanceMonitoringEnabled: Boolean get() = enable_eye_distance_monitoring ?: enable_webcam_monitoring
 }

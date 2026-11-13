@@ -873,6 +873,10 @@ class PipeServer:
             elif action == "SCREENSHOT":
                 screenshot_accepted = self.screenshot_uploader.enqueue(msg.get("record"))
 
+            elif action == "VISION_SESSION_FINISHED":
+                session_id = str(uuid.UUID(str(msg.get("session_id"))))
+                self.offline_queue.finish_vision_session(session_id, msg.get("reason"))
+
             elif action == "VISION_ALERT":
                 alert_type = msg.get("alert_type")
                 message = msg.get("message")
@@ -888,6 +892,7 @@ class PipeServer:
                 persisted_id, _ = self.offline_queue.enqueue_vision_alert(
                     alert_type,
                     message,
+                    session_id=(msg.get("metrics") or {}).get("session_id"),
                 )
                 if not persisted_id:
                     raise RuntimeError("Failed to persist vision alert")
@@ -943,7 +948,12 @@ class PipeServer:
         legacy = settings.get("enable_webcam_monitoring") is True
         posture = settings.get("enable_posture_monitoring", legacy) is True
         distance = settings.get("enable_eye_distance_monitoring", legacy) is True
+        session = self.offline_queue.vision_session(
+            settings.get("vision_session_id"), settings.get("vision_session_minutes", 5), posture or distance)
+        posture = posture and session["enabled"]
+        distance = distance and session["enabled"]
         return {
+            **session,
             "enabled": posture or distance,
             "posture_enabled": posture,
             "eye_distance_enabled": distance,

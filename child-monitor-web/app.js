@@ -1700,7 +1700,7 @@ async function renderDeviceControls(content) {
             <h2>${escapeHtml(controlScope)}</h2>
             ${linkedDevices.length ? `<p class="control-device-names">Thiết bị: ${linkedDevices.map((device) => escapeHtml(device.device_name)).join(', ')}.</p>` : ''}
             <p class="control-connection-note">${connectionNote}</p>
-            <p>Thay đổi chỉ được lưu khi bạn bấm “Lưu điều khiển”. Agent, ứng dụng trên máy của trẻ, cần nhận cấu hình trước khi thiết bị áp dụng.</p>
+            <p>Dùng “Lưu điều khiển” để lưu lựa chọn, hoặc “Lưu và bắt đầu phiên camera mới” để yêu cầu theo dõi lại. Agent cần nhận cấu hình trước khi thiết bị áp dụng.</p>
           </header>
           <section class="control-section" aria-labelledby="control-time-heading">
             <h3 id="control-time-heading">Thời gian sử dụng</h3>
@@ -1726,9 +1726,19 @@ async function renderDeviceControls(content) {
             </div>
             ${switchRow('enable_posture_monitoring', 'Theo dõi tư thế', 'Dùng webcam để phát hiện và nhắc nhở khi con ngồi sai tư thế.', settings.enable_posture_monitoring ?? settings.enable_webcam_monitoring)}
             ${switchRow('enable_eye_distance_monitoring', 'Cảnh báo khoảng cách mắt', 'Dùng webcam để nhắc nhở khi mắt con ở quá gần màn hình.', settings.enable_eye_distance_monitoring ?? settings.enable_webcam_monitoring)}
+            <label>Thời lượng phiên camera (phút)
+              <input type="number" name="vision_session_minutes" min="1" max="60" step="1" value="${escapeHtml(settings.vision_session_minutes ?? 5)}" required aria-describedby="vision-session-help">
+            </label>
+            <p id="vision-session-help" class="muted">Mỗi laptop chạy tối đa thời lượng này từ khi nhận phiên. Camera tự tắt khi hết giờ hoặc có cảnh báo đầu tiên. Các công tắc là lựa chọn chức năng, không phải trạng thái camera. Bật thêm chức năng sẽ mở phiên mới; lưu thời lượng chỉ áp dụng cho phiên tiếp theo.</p>
+            <ul aria-label="Trạng thái phiên camera">${linkedDevices.map(device => {
+              const statuses = { received: 'Đã nhận phiên; chưa xác nhận camera đang mở', alert: 'Đã dừng sau cảnh báo', timeout: 'Đã dừng do hết giờ', stopped: 'Đã dừng theo cấu hình' };
+              const status = !settings.vision_session_id ? 'Chưa yêu cầu phiên mới' : device.vision_session_id === settings.vision_session_id ? statuses[device.vision_session_status] || 'Chưa có xác nhận' : 'Chờ laptop nhận phiên';
+              return `<li>${escapeHtml(device.device_name)}: ${escapeHtml(status)}</li>`;
+            }).join('')}</ul>
+            <p class="muted">Trạng thái cập nhật khi tải lại trang. Phiên đã dừng chỉ chạy lại khi bạn bật thêm chức năng hoặc chọn bắt đầu phiên mới.</p>
             ${switchRow('enable_screenshot_review', 'Bật chụp màn hình định kỳ', 'Chụp màn hình chính theo định kỳ khi Agent đang hoạt động. Xem ảnh tại Hoạt động → Giám sát màn hình; ảnh được lưu 7 ngày.', settings.enable_screenshot_review)}
           </section>
-          <div class="form-actions control-save-bar"><span><strong>${escapeHtml(controlScope)}</strong><small data-control-save-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1">Thay đổi chỉ được lưu khi bấm “Lưu điều khiển”.</small></span><button class="btn" type="submit">Lưu điều khiển</button></div>
+          <div class="form-actions control-save-bar"><span><strong>${escapeHtml(controlScope)}</strong><small data-control-save-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1">Chọn một nút lưu để áp dụng thay đổi.</small></span><button class="btn" type="submit">Lưu điều khiển</button><button class="btn btn-secondary" type="submit" data-start-vision-session="true">Lưu và bắt đầu phiên camera mới</button></div>
         </form>
         <aside class="control-privacy-note"><strong>Ưu tiên quyền riêng tư</strong><p>Webcam và ảnh chụp màn hình mặc định tắt. Nhắc nghỉ giải lao chỉ dùng thời gian hoạt động, không đọc nội dung phím bấm.</p><p>Các thiết lập này không thay đổi quy tắc phân loại nội dung.</p></aside>
         <section id="break-reminder-history" class="break-reminder-history" data-child-id="${escapeHtml(childId)}" aria-live="polite">${breakReminderHistoryMarkup(reminderHistory)}</section>
@@ -1773,6 +1783,7 @@ async function saveDeviceControls(form, data) {
   if (!isCurrentControlForm(form) || form.dataset.controlPending === 'true') return;
   const childId = form.dataset.childId;
   const submit = form.querySelector('[type="submit"]');
+  const submitLabel = submit?.textContent;
   const saveStatus = form.querySelector('[data-control-save-status]');
   const controls = [...form.querySelectorAll('input, select, textarea, button')].map((control) => [control, control.disabled]);
   form.dataset.controlPending = 'true';
@@ -1816,7 +1827,7 @@ async function saveDeviceControls(form, data) {
   } finally {
     delete form.dataset.controlPending;
     controls.forEach(([control, disabled]) => { control.disabled = disabled; });
-    if (submit) submit.textContent = 'Lưu điều khiển';
+    if (submit) submit.textContent = submitLabel;
     if (isCurrentControlForm(form) && document.activeElement === saveStatus) submit?.focus();
   }
 }
@@ -3738,6 +3749,16 @@ async function handleSubmit(event) {
         'enable_break_reminders',
       ];
       controlFields.forEach((name) => { data[name] = form.elements[name].checked; });
+      data.vision_session_minutes = Number(form.elements.vision_session_minutes.value);
+      if (!Number.isInteger(data.vision_session_minutes) || data.vision_session_minutes < 1 || data.vision_session_minutes > 60) {
+        throw new Error('Thời lượng phiên camera phải từ 1 đến 60 phút.');
+      }
+      if (event.submitter?.dataset.startVisionSession === 'true') {
+        if (!data.enable_posture_monitoring && !data.enable_eye_distance_monitoring) {
+          throw new Error('Hãy chọn Theo dõi tư thế hoặc Cảnh báo khoảng cách mắt để bắt đầu phiên.');
+        }
+        data.start_vision_session = true;
+      }
       data.daily_limit_minutes = Number(data.daily_limit_minutes);
       if (data.enable_break_reminders) {
         data.break_interval_minutes = Number(form.elements.break_interval_minutes.value);

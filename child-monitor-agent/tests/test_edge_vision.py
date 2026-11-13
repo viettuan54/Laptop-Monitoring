@@ -2,7 +2,7 @@ import os
 import sys
 import unittest
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, Mock, patch
 
 AGENT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMPANION_ROOT = os.path.join(AGENT_ROOT, "companion")
@@ -200,6 +200,66 @@ class EdgeVisionTest(unittest.TestCase):
         config = normalize_vision_config({"enabled": True})
         self.assertTrue(config["posture_enabled"])
         self.assertTrue(config["eye_distance_enabled"])
+
+    def test_session_guard_expires_without_landmarks_and_resists_clock_rollback(self):
+        monitor = EdgeVisionMonitor(self._PipeClient())
+        config = normalize_vision_config({'enabled': True, 'session_id': 'session-one', 'session_deadline': 1300})
+        with patch('edge_vision.time.time', return_value=1000), patch('edge_vision.time.monotonic', return_value=20):
+            self.assertTrue(monitor._session_allows_camera(config))
+        with patch('edge_vision.time.time', return_value=900), patch('edge_vision.time.monotonic', return_value=320):
+            self.assertFalse(monitor._session_allows_camera(config))
+        self.assertFalse(monitor._session_allows_camera(config))
+        self.assertEqual(monitor._pending_session_end, ('session-one', 'timeout'))
+        self.assertFalse(monitor._session_allows_camera(normalize_vision_config({'enabled': True})))
+
+    def test_session_stops_at_first_queued_alert_before_second_analysis(self):
+        pipe = self._PipeClient()
+        monitor = EdgeVisionMonitor(pipe)
+        config = normalize_vision_config({'enabled': True, 'session_id': 'session-one'})
+        profile = self._profile()
+        face = SimpleNamespace(face_landmarks=[self._landmarks_for_distance(30, profile)])
+        with patch('edge_vision.time.monotonic', side_effect=(0, 2.5, 5)):
+            monitor._evaluate(face, None, 640, 480, config, profile)
+            monitor._evaluate(face, None, 640, 480, config, profile)
+            with patch('edge_vision.analyze_posture') as posture:
+                self.assertTrue(monitor._evaluate(face, None, 640, 480, config, profile))
+                posture.assert_not_called()
+        self.assertEqual(len(pipe.alerts), 1)
+        self.assertEqual(pipe.alerts[0][2]['session_id'], 'session-one')
+
+    def test_camera_is_released_on_first_alert_or_session_expiry(self):
+        for outcome in ('alert', 'timeout'):
+            with self.subTest(outcome=outcome):
+                monitor = EdgeVisionMonitor(self._PipeClient())
+                config = normalize_vision_config({'enabled': True, 'session_id': 'session-test', 'session_deadline': 4000000000})
+                monitor.update_config(config)
+                camera = Mock()
+                camera.isOpened.return_value = True
+                camera.read.return_value = (True, SimpleNamespace(shape=(480, 640, 3)))
+                cv = SimpleNamespace(VideoCapture=Mock(return_value=camera), CAP_DSHOW=0,
+                    CAP_PROP_FRAME_WIDTH=3, CAP_PROP_FRAME_HEIGHT=4, COLOR_BGR2RGB=1, cvtColor=lambda *a: None)
+                detector = MagicMock()
+                vision = SimpleNamespace(RunningMode=SimpleNamespace(VIDEO=1),
+                    FaceLandmarkerOptions=lambda **kw: None, PoseLandmarkerOptions=lambda **kw: None,
+                    FaceLandmarker=SimpleNamespace(create_from_options=lambda *a: detector),
+                    PoseLandmarker=SimpleNamespace(create_from_options=lambda *a: detector))
+                mp = SimpleNamespace(tasks=SimpleNamespace(BaseOptions=lambda **kw: None, vision=vision),
+                    Image=lambda **kw: None, ImageFormat=SimpleNamespace(SRGB=1))
+                with patch.dict(sys.modules, {'cv2': cv}), patch('edge_vision.load_mediapipe', return_value=mp), \
+                     patch('edge_vision.os.makedirs'), \
+                     patch('edge_vision.os.path.isfile', return_value=True), \
+                     patch.object(monitor, '_load_compatible_distance_profile', return_value=(None, None)), \
+                     patch.object(monitor, '_load_posture_classifier', return_value=None), \
+                     patch.object(monitor, '_evaluate', return_value=True) as evaluate, \
+                     patch.object(monitor, '_session_allows_camera', side_effect=[True, False] if outcome == 'timeout' else [True] * 4):
+                    monitor._run_enabled(config)
+                camera.release.assert_called_once()
+                if outcome == 'alert':
+                    evaluate.assert_called_once()
+                    self.assertEqual(monitor._completed_session_id, 'session-test')
+                else:
+                    evaluate.assert_not_called()
+                    camera.read.assert_not_called()
 
     def test_custom_model_can_add_warning_when_rules_are_safe(self):
         class Model:

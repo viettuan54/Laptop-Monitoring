@@ -41,6 +41,8 @@ import vn.laptopchildren.parent.data.*
     var end by remember(settings.child_id, settings.allowed_end_time) { mutableStateOf(settings.allowed_end_time.take(5)) }
     var error by remember { mutableStateOf<String?>(null) }
     var confirm by remember(settings.child_id) { mutableStateOf<Pair<String, Map<String, Any>>?>(null) }
+    var visionMinutes by remember(settings.child_id, settings.vision_session_minutes) { mutableStateOf(settings.vision_session_minutes.toString()) }
+    val validVisionMinutes = visionMinutes.toIntOrNull()?.takeIf { it in 1..60 }
     var interval by remember(settings.child_id, settings.break_interval_minutes) { mutableStateOf(settings.break_interval_minutes.toString()) }
     var breakTime by remember(settings.child_id, settings.break_duration_minutes) { mutableStateOf(settings.break_duration_minutes.toString()) }
 
@@ -222,16 +224,46 @@ import vn.laptopchildren.parent.data.*
                     Text("Giám sát tư thế & Khoảng cách", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
                 Text("Hình ảnh webcam chỉ được xử lý trên laptop của con; chỉ gửi tín hiệu cảnh báo.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                OutlinedTextField(
+                    value = visionMinutes, onValueChange = { visionMinutes = it },
+                    label = { Text("Thời lượng phiên camera (phút)") },
+                    supportingText = { Text("Từ 1 đến 60 phút. Áp dụng khi bắt đầu phiên mới.") },
+                    isError = validVisionMinutes == null, enabled = !s.busy,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true, modifier = Modifier.fillMaxWidth()
+                )
                 ToggleRow("Theo dõi tư thế", "Nhắc nhở khi con ngồi sai tư thế.", settings.postureMonitoringEnabled, !s.busy) {
-                    if (it) confirm = "Bật webcam trên các laptop của con để phát hiện và cảnh báo tư thế ngồi? Lựa chọn khoảng cách mắt được giữ nguyên." to mapOf("enable_posture_monitoring" to true)
+                    if (it && validVisionMinutes != null) confirm = "Bắt đầu phiên webcam tối đa $validVisionMinutes phút trên các laptop của con để theo dõi tư thế? Camera dừng khi hết giờ hoặc có cảnh báo đầu tiên. Lựa chọn khoảng cách mắt được giữ nguyên." to mapOf("enable_posture_monitoring" to true, "vision_session_minutes" to validVisionMinutes)
+                    else if (it) error = "Thời lượng phiên camera phải từ 1 đến 60 phút."
                     else vm.saveSettings(mapOf("enable_posture_monitoring" to false))
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 ToggleRow("Cảnh báo khoảng cách mắt", "Nhắc nhở khi mắt con ở quá gần màn hình.", settings.eyeDistanceMonitoringEnabled, !s.busy) {
-                    if (it) confirm = "Bật webcam trên các laptop của con để ước lượng và cảnh báo khoảng cách mắt? Lựa chọn tư thế được giữ nguyên." to mapOf("enable_eye_distance_monitoring" to true)
+                    if (it && validVisionMinutes != null) confirm = "Bắt đầu phiên webcam tối đa $validVisionMinutes phút trên các laptop của con để cảnh báo khoảng cách mắt? Camera dừng khi hết giờ hoặc có cảnh báo đầu tiên. Lựa chọn tư thế được giữ nguyên." to mapOf("enable_eye_distance_monitoring" to true, "vision_session_minutes" to validVisionMinutes)
+                    else if (it) error = "Thời lượng phiên camera phải từ 1 đến 60 phút."
                     else vm.saveSettings(mapOf("enable_eye_distance_monitoring" to false))
                 }
-                Text("Tắt cả hai chức năng để dừng webcam sau khi laptop đồng bộ cấu hình.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("Camera tự tắt khi hết giờ hoặc có cảnh báo đầu tiên. Công tắc thể hiện chức năng được chọn, không phải trạng thái camera. Phiên đã dừng không tự chạy lại.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(
+                    enabled = !s.busy && validVisionMinutes != null && (settings.postureMonitoringEnabled || settings.eyeDistanceMonitoringEnabled),
+                    onClick = {
+                        confirm = "Bắt đầu phiên webcam mới tối đa $validVisionMinutes phút trên các laptop của con với các chức năng đã chọn?" to mapOf(
+                            "start_vision_session" to true, "vision_session_minutes" to validVisionMinutes!!)
+                    }, modifier = Modifier.fillMaxWidth()
+                ) { Text("Bắt đầu phiên mới") }
+                s.devices.filter { it.child_id == s.childId }.forEach { device ->
+                    val status = if (settings.vision_session_id == null) "Chưa yêu cầu phiên mới"
+                    else if (device.vision_session_id != settings.vision_session_id) "Chờ laptop nhận phiên"
+                    else when (device.vision_session_status) {
+                        "received" -> "Đã nhận phiên; chưa xác nhận camera đang mở"
+                        "alert" -> "Đã dừng sau cảnh báo"
+                        "timeout" -> "Đã dừng do hết giờ"
+                        "stopped" -> "Đã dừng theo cấu hình"
+                        else -> "Chưa có xác nhận"
+                    }
+                    Text("${device.device_name}: $status", style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = vm::refresh, enabled = !s.busy) { Text("Tải lại trạng thái phiên") }
             }
         }
         Spacer(Modifier.height(16.dp))

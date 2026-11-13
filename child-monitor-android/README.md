@@ -1,6 +1,12 @@
 # LaptopChildren — Android cho phụ huynh
 
-App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản: `0.4.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
+App native Kotlin + Jetpack Compose dùng API hiện có của `child-monitor-backend`. Package: `vn.laptopchildren.parent`. Phiên bản: `0.5.0`, Android 8 trở lên, target SDK 35. Điện thoại mục tiêu ban đầu: Redmi K30 / Android 10.
+
+## Phiên camera (0.5.0)
+
+Chọn riêng tư thế/khoảng cách mắt, đặt 1–60 phút và bấm **Bắt đầu phiên mới**.
+Agent 1.0.27 tắt camera khi hết giờ hoặc đã lưu cảnh báo đầu tiên; không tự chạy lại.
+Cần backend với migration V31. Xem [hướng dẫn triển khai và kiểm thử](../child-monitor-agent/docs/agent_1_0_27_vision_sessions.md).
 
 ## Chức năng đã triển khai
 

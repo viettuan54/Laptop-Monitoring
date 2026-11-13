@@ -52,6 +52,7 @@ router.post(
 // ── Vision Alert: Agent gửi kết quả Computer Vision (chỉ metadata, không ảnh)
 // alert_type: posture_warning | stranger_detected | eye_distance_warning
 router.post('/vision-alert', deviceAuth, agentController.sendVisionAlert);
+router.post('/vision-session', deviceAuth, require('../controllers/visionSession.controller').report);
 
 // Text is accepted only for immediate moderation. The backend persists outcomes,
 // never the raw query/chat/page content.

@@ -34,6 +34,8 @@ DEFAULT_CONFIG = {
     "enabled": False,
     "posture_enabled": False,
     "eye_distance_enabled": False,
+    "session_id": None,
+    "session_deadline": 0,
     "camera_index": 0,
     "sample_interval_seconds": 0.5,
     "alert_hold_seconds": 5.0,
@@ -71,6 +73,8 @@ def normalize_vision_config(config):
         "enabled": posture or distance,
         "posture_enabled": posture,
         "eye_distance_enabled": distance,
+        "session_id": source.get("session_id") if isinstance(source.get("session_id"), str) else None,
+        "session_deadline": _bounded_number(source.get("session_deadline"), 0, 0, 4102444800),
         "subject_id": subject_id,
         "camera_index": int(_bounded_number(source.get("camera_index"), 0, 0, 8)),
         "sample_interval_seconds": _bounded_number(
@@ -172,6 +176,31 @@ class EdgeVisionMonitor:
         self._stop_event = threading.Event()
         self._thread = None
         self._gate = SustainedAlertGate()
+        self._session_id = None
+        self._session_monotonic_deadline = 0
+        self._completed_session_id = None
+        self._pending_session_end = None
+
+    def _session_allows_camera(self, config):
+        session_id = config.get("session_id")
+        if not config["enabled"] or not session_id or session_id == self._completed_session_id:
+            return False
+        if session_id != self._session_id:
+            self._session_id = session_id
+            remaining = max(0, min(3600, config["session_deadline"] - time.time()))
+            self._session_monotonic_deadline = time.monotonic() + remaining
+            self._gate = SustainedAlertGate()
+        if time.time() >= config["session_deadline"] or time.monotonic() >= self._session_monotonic_deadline:
+            self._completed_session_id = session_id
+            self._pending_session_end = (session_id, "timeout")
+            return False
+        return True
+
+    def _report_session_end(self):
+        if self._pending_session_end:
+            response = self.pipe_client.finish_vision_session(*self._pending_session_end)
+            if response is not None and not response.get("error"):
+                self._pending_session_end = None
 
     def update_config(self, response_or_config):
         if not isinstance(response_or_config, dict):
@@ -214,12 +243,18 @@ class EdgeVisionMonitor:
 
     def _send_alert(self, alert_type, message, metrics):
         response = self.pipe_client.send_vision_alert(alert_type, message, metrics)
-        if response is None:
+        if response is None or response.get("error"):
             logging.warning("Vision alert could not be persisted by the Service.")
-            return
+            return False
         logging.warning("Queued local Edge AI alert: %s", message)
+        if metrics.get("session_id"):
+            self._completed_session_id = metrics["session_id"]
         if self.warning_callback:
-            self.warning_callback(alert_type, message)
+            try:
+                self.warning_callback(alert_type, message)
+            except Exception:
+                logging.exception("Local vision notice failed; alert remains queued")
+        return True
 
     def _load_compatible_distance_profile(self, config, width, height):
         if not os.path.isfile(self.distance_profile_path):
@@ -429,11 +464,14 @@ class EdgeVisionMonitor:
                     "outside_feature_range": eye_metrics["outside_feature_range"],
                     "decision_policy": policy.copy(),
                 }
-                self._send_alert(
+                alert_metrics["session_id"] = config.get("session_id")
+                sent = self._send_alert(
                     "eye_distance_warning",
                     message,
                     alert_metrics,
                 )
+                if sent and config.get("session_id"):
+                    return True
 
         else:
             self._gate.reset("eye_distance")
@@ -511,7 +549,10 @@ class EdgeVisionMonitor:
             alert_metrics = posture.copy()
             alert_metrics["decision_source"] = decision_source
             alert_metrics["custom_model"] = model_posture
-            self._send_alert("posture_warning", message, alert_metrics)
+            alert_metrics["session_id"] = config.get("session_id")
+            sent = self._send_alert("posture_warning", message, alert_metrics)
+            if sent and config.get("session_id"):
+                return True
 
     def _run_enabled(self, config):
         if not os.path.isfile(self.face_model_path) or not os.path.isfile(self.pose_model_path):
@@ -556,6 +597,8 @@ class EdgeVisionMonitor:
         )
 
         backend = getattr(cv2, "CAP_DSHOW", 0)
+        if not self._session_allows_camera(self._get_config()):
+            return
         camera = cv2.VideoCapture(config["camera_index"], backend)
         if not camera.isOpened():
             camera.release()
@@ -584,7 +627,9 @@ class EdgeVisionMonitor:
             ):
                 while not self._stop_event.is_set():
                     current_config = self._get_config()
-                    if not current_config["enabled"]:
+                    if not self._session_allows_camera(current_config):
+                        break
+                    if current_config["session_id"] != config["session_id"]:
                         break
                     if any(current_config[key] != config[key] for key in
                            ("posture_enabled", "eye_distance_enabled")):
@@ -607,6 +652,8 @@ class EdgeVisionMonitor:
                         now - last_sample
                     )
                     if wait_seconds > 0 and self._stop_event.wait(wait_seconds):
+                        break
+                    if not self._session_allows_camera(current_config):
                         break
 
                     ok, frame = camera.read()
@@ -638,7 +685,9 @@ class EdgeVisionMonitor:
                                    if current_config["eye_distance_enabled"] else None)
                     pose_result = (pose_landmarker.detect_for_video(image, timestamp_ms)
                                    if current_config["posture_enabled"] else None)
-                    self._evaluate(
+                    if not self._session_allows_camera(current_config):
+                        break
+                    alerted = self._evaluate(
                         face_result,
                         pose_result,
                         frame.shape[1],
@@ -648,6 +697,9 @@ class EdgeVisionMonitor:
                         distance_profile_sha256,
                         posture_classifier,
                     )
+                    if alerted:
+                        self._completed_session_id = current_config["session_id"]
+                        break
                     # No image/frame is written to disk or sent over IPC/network.
                     del image, rgb, frame
         finally:
@@ -656,8 +708,12 @@ class EdgeVisionMonitor:
 
     def _run(self):
         while not self._stop_event.is_set():
+            try:
+                self._report_session_end()
+            except Exception:
+                logging.warning("Vision session completion will be retried")
             config = self._get_config()
-            if not config["enabled"]:
+            if not self._session_allows_camera(config):
                 self._stop_event.wait(1)
                 continue
             try:

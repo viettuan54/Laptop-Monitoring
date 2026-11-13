@@ -5,7 +5,7 @@ import tempfile
 import time
 import unittest
 import uuid
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 from datetime import datetime, timedelta, timezone
 
 AGENT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -475,6 +475,56 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         self.assertTrue(any("eye_distance_warning HTTP=403" in line for line in captured.output))
         self.queue.sync_vision_alerts(api)
         self.assertEqual(api.post.call_count, 1)
+
+    def test_vision_session_timeout_is_durable_and_never_extended_by_polling(self):
+        session_id = str(uuid.uuid4())
+        with patch('offline_queue.time.time', return_value=1000):
+            config = self.queue.vision_session(session_id, 5, True)
+        self.assertTrue(config['enabled'])
+        self.assertEqual(config['session_deadline'], 1300)
+        # A new queue instance simulates a Service restart with the same SQLite DB.
+        restarted = OfflineQueue(db_path=self.queue.db_path, secure_file=False)
+        with patch('offline_queue.time.time', return_value=1299):
+            self.assertEqual(restarted.vision_session(session_id, 60, True)['session_deadline'], 1300)
+        with patch('offline_queue.time.time', return_value=1300):
+            self.assertFalse(restarted.vision_session(session_id, 5, True)['enabled'])
+        with patch('offline_queue.time.time', return_value=1310):
+            self.assertFalse(restarted.vision_session(session_id, 5, True)['enabled'])
+            self.assertTrue(restarted.vision_session(str(uuid.uuid4()), 5, True)['enabled'])
+
+    def test_first_session_alert_is_durable_and_new_session_is_not_deduplicated(self):
+        for alert_type in ('eye_distance_warning', 'posture_warning'):
+            session_id = str(uuid.uuid4())
+            self.queue.vision_session(session_id, 5, True)
+            record_id, inserted = self.queue.enqueue_vision_alert(alert_type, 'test', session_id=session_id)
+            self.assertTrue(inserted)
+            self.assertEqual(self.queue.vision_session(session_id, 5, True)['session_status'], 'alert')
+            self.assertFalse(self.queue.vision_session(session_id, 5, True)['enabled'])
+            duplicate, inserted = self.queue.enqueue_vision_alert(alert_type, 'test', session_id=session_id)
+            self.assertEqual(duplicate, record_id)
+            self.assertFalse(inserted)
+            another = str(uuid.uuid4())
+            self.queue.vision_session(another, 5, True)
+            self.assertTrue(self.queue.enqueue_vision_alert(alert_type, 'test', session_id=another)[1])
+
+    def test_disabling_session_cannot_reopen_it_without_new_command(self):
+        session_id = str(uuid.uuid4())
+        self.assertFalse(self.queue.vision_session(None, 5, True)['enabled'])
+        self.assertTrue(self.queue.vision_session(session_id, 5, True)['enabled'])
+        self.queue.vision_session(None, 5, False)
+        self.assertFalse(self.queue.vision_session(session_id, 5, True)['enabled'])
+
+    def test_session_report_ack_does_not_drop_completion_during_upload(self):
+        session_id = str(uuid.uuid4())
+        self.queue.vision_session(session_id, 5, True)
+        def post(*args, **kwargs):
+            self.queue.finish_vision_session(session_id, 'timeout')
+            return Mock(status_code=200)
+        api = Mock(suspended=False)
+        api.post.side_effect = post
+        self.queue._sync_vision_sessions(api)
+        with self.queue.get_connection() as conn:
+            self.assertEqual(conn.execute('SELECT status,synced FROM vision_sessions WHERE session_id=?', (session_id,)).fetchone(), ('timeout', 0))
 
     def test_duplicate_vision_alert_is_suppressed_locally(self):
         first_id, inserted = self.queue.enqueue_vision_alert(

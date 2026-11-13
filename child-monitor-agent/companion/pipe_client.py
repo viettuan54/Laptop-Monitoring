@@ -94,6 +94,9 @@ class PipeClient:
         }
         return self._send_and_receive(payload)
 
+    def finish_vision_session(self, session_id, reason):
+        return self._send_and_receive({"action": "VISION_SESSION_FINISHED", "session_id": session_id, "reason": reason})
+
     def _send_and_receive(self, payload_dict, max_retries=3):
         """Mở kết nối pipe có hỗ trợ retry ngắn (100-300ms) để tránh xung đột tranh chấp."""
         for attempt in range(1, max_retries + 1):

@@ -62,6 +62,9 @@ class FakePipeClient:
 
 
 class FakeQueue:
+    def vision_session(self, session_id, minutes, enabled):
+        return {"enabled": False, "session_id": None, "session_deadline": 0}
+
     def __init__(self):
         self.web_calls = []
         self.text_calls = []

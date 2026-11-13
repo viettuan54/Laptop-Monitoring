@@ -192,8 +192,18 @@ class OfflineQueue:
                 synced INTEGER DEFAULT 0
             )
             """)
+            if 'session_id' not in {row[1] for row in cursor.execute('PRAGMA table_info(vision_alerts)')}:
+                cursor.execute('ALTER TABLE vision_alerts ADD COLUMN session_id TEXT')
 
             # Raw text is held only until the backend returns an explicit acknowledgement.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS vision_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    deadline REAL NOT NULL,
+                    status TEXT NOT NULL,
+                    synced INTEGER NOT NULL DEFAULT 0
+                )
+            """)
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS text_moderation_queue (
                 client_record_id TEXT PRIMARY KEY,
@@ -672,33 +682,75 @@ class OfflineQueue:
             logging.error(f"Failed to backfill local web category: {e}")
             return 0
 
-    def enqueue_vision_alert(self, alert_type, message, client_record_id=None):
+    def vision_session(self, session_id, minutes, enabled):
+        """Claim each parent command once; keep deadline/completion across restarts."""
+        if session_id:
+            try:
+                session_id = str(uuid.UUID(str(session_id)))
+            except (ValueError, TypeError, AttributeError):
+                session_id = None
+        now = time.time()
+        minutes = minutes if isinstance(minutes, int) and not isinstance(minutes, bool) and 1 <= minutes <= 60 else 5
+        with self.get_connection() as conn:
+            conn.execute("UPDATE vision_sessions SET status='stopped', synced=0 WHERE status='received' AND (session_id != ? OR ? = 0)",
+                         (session_id or '', int(bool(enabled))))
+            if enabled and session_id:
+                conn.execute("INSERT OR IGNORE INTO vision_sessions(session_id,deadline,status) VALUES (?,?,'received')",
+                             (session_id, now + minutes * 60))
+            conn.execute("UPDATE vision_sessions SET status='timeout',synced=0 WHERE status='received' AND deadline <= ?", (now,))
+            row = conn.execute("SELECT deadline,status FROM vision_sessions WHERE session_id=?", (session_id or '',)).fetchone()
+            conn.commit()
+        if row:
+            self.vision_sync_requested.set()
+        return {"session_id": session_id, "session_deadline": row[0] if row else 0,
+                "session_status": row[1] if row else 'idle',
+                "enabled": bool(enabled and row and row[1] == 'received')}
+
+    def finish_vision_session(self, session_id, reason):
+        if reason not in ('timeout', 'stopped'):
+            raise ValueError('Invalid vision session completion reason')
+        with self.get_connection() as conn:
+            conn.execute("UPDATE vision_sessions SET status=?,synced=0 WHERE session_id=? AND status='received'", (reason, session_id))
+            conn.commit()
+        self.vision_sync_requested.set()
+
+    def enqueue_vision_alert(self, alert_type, message, client_record_id=None, session_id=None):
         """Lưu metadata cảnh báo camera để đồng bộ sau; không nhận dữ liệu ảnh."""
         client_record_id = client_record_id or str(uuid.uuid4())
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()
+                if session_id:
+                    session = cursor.execute("SELECT status FROM vision_sessions WHERE session_id=?", (session_id,)).fetchone()
+                    if not session or session[0] != 'received':
+                        previous = cursor.execute("SELECT client_record_id FROM vision_alerts WHERE session_id=?", (session_id,)).fetchone()
+                        if previous:
+                            return previous[0], False
+                        return None, False
+                    cursor.execute("UPDATE vision_sessions SET status='alert',synced=0 WHERE session_id=?", (session_id,))
                 cutoff = (
                     datetime.now().astimezone() - timedelta(minutes=5)
                 ).isoformat()
                 existing = cursor.execute(
                     """SELECT client_record_id FROM vision_alerts
-                       WHERE alert_type = ? AND created_at >= ?
+                       WHERE alert_type = ? AND created_at >= ? AND session_id IS ?
                        ORDER BY created_at DESC LIMIT 1""",
-                    (alert_type, cutoff),
+                    (alert_type, cutoff, session_id),
                 ).fetchone()
                 if existing:
+                    conn.commit()
                     self.vision_sync_requested.set()
                     return existing[0], False
                 cursor.execute("""
                 INSERT OR IGNORE INTO vision_alerts
-                    (client_record_id, alert_type, message, created_at, synced)
-                VALUES (?, ?, ?, ?, 0)
+                    (client_record_id, alert_type, message, created_at, synced, session_id)
+                VALUES (?, ?, ?, ?, 0, ?)
                 """, (
                     client_record_id,
                     alert_type,
                     message,
                     datetime.now().astimezone().isoformat(),
+                    session_id,
                 ))
                 inserted = cursor.rowcount == 1
                 conn.commit()
@@ -1038,8 +1090,20 @@ class OfflineQueue:
         try:
             if not api_client.suspended:
                 self._sync_vision_alerts(api_client)
+                self._sync_vision_sessions(api_client)
         finally:
             self._vision_sync_lock.release()
+
+    def _sync_vision_sessions(self, api_client):
+        with self.get_connection() as conn:
+            rows = conn.execute("SELECT session_id,status FROM vision_sessions WHERE synced=0 LIMIT 20").fetchall()
+        for session_id, status in rows:
+            response = api_client.post('/api/agent/vision-session', data={'session_id': session_id, 'status': status})
+            if response is None or response.status_code not in (200, 201, 400, 403):
+                return
+            with self.get_connection() as conn:
+                conn.execute("UPDATE vision_sessions SET synced=1 WHERE session_id=? AND status=?", (session_id, status))
+                conn.commit()
 
     def _sync_vision_alerts(self, api_client):
         """Gửi tuần tự cảnh báo Edge AI vì backend tự chống trùng trong 5 phút."""
@@ -1058,6 +1122,7 @@ class OfflineQueue:
                     response = api_client.post("/api/agent/vision-alert", data={
                         "alert_type": row["alert_type"],
                         "message": row["message"],
+                        "session_id": row["session_id"],
                     })
                     if response is None:
                         logging.warning("Vision alert delivery deferred: type=%s; no backend response", row["alert_type"])

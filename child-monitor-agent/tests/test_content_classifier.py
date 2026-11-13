@@ -183,6 +183,7 @@ class ContentClassifierTest(unittest.TestCase):
         classifier = Mock()
         api_client = Mock()
         server = PipeServer(Mock(), enforcement, api_client, classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
 
         result = server.classify_web_domain("example.test")
 
@@ -203,6 +204,7 @@ class ContentClassifierTest(unittest.TestCase):
         }
         api_client = Mock()
         server = PipeServer(Mock(), enforcement, api_client, classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
 
         result = server.classify_app("msedge.exe")
 
@@ -223,6 +225,7 @@ class ContentClassifierTest(unittest.TestCase):
         api_client = Mock()
         api_client.classify_app.return_value = "learning"
         server = PipeServer(Mock(), enforcement, api_client, classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
 
         result = server.classify_app(
             "study.exe",
@@ -256,6 +259,7 @@ class ContentClassifierTest(unittest.TestCase):
         enforcement.get_screenshot_policy.return_value = {"enabled": False}
         enforcement.check_policy_status.return_value = (False, "OK", 3600)
         server = PipeServer(Mock(), enforcement)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
         server.app_processes = Mock()
         server.app_enforcer = Mock()
         server.app_enforcer.check.return_value = [{"request_id": "test"}]
@@ -282,6 +286,7 @@ class ContentClassifierTest(unittest.TestCase):
         api_client = Mock()
         api_client.classify_web_domain.return_value = "entertainment"
         server = PipeServer(Mock(), enforcement, api_client, classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
 
         result = server.classify_web_domain("youtube.com")
 
@@ -304,6 +309,7 @@ class ContentClassifierTest(unittest.TestCase):
         }
         api_client = Mock()
         server = PipeServer(Mock(), enforcement, api_client, classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
 
         result = server.classify_web_domain(
             "youtube.com",
@@ -330,6 +336,7 @@ class ContentClassifierTest(unittest.TestCase):
         }
         api_client = Mock()
         server = PipeServer(Mock(), enforcement, api_client, classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
 
         result = server.classify_web_domain("school.example")
 
@@ -345,6 +352,7 @@ class ContentClassifierTest(unittest.TestCase):
         queue = Mock()
         queue.record_app_usage.return_value = (None, False)
         server = PipeServer(queue, enforcement)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
         message = json.dumps({
             "action": "TRACK_APP",
             "app_name": "browser.exe",
@@ -371,6 +379,7 @@ class ContentClassifierTest(unittest.TestCase):
         record_id = "bc24f35c-ce48-4c5e-8d99-e4b565056269"
         queue.record_app_usage.return_value = (record_id, True)
         server = PipeServer(queue, enforcement)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
         message = json.dumps({
             "action": "TRACK_APP",
             "app_name": "browser.exe",
@@ -431,6 +440,7 @@ class ContentClassifierTest(unittest.TestCase):
         record_id = "7e1459b0-395b-4d85-a3cd-1f6589d578ea"
         queue.enqueue_web_log.return_value = (record_id, True)
         server = PipeServer(queue, enforcement, Mock(), classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
         message = json.dumps({
             "action": "TRACK_WEB",
             "url": "https://gamevui.vn/play",
@@ -466,6 +476,7 @@ class ContentClassifierTest(unittest.TestCase):
         record_id = "051575a0-ab87-4030-8a35-f250cbad8c62"
         queue.enqueue_web_log.return_value = (record_id, True)
         server = PipeServer(queue, enforcement, Mock(), classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
         server._schedule_web_classification = Mock(return_value=True)
         message = json.dumps({
             "action": "TRACK_WEB",
@@ -500,6 +511,7 @@ class ContentClassifierTest(unittest.TestCase):
         record_id = "b1f3f954-b0e4-4a32-8dc4-218a36c9a7ce"
         queue.record_app_usage.return_value = (record_id, True)
         server = PipeServer(queue, enforcement, Mock(), classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
         server._schedule_app_classification = Mock(return_value=True)
         message = json.dumps({
             "action": "TRACK_APP",
@@ -536,6 +548,7 @@ class ContentClassifierTest(unittest.TestCase):
         api_client.classify_web_domain.return_value = "entertainment"
         queue = Mock()
         server = PipeServer(queue, enforcement, api_client, classifier)
+        server.offline_queue.vision_session.return_value = {"enabled": False}
         server.running = True
         server.classification_pending.add("gamevui.vn")
         server.classification_queue.put("gamevui.vn")

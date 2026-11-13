@@ -16,6 +16,7 @@ from watchdog import Watchdog, WTS_SESSION_LOCK, WTS_SESSION_UNLOCK
 class PipeLifecycleTest(unittest.TestCase):
     def test_vision_config_preserves_independent_and_legacy_consent(self):
         server = PipeServer(Mock(), Mock())
+        server.offline_queue.vision_session.return_value = {"enabled": True}
         for posture, distance in ((False, False), (True, False), (False, True), (True, True)):
             server.enforcement_core.load_cached_settings.return_value = {
                 "enable_webcam_monitoring": True,

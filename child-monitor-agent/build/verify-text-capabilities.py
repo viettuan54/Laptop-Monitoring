@@ -18,7 +18,7 @@ REQUIRED = {
     "service/ChildMonitorService.exe": {
         "break_reminders": {"BreakReminderEngine", "tick", "receipt"},
         "api_client": {"post_text_moderation"},
-        "offline_queue": {"enqueue_text_moderation", "sync_text_moderation", "_sync_text_moderation", "text_sync_requested", "enqueue_app_enforcement", "_sync_app_enforcement"},
+        "offline_queue": {"enqueue_text_moderation", "sync_text_moderation", "_sync_text_moderation", "text_sync_requested", "enqueue_app_enforcement", "_sync_app_enforcement", "vision_sync_requested", "sync_vision_alerts"},
         "app_enforcement": {"AppEnforcer", "check", "tick"},
         "windows_app_process": {"WindowsAppProcesses", "WindowsAppTarget", "client_allowed", "terminate"},
         "enforcement_core": {"get_text_moderation_policy", "get_screenshot_policy"},
@@ -29,7 +29,7 @@ REQUIRED = {
         "text_privacy": {"eligible_timestamp", "protect_text", "unprotect_text"},
     },
     "companion/ChildMonitorCompanion.exe": {
-        "edge_vision": {"normalize_vision_config", "_evaluate", "posture_enabled", "eye_distance_enabled"},
+        "edge_vision": {"normalize_vision_config", "_evaluate", "posture_enabled", "eye_distance_enabled", "_session_allows_camera", "_report_session_end"},
         "break_monitor": {"BreakReminderMonitor", "idle_seconds", "GetLastInputInfo"},
         "ui_alerts": {"show_break_reminder"},
         "break_notice": {"show_break_notice", "check_break_notice_support", "CreateDialogIndirect"},

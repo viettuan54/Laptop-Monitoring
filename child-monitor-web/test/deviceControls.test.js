@@ -7,7 +7,7 @@ const { functionSource } = require('./queryAlertRenderer');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const config = {
-  child_id: 7, daily_limit_minutes: 120, allowed_start_time: '07:00', allowed_end_time: '21:00',
+  vision_session_minutes: 5, child_id: 7, daily_limit_minutes: 120, allowed_start_time: '07:00', allowed_end_time: '21:00',
   is_locked: true, enable_webcam_monitoring: false, enable_screenshot_review: true,
   enable_break_reminders: true, break_interval_minutes: 45, break_duration_minutes: 10,
 };
@@ -33,6 +33,30 @@ test('vision controls render and save all independent combinations', async () =>
       assert.equal(save.requests[0].body.enable_webcam_monitoring, undefined);
     }
   }
+});
+
+test('explicit session start sends duration once and ordinary saves do not restart it', async () => {
+  const view = saveView(async () => ({}));
+  view.form.elements.enable_eye_distance_monitoring.checked = true;
+  view.form.elements.vision_session_minutes.value = '8';
+  await view.sandbox.handleSubmit({ target: view.form, preventDefault() {}, submitter: { dataset: { startVisionSession: 'true' } } });
+  assert.equal(view.requests[0].body.start_vision_session, true);
+  assert.equal(view.requests[0].body.vision_session_minutes, 8);
+  const ordinary = saveView(async () => ({}));
+  await ordinary.submit();
+  assert.equal(ordinary.requests[0].body.start_vision_session, undefined);
+});
+
+test('session start requires a selected feature and valid duration', async () => {
+  for (const duration of ['0', '61', '1.5', 'abc']) {
+    const view = saveView(async () => ({}));
+    view.form.elements.vision_session_minutes.value = duration;
+    await view.submit();
+    assert.equal(view.requests.length, 0);
+  }
+  const view = saveView(async () => ({}));
+  await view.sandbox.handleSubmit({ target: view.form, preventDefault() {}, submitter: { dataset: { startVisionSession: 'true' } } });
+  assert.equal(view.requests.length, 0);
 });
 
 test('legacy webcam consent populates both new controls', async () => {
@@ -157,7 +181,7 @@ function saveView(api, remindersEnabled = true, { savedLocked = true, locked = t
       };
       this.fields = {
         daily_limit_minutes: '120', allowed_start_time: '07:00', allowed_end_time: '21:00',
-        break_interval_minutes: '45', break_duration_minutes: '10',
+        break_interval_minutes: '45', break_duration_minutes: '10', vision_session_minutes: '5',
       };
       for (const name of Object.keys(this.fields)) {
         this.elements[name] = new Element();

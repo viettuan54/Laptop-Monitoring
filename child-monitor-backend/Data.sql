@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS devices (
     device_uid   VARCHAR(150) UNIQUE,
     device_secret VARCHAR(64) DEFAULT encode(digest(gen_random_uuid()::text, 'sha256'), 'hex') NOT NULL,
     last_seen_at TIMESTAMP,
+    vision_session_id UUID,
+    vision_session_status TEXT,
+    vision_session_reported_at TIMESTAMPTZ,
     created_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -112,6 +115,10 @@ CREATE TABLE IF NOT EXISTS settings (
     allowed_end_time    TIME DEFAULT '21:00:00',
     is_locked           BOOLEAN DEFAULT FALSE,
     enable_webcam_monitoring   BOOLEAN DEFAULT FALSE,
+    enable_posture_monitoring  BOOLEAN NOT NULL DEFAULT FALSE,
+    enable_eye_distance_monitoring BOOLEAN NOT NULL DEFAULT FALSE,
+    vision_session_minutes INTEGER NOT NULL DEFAULT 5 CHECK (vision_session_minutes BETWEEN 1 AND 60),
+    vision_session_id UUID,
     enable_screenshot_review   BOOLEAN DEFAULT FALSE,
     enable_keylog              BOOLEAN DEFAULT FALSE, -- retired compatibility column
     enable_break_reminders     BOOLEAN NOT NULL DEFAULT FALSE,
@@ -151,10 +158,13 @@ CREATE TABLE IF NOT EXISTS alerts (
     alert_id    BIGSERIAL PRIMARY KEY,
     device_id   INT NOT NULL REFERENCES devices(device_id) ON DELETE CASCADE,
     alert_type  alert_type NOT NULL,
+    vision_session_id UUID,
     message     VARCHAR(500) NOT NULL,
     is_read     BOOLEAN DEFAULT FALSE,
     created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS alerts_vision_session_unique ON alerts(device_id, vision_session_id) WHERE vision_session_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS token_blacklist (
     jti        VARCHAR(36) PRIMARY KEY,

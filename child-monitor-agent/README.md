@@ -1,5 +1,12 @@
 # Child Monitor Agent
 
+Agent **1.0.27** hỗ trợ phiên camera có thời hạn, dừng sau cảnh báo đầu tiên hoặc hết giờ,
+chỉ chạy lại khi phụ huynh chủ động bắt đầu. Xem [hướng dẫn phiên camera](docs/agent_1_0_27_vision_sessions.md).
+
+Agent **1.0.26** gửi cảnh báo tư thế/khoảng cách mắt ngay sau khi lưu hàng đợi,
+không chờ đợt đồng bộ log ứng dụng/website 60 giây. Khi offline, hàng đợi được
+thử lại qua luồng riêng. Xem [chi tiết và cách chẩn đoán](docs/agent_1_0_26_vision_delivery.md).
+
 Agent **1.0.25** hỗ trợ [bật riêng tư thế và khoảng cách mắt](docs/agent_1_0_25_vision_controls.md).
 Mỗi chức năng có cấu hình riêng; tắt cả hai sẽ đóng webcam sau khi đồng bộ.
 
@@ -91,7 +98,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.25"
+  -Version "1.0.27"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -99,14 +106,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.25.exe
+build\output\ChildMonitorSetup-1.0.27.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.25" `
+  -Version "1.0.27" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"
@@ -264,8 +271,8 @@ Pipeline mặc định lấy mẫu 2 lần/giây và chỉ cảnh báo khi tín 
 
 Frame chỉ tồn tại trong RAM của Companion. Ảnh, landmark và embedding không
 được ghi xuống đĩa hay gửi qua Named Pipe/backend; chỉ loại cảnh báo và thông
-điệp số được lưu vào SQLite offline queue. Backend tiếp tục chống trùng cảnh
-báo trong 5 phút.
+điệp số được lưu vào SQLite offline queue. Backend chống trùng theo mã phiên với
+Agent 1.0.27; cảnh báo cũ không có mã phiên vẫn chống trùng trong 5 phút.
 
 Agent cố định MediaPipe `0.10.33`. Runtime này đã được kiểm tra không chứa
 Clearcut uploader của bản 0.10.35; không tự nâng phiên bản nếu chưa đánh giá lại

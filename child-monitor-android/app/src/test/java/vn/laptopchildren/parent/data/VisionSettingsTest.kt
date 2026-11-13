@@ -9,6 +9,22 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class VisionSettingsTest {
+    @Test fun explicitSessionStartSendsDurationAndReadsCommandId() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(MockResponse().setBody("""{"child_id":7,"vision_session_minutes":5,"vision_session_id":"session-test","enable_posture_monitoring":true}"""))
+            val api = createApi(server.url("/").toString(), MemorySession().apply { begin(Tokens("parent", "refresh")) })
+            val result = api.saveSettings(7, mapOf("start_vision_session" to true, "vision_session_minutes" to 5))
+            val body = JsonParser.parseString(server.takeRequest().body.readUtf8()).asJsonObject
+            assertTrue(body["start_vision_session"].asBoolean)
+            assertEquals(5, body["vision_session_minutes"].asInt)
+            assertFalse(body.has("enable_webcam_monitoring"))
+            assertEquals("session-test", result.vision_session_id)
+            assertEquals(5, result.vision_session_minutes)
+        } finally { server.shutdown() }
+    }
+
     @Test fun independentFlagsOverrideLegacyConsentIncludingExplicitFalse() {
         for (posture in listOf(false, true)) for (distance in listOf(false, true)) {
             val settings = Gson().fromJson("""{"enable_webcam_monitoring":true,
