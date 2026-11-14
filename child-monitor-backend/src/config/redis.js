@@ -3,6 +3,12 @@ const { RedisStore } = require('rate-limit-redis');
 
 const redisUrl = process.env.REDIS_URL?.trim();
 let redisClient = null;
+let initialization;
+let stopping = false;
+const startupTimeoutMs = Number(process.env.REDIS_STARTUP_TIMEOUT_MS || 10000);
+if (!Number.isInteger(startupTimeoutMs) || startupTimeoutMs < 100 || startupTimeoutMs > 120000) {
+  throw new Error('REDIS_STARTUP_TIMEOUT_MS must be an integer between 100 and 120000');
+}
 
 if (redisUrl) {
   const parsed = new URL(redisUrl);
@@ -13,8 +19,8 @@ if (redisUrl) {
   redisClient = createClient({
     url: redisUrl,
     socket: {
-      connectTimeout: 5000,
-      reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
+      connectTimeout: Math.min(5000, startupTimeoutMs),
+      reconnectStrategy: (retries) => stopping ? false : Math.min(retries * 100, 3000),
     },
   });
   redisClient.on('error', (error) => {
@@ -31,12 +37,35 @@ async function initializeRedis() {
     return false;
   }
 
-  if (!redisClient.isOpen) {
-    await redisClient.connect();
-  }
-  await redisClient.ping();
-  console.log('[Redis] Connected; distributed rate limiting is active.');
-  return true;
+  // Share one startup attempt. Its deadline covers connect, handshake and PING,
+  // including retry delays; a per-socket connectTimeout alone cannot do this.
+  if (!initialization) initialization = (async () => {
+    let timer;
+    const deadline = new Promise((resolve, reject) => {
+      timer = setTimeout(() => reject(new Error(
+        `Redis startup timed out after ${startupTimeoutMs}ms; check Redis availability and REDIS_URL`
+      )), startupTimeoutMs);
+    });
+    try {
+      await Promise.race([
+        (async () => {
+          if (!redisClient.isOpen) await redisClient.connect();
+          if (stopping) throw new Error('Redis startup cancelled');
+          await redisClient.ping();
+        })(),
+        deadline,
+      ]);
+      console.log('[Redis] Connected; distributed rate limiting is active.');
+      return true;
+    } catch (error) {
+      stopping = true;
+      if (redisClient.isOpen) redisClient.destroy();
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  })();
+  return initialization;
 }
 
 function createRateLimitStore(prefix) {
@@ -49,9 +78,10 @@ function createRateLimitStore(prefix) {
 }
 
 async function closeRedis() {
-  if (redisClient?.isOpen) {
-    await redisClient.close();
-  }
+  stopping = true;
+  if (!redisClient?.isOpen) return;
+  // Shutdown cancels pending commands: close() can wait forever for their replies.
+  redisClient.destroy();
 }
 
 module.exports = {

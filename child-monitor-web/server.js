@@ -72,7 +72,19 @@ function proxyApi(req, res) {
 }
 
 function serveStatic(req, res) {
-  const requestPath = decodeURIComponent(req.url.split('?')[0]);
+  let requestPath;
+  try {
+    requestPath = decodeURIComponent(req.url.split('?')[0]);
+  } catch (error) {
+    if (!(error instanceof URIError)) throw error;
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', ...staticSecurityHeaders });
+    return res.end('Bad request');
+  }
+  // A decoded NUL is invalid for filesystem APIs and can also throw synchronously.
+  if (requestPath.includes('\0')) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8', ...staticSecurityHeaders });
+    return res.end('Bad request');
+  }
   const relativePath = requestPath === '/' ? 'index.html' : requestPath.replace(/^\/+/, '');
   const resolved = path.resolve(ROOT, relativePath);
 
@@ -115,6 +127,6 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  console.log(`SafeNest dashboard: http://localhost:${PORT}`);
+  console.log(`SafeNest dashboard: http://localhost:${server.address().port}`);
   console.log(`API proxy target: ${API_TARGET.origin}`);
 });

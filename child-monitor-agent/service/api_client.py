@@ -5,6 +5,7 @@ import logging
 import requests
 import win32crypt
 import base64
+import threading
 from urllib.parse import urlparse
 
 from runtime_paths import agent_root
@@ -29,6 +30,9 @@ class APIClient:
         self.vision_subject_id = None
         self.suspended = False
         self.last_config_mtime = 0
+        self._reload_lock = threading.Lock()
+        self._credential_check_pending = False
+        self._next_credential_check = 0
         
         self.load_config()
 
@@ -70,16 +74,16 @@ class APIClient:
             return False
 
         try:
-            self.last_config_mtime = os.path.getmtime(self.config_path)
+            config_mtime = os.path.getmtime(self.config_path)
             with open(self.config_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             configured_url = data.get("server_url", DEFAULT_SERVER_URL).rstrip("/")
-            self.server_url = self.validate_server_url(configured_url)
+            server_url = self.validate_server_url(configured_url)
             
             raw_secret = data.get("device_secret", "")
             subject_id = data.get("vision_subject_id")
-            self.vision_subject_id = (
+            vision_subject_id = (
                 subject_id
                 if isinstance(subject_id, str) and subject_id.startswith("subject-")
                 else None
@@ -91,9 +95,18 @@ class APIClient:
                 data["is_encrypted"] = True
                 with open(self.config_path, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
-                self.device_secret = raw_secret
+                config_mtime = os.path.getmtime(self.config_path)
+                config_mtime = os.path.getmtime(self.config_path)
+                device_secret = raw_secret
             else:
-                self.device_secret = self.decrypt_secret(raw_secret)
+                device_secret = self.decrypt_secret(raw_secret)
+
+            if not device_secret:
+                raise ValueError("device_secret is missing or could not be decrypted")
+            self.server_url = server_url
+            self.device_secret = device_secret
+            self.vision_subject_id = vision_subject_id
+            self.last_config_mtime = config_mtime
 
             logging.info("Config loaded successfully.")
             return True
@@ -120,21 +133,34 @@ class APIClient:
         return server_url
 
     def check_config_reload(self):
-        """Kiểm tra nếu file local_config.json được ghi mới thì tự động nạp lại và gỡ cờ suspend nếu thành công."""
-        if not os.path.exists(self.config_path):
-            return
-        
-        current_mtime = os.path.getmtime(self.config_path)
-        if current_mtime > self.last_config_mtime:
-            logging.info("Detected local_config.json change. Reloading credentials...")
-            if self.load_config():
-                # Thử nghiệm gọi Heartbeat để xác nhận secret mới
-                test_res = self.post("/api/agent/heartbeat", data={})
-                if test_res and test_res.status_code == 200:
-                    logging.info("Re-authenticated successfully with new device secret!")
-                    self.suspended = False
-                else:
-                    logging.warning("New device secret validation failed.")
+        """Validate reloaded credentials, retrying transient failures on later calls."""
+        with self._reload_lock:
+            try:
+                current_mtime = os.path.getmtime(self.config_path)
+            except OSError:
+                current_mtime = None
+            if current_mtime is not None and current_mtime != self.last_config_mtime:
+                logging.info("Detected local_config.json change. Reloading credentials...")
+                if self.load_config():
+                    self.suspended = True
+                    self._credential_check_pending = True
+                    self._next_credential_check = 0
+
+            if not self._credential_check_pending or time.monotonic() < self._next_credential_check:
+                return
+            # Bypass only the normal suspension/reload gate, never authentication.
+            # Calling post() here would recurse and block the very recovery probe.
+            response = self._send_request("POST", "/api/agent/heartbeat", payload={}, max_retries=1)
+            if response is not None and response.status_code == 200:
+                self.suspended = False
+                self._credential_check_pending = False
+                logging.info("Re-authenticated successfully with new device secret!")
+            elif response is not None and response.status_code < 500 and response.status_code not in (408, 429):
+                self._credential_check_pending = False
+                logging.warning("New device secret validation rejected; waiting for updated configuration.")
+            else:
+                self._next_credential_check = time.monotonic() + 30
+                logging.warning("Credential validation temporarily unavailable; will retry later.")
 
     def _get_headers(self):
         return {
@@ -149,6 +175,10 @@ class APIClient:
         if self.suspended:
             logging.warning("API calls are currently SUSPENDED due to invalid device secret (HTTP 401).")
             return None
+
+        return self._send_request(method, endpoint, payload, timeout, max_retries, before_send)
+
+    def _send_request(self, method, endpoint, payload=None, timeout=10, max_retries=3, before_send=None):
 
         url = f"{self.server_url}{endpoint}"
         headers = self._get_headers()

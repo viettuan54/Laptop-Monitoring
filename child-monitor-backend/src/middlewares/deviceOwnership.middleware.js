@@ -29,7 +29,7 @@ module.exports = async (req, res, next) => {
   } catch (error) {
     console.error('Device ownership middleware error:', error);
     if (typeof req.releaseRls === 'function') {
-      await req.releaseRls(false);
+      await req.releaseRls(false).catch(() => {});
     }
     return res.status(500).json({ message: 'Internal server error' });
   }

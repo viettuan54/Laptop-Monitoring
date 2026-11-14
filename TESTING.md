@@ -17,6 +17,13 @@ Redis hoặc Memurai test nên chỉ bind loopback trên một cổng riêng, v�
 Xác minh trước khi chạy suite bằng `redis-cli -h 127.0.0.1 -p 6380 ping`; kết quả
 phải là `PONG`.
 
+Backend giới hạn tổng thời gian khởi tạo Redis (kết nối, handshake và PING)
+bằng `REDIS_STARTUP_TIMEOUT_MS`, mặc định `10000` ms, cho phép `100`–`120000` ms.
+Đặt biến này trong `.env.test` nếu cần thời hạn riêng cho test. Khi hết hạn,
+suite báo `Redis startup timed out ...` và kết thúc thất bại thay vì retry vô hạn.
+Khởi động Redis test rồi chạy lại suite; production không fallback sang MemoryStore.
+Sau khi khởi tạo thành công, cơ chế reconnect khi Redis tạm mất kết nối vẫn được giữ.
+
 Chạy từ thư mục `child-monitor-backend`:
 
 ```powershell
