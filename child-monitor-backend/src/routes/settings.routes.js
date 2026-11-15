@@ -3,22 +3,23 @@ const router = express.Router();
 const auth = require('../middlewares/auth.middleware');
 const requireRole = require('../middlewares/role.middleware');
 const withRls = require('../middlewares/rls.middleware');
+const { parentApiLimiter } = require('../middlewares/rateLimit.middleware');
+
+router.use(auth, requireRole('parent'), parentApiLimiter);
 const settingsController = require('../controllers/settings.controller');
 
 // Lấy và cập nhật chính sách allow/block theo nhãn của từng trẻ
-router.get('/:child_id/policies', auth, requireRole('parent'), withRls, settingsController.getCategoryPolicies);
+router.get('/:child_id/policies', withRls, settingsController.getCategoryPolicies);
 router.put(
   '/:child_id/policies/:resource_type/:category',
-  auth,
-  requireRole('parent'),
   withRls,
   settingsController.updateCategoryPolicy
 );
 
 // Lấy cấu hình giám sát của trẻ em
-router.get('/:child_id', auth, requireRole('parent'), withRls, settingsController.getSettings);
+router.get('/:child_id', withRls, settingsController.getSettings);
 
 // Cập nhật cấu hình giám sát của trẻ em
-router.put('/:child_id', auth, requireRole('parent'), withRls, settingsController.updateSettings);
+router.put('/:child_id', withRls, settingsController.updateSettings);
 
 module.exports = router;

@@ -19,8 +19,11 @@ class MainActivity : ComponentActivity() {
         pendingAlerts = isNotification(intent)
         pendingDevice = intent?.getStringExtra("device_id")?.toLongOrNull()
         setContent {
-            LaunchedEffect(pendingAlerts, model.state.signedIn, model.state.busy) {
-                if (pendingAlerts && model.state.signedIn && !model.state.busy) { model.openAlerts(pendingDevice); pendingAlerts = false }
+            LaunchedEffect(pendingAlerts, model.state.signedIn, model.state.busy, model.state.loading) {
+                if (pendingAlerts && model.state.signedIn && !model.state.busy && !model.state.loading) {
+                    model.openAlerts(pendingDevice)
+                    pendingAlerts = false
+                }
             }
             ParentApp(model)
         }

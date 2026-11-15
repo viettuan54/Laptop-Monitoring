@@ -115,7 +115,7 @@ const pageTitles = {
   policies: ['Chính sách sử dụng', 'Thiết lập phân loại AI và quyền truy cập nội dung cho từng hồ sơ.'],
   activity: ['Hoạt động số', 'Theo dõi ứng dụng và website theo thiết bị, thời gian.'],
   alerts: ['Cảnh báo', 'Những tín hiệu phụ huynh cần xem xét và phản hồi.'],
-  ai: ['Trung tâm AI', 'Phân tích hành vi, báo cáo định kỳ và tư vấn bằng AI.'],
+  ai: ['Trung tâm AI', 'Xem phân tích theo thiết bị, tạo báo cáo và trò chuyện với trợ lý AI.'],
   account: ['Tài khoản & bảo mật', 'Quản lý phiên đăng nhập và các thao tác bảo mật.'],
   'admin-overview': ['Điều hành hệ thống', 'Sức khỏe, quy mô và hoạt động trên toàn hệ thống.'],
   users: ['Quản lý tài khoản', 'Theo dõi và quản trị tài khoản phụ huynh, quản trị viên.'],
@@ -3087,6 +3087,10 @@ function aiSession() {
   return session;
 }
 
+function aiBehaviorLabel(type) {
+  return { learning: 'Học tập', entertainment: 'Giải trí', risk: 'Có rủi ro', normal: 'Thông thường' }[type] || type || 'Chưa xác định';
+}
+
 function aiSessionCurrent(session) {
   return state.chat === session.history && state.userId === session.userId
     && state.role === 'parent' && Boolean(state.accessToken);
@@ -3136,7 +3140,7 @@ function aiControls(view) {
   button.disabled = !ready || Boolean(running);
   button.setAttribute('aria-busy', String(Boolean(running)));
   button.textContent = run?.phase === 'posting' ? 'Đang phân tích…'
-    : run?.phase === 'refreshing' ? 'Đang tải kết quả…' : '✦ Chạy phân tích mới';
+    : run?.phase === 'refreshing' ? 'Đang tải kết quả…' : 'Chạy phân tích mới';
   view.surface.querySelector('[data-action="latest-analysis"]').disabled = !ready || view.latest?.status === 'pending';
   for (const control of view.surface.querySelectorAll('[data-action="summary"]')) {
     control.disabled = !ready || (view.summary?.status === 'pending' && view.summary.period === control.dataset.period);
@@ -3203,17 +3207,17 @@ async function loadAIHistory(view, origin = null) {
     const rows = selected ? (await api(`/ai-analysis${queryString({ device_id: selected, limit: 50 })}`)).data || [] : [];
     if (!current()) return { status: 'ignored' };
     state.analyses = rows;
-    history.innerHTML = rows.map(item => `<article class="analysis-card"><span class="badge ${escapeHtml(String(item.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(item.risk_level))}</span><h4>${escapeHtml(item.behavior_type)}</h4><p>${escapeHtml(item.suggestion)}</p><time>${escapeHtml(deviceName(item.device_id))} · ${formatDate(item.analyzed_at)}</time></article>`).join('') || emptyState('✦', 'Chưa có phân tích', 'Chọn thiết bị và chạy phân tích AI đầu tiên.');
+    history.innerHTML = rows.map(item => `<article class="analysis-card"><div class="ai-result-heading"><h3>${escapeHtml(aiBehaviorLabel(item.behavior_type))}</h3><span class="badge ${escapeHtml(String(item.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(item.risk_level))}</span></div><p>${escapeHtml(item.suggestion)}</p><div class="ai-result-meta">${escapeHtml(deviceName(item.device_id))} · Ghi nhận: <time>${formatDate(item.analyzed_at)}</time></div></article>`).join('') || `<div class="ai-empty"><h3>${selected ? 'Chưa có kết quả phân tích' : 'Chưa có thiết bị'}</h3><p>${selected ? 'Chọn “Chạy phân tích mới” để gửi yêu cầu cho thiết bị này.' : 'Thêm thiết bị ở trang Thiết bị để dùng phân tích và báo cáo. Bạn vẫn có thể trò chuyện với trợ lý.'}</p></div>`;
     const run = view.session.runs.get(view.deviceId);
     if (run && ['refreshing', 'refresh-error'].includes(run.phase)) run.phase = 'complete';
-    aiStatus(view, '#ai-history-status', rows.length ? `Đã tải ${rows.length} kết quả phân tích.` : 'Chưa có phân tích.');
+    aiStatus(view, '#ai-history-status', rows.length ? `Đã tải ${rows.length} kết quả phân tích.` : selected ? 'Chưa có phân tích.' : 'Chưa có thiết bị để phân tích.');
     return { status: 'loaded' };
   } catch (error) {
     if (!current()) return { status: 'ignored' };
     const run = view.session.runs.get(view.deviceId);
     if (run?.phase === 'refreshing') run.phase = 'refresh-error';
     aiStatus(view, '#ai-history-status', `Chưa tải được phân tích của thiết bị đang chọn. ${localizeError(error.message)}`);
-    history.innerHTML = '<button class="btn btn-secondary" data-action="retry-ai-history">Thử lại</button>';
+    history.innerHTML = '<button class="btn btn-secondary" data-action="retry-ai-history">Tải lại kết quả</button>';
     return { status: 'error' };
   } finally {
     if (current()) {
@@ -3268,7 +3272,7 @@ async function requestAISummary(view, period, button) {
   const current = () => aiViewCurrent(view) && view.scope === scope && view.summary === operation;
   const focus = aiFocus(view, button);
   const target = view.surface.querySelector('#summary-result');
-  const label = `${period === 'daily' ? 'Báo cáo ngày' : 'Báo cáo tuần'} — ${deviceName(deviceId)}`;
+  const label = `${period === 'daily' ? 'Báo cáo 1 ngày qua' : 'Báo cáo 7 ngày qua'} — ${deviceName(deviceId)}`;
   target.innerHTML = '';
   target.setAttribute('aria-busy', 'true');
   aiStatus(view, '#ai-summary-status', `Đang tạo ${label}…`);
@@ -3307,7 +3311,7 @@ async function requestAISummary(view, period, button) {
 
 function openAILatest(view, result) {
   if (!aiViewCurrent(view) || modalRoot.firstElementChild) return;
-  showModal('Phân tích mới nhất', `${deviceName(result.device_id)} · ${formatDate(result.analyzed_at)}`, `<span class="badge ${escapeHtml(String(result.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(result.risk_level))}</span><h3>${escapeHtml(result.behavior_type)}</h3><p class="muted analysis-suggestion">${escapeHtml(result.suggestion)}</p>`);
+  showModal('Phân tích mới nhất', `${deviceName(result.device_id)} · ${formatDate(result.analyzed_at)}`, `<span class="badge ${escapeHtml(String(result.risk_level).toLowerCase())}">${escapeHtml(riskLevelLabel(result.risk_level))}</span><h3>${escapeHtml(aiBehaviorLabel(result.behavior_type))}</h3><p class="muted analysis-suggestion">${escapeHtml(result.suggestion)}</p>`);
 }
 
 async function requestAILatest(view, button) {
@@ -3336,7 +3340,7 @@ async function requestAILatest(view, button) {
       aiStatus(view, '#ai-latest-status', '');
       openAILatest(view, result);
       view.latest = null;
-    } else aiStatus(view, '#ai-latest-status', 'Đã tải kết quả. Chọn “Kết quả mới nhất” để xem.');
+    } else aiStatus(view, '#ai-latest-status', 'Đã tải kết quả. Chọn “Xem phân tích mới nhất” để xem.');
   } catch (error) {
     if (!current()) return;
     operation.status = 'error';
@@ -3437,15 +3441,30 @@ async function renderAI(content) {
   content.aiView = session.view = view;
   content.innerHTML = `
     <div id="ai-surface">
-    ${pageHead('ai', `<select class="select ai-device-select" id="ai-device"><option value="">Chọn thiết bị</option>${state.devices.map((d) => `<option value="${d.device_id}" ${String(d.device_id) === String(state.selectedDeviceId) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select>`)}
-    <section class="ai-layout">
-      ${sectionVisual('ai', '<button class="btn" data-action="run-analysis" disabled>✦ Chạy phân tích mới</button><div><div id="ai-analysis-status" class="muted" role="status" aria-atomic="true"></div><div id="ai-analysis-retry"></div></div>')}
-      <div class="stack">
-        <article class="card"><div class="card-head"><div><h2>Phân tích gần đây</h2><p>Kết quả của riêng thiết bị đang chọn.</p></div><div><button class="btn btn-secondary btn-sm" data-action="latest-analysis" disabled>Kết quả mới nhất</button></div></div><div id="ai-latest-status" class="muted" role="status" aria-atomic="true"></div><div id="ai-history-status" class="muted" role="status" aria-atomic="true"></div><div id="ai-history" tabindex="-1" aria-busy="false"></div></article>
-        <article class="card card-pad"><div class="card-head card-head-flush"><div><h2>Báo cáo tóm tắt</h2><p>Tạo báo cáo ngày hoặc tuần bằng Gemini.</p></div></div><div class="form-actions form-actions-start"><button class="btn btn-secondary" data-action="summary" data-period="daily" disabled>Báo cáo ngày</button><button class="btn btn-secondary" data-action="summary" data-period="weekly" disabled>Báo cáo tuần</button></div><div id="ai-summary-status" class="muted" role="status" aria-atomic="true"></div><div id="summary-result" aria-busy="false"></div></article>
-      </div>
-      <aside class="card chat-card"><div class="chat-header"><strong>Cố vấn AI SafeNest</strong><small>Không thay thế tư vấn y khoa hoặc tâm lý.</small></div><div class="chat-messages" id="chat-messages"></div><div id="ai-chat-status" class="muted" role="status" aria-atomic="true"></div><form id="chat-form" class="chat-form"><input class="input" name="message" maxlength="2000" required placeholder="Hỏi về thói quen số..."><button class="btn btn-icon" type="submit" aria-label="Gửi câu hỏi">↑</button></form></aside>
-    </section></div>`;
+    ${pageHead('ai')}
+    <section class="ai-toolbar" aria-labelledby="ai-analysis-title">
+      <div class="ai-toolbar-copy"><h2 id="ai-analysis-title">Phân tích theo thiết bị</h2><p id="ai-device-scope">Phân tích nhật ký ứng dụng và website được ghi nhận trong 24 giờ qua của thiết bị đang chọn.</p></div>
+      <div class="ai-toolbar-controls"><div class="ai-device-field"><label for="ai-device">Thiết bị phân tích và báo cáo</label><select class="select ai-device-select" id="ai-device" aria-describedby="ai-device-scope"><option value="">Chọn thiết bị</option>${state.devices.map((d) => `<option value="${escapeHtml(d.device_id)}" ${String(d.device_id) === String(state.selectedDeviceId) ? 'selected' : ''}>${escapeHtml(d.device_name)}</option>`).join('')}</select></div><button class="btn" data-action="run-analysis" disabled>Chạy phân tích mới</button></div>
+      <div class="ai-run-feedback"><div id="ai-analysis-status" class="ai-status" role="status" aria-atomic="true"></div><div id="ai-analysis-retry"></div></div>
+    </section>
+    <div class="ai-layout">
+      <section class="card ai-summary" aria-labelledby="ai-summary-title">
+        <div class="card-head"><div><h2 id="ai-summary-title">Báo cáo tóm tắt</h2><p>Tạo theo yêu cầu cho thiết bị đang chọn, từ dữ liệu trong 1 hoặc 7 ngày qua.</p></div></div>
+        <div class="ai-section-body"><div class="form-actions form-actions-start"><button class="btn btn-secondary" data-action="summary" data-period="daily" disabled>Tạo báo cáo 1 ngày</button><button class="btn btn-secondary" data-action="summary" data-period="weekly" disabled>Tạo báo cáo 7 ngày</button></div><p class="ai-note">Báo cáo sử dụng tối đa 20 bản ghi ứng dụng và 20 bản ghi website có thời lượng dài nhất, cùng các cảnh báo trong khoảng thời gian đã chọn.</p><div id="ai-summary-status" class="ai-status" role="status" aria-atomic="true"></div><div id="summary-result" aria-busy="false"></div></div>
+      </section>
+      <section class="card chat-card" aria-labelledby="ai-chat-title">
+        <div class="chat-header"><h2 id="ai-chat-title">Trợ lý AI</h2><p id="ai-chat-context">Trả lời dựa trên tối đa 20 tin nhắn gần nhất, gồm câu hỏi mới; không tự đọc nhật ký hoặc kết quả phân tích của thiết bị.</p></div>
+        <div class="chat-messages" id="chat-messages" role="region" aria-label="Nội dung trò chuyện" tabindex="0"></div>
+        <div id="ai-chat-status" class="ai-status" role="status" aria-atomic="true"></div>
+        <form id="chat-form" class="chat-form"><label for="ai-chat-input">Câu hỏi của bạn</label><div class="ai-chat-compose"><input class="input" id="ai-chat-input" name="message" maxlength="2000" required aria-describedby="ai-chat-context ai-chat-disclaimer" placeholder="Hỏi về thói quen số…"><button class="btn" type="submit" aria-label="Gửi câu hỏi">Gửi</button></div></form>
+        <p id="ai-chat-disclaimer" class="ai-note">Không thay thế tư vấn y khoa hoặc tâm lý.</p>
+      </section>
+      <section class="card ai-history-panel" aria-labelledby="ai-history-title">
+        <div class="card-head"><div><h2 id="ai-history-title">Lịch sử phân tích</h2><p>Tối đa 50 kết quả gần nhất của thiết bị đang chọn, mới nhất trước.</p></div><button class="btn btn-secondary btn-sm" data-action="latest-analysis" disabled>Xem phân tích mới nhất</button></div>
+        <p class="ai-note ai-history-note">Kết quả chỉ mang tính tham khảo. “Rủi ro thấp” không đồng nghĩa trẻ chắc chắn an toàn.</p>
+        <div id="ai-latest-status" class="ai-status" role="status" aria-atomic="true"></div><div id="ai-history-status" class="ai-status" role="status" aria-atomic="true"></div><div id="ai-history" tabindex="-1" aria-busy="false"></div>
+      </section>
+    </div></div>`;
   view.surface = content.querySelector('#ai-surface');
   view.surface.aiView = view;
   syncAIChat(view, true);

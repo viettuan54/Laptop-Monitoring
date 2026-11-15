@@ -202,6 +202,24 @@ const resetPasswordLimiter = rateLimit({
   },
 });
 
+// Dashboard loads several resources per refresh on both web and mobile.
+// Authenticate first: users behind one NAT must not share a read budget.
+const parentReadLimiter = rateLimit({
+  store: createRateLimitStore('parent-read'),
+  windowMs: 60 * 1000,
+  max: 120,
+  keyGenerator: (req) => String(req.user.user_id),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: 'Too many data refresh requests, please try again shortly.' },
+});
+
+// Used only by authenticated parent routers. Dedicated expensive-operation
+// limits (AI generation, etc.) remain in place after this middleware.
+const parentApiLimiter = (req, res, next) =>
+  (req.method === 'GET' || req.method === 'HEAD'
+    ? parentReadLimiter : parentLimiter)(req, res, next);
+
 // Frequent lightweight gallery checks must not consume the general parent budget.
 // Applied after authentication, so unrelated parents behind one NAT are isolated.
 const screenshotReadLimiter = rateLimit({
@@ -239,6 +257,8 @@ const alertReadLimiter = rateLimit({
 });
 
 module.exports = {
+  parentReadLimiter,
+  parentApiLimiter,
   alertReadLimiter,
   breakReminderReadLimiter,
   screenshotReadLimiter,

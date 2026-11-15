@@ -5,7 +5,7 @@ const auth = require('../middlewares/auth.middleware');
 const requireRole = require('../middlewares/role.middleware');
 const withRls = require('../middlewares/rls.middleware');
 const deviceAuth = require('../middlewares/deviceAuth.middleware');
-const { parentLimiter, agentLimiter, screenshotReadLimiter, breakReminderReadLimiter } = require('../middlewares/rateLimit.middleware');
+const { parentLimiter, parentReadLimiter, agentLimiter, screenshotReadLimiter, breakReminderReadLimiter } = require('../middlewares/rateLimit.middleware');
 const logsController = require('../controllers/logs.controller');
 const screenshotsController = require('../controllers/screenshots.controller');
 const appEnforcement = require('../controllers/appEnforcement.controller');
@@ -35,10 +35,10 @@ router.post('/web', agentLimiter, deviceAuth, logsController.logWebsite);
 // ── 4. Parent Routes (dùng JWT phụ huynh + RLS) ──────────────────────────────
 // Phụ huynh xem lịch sử app/web của con
 // ?device_id=&start=&end=&limit=&offset=
-router.get('/usage-summary', parentLimiter, auth, requireRole('parent'), withRls, logsController.getUsageSummary);
-router.get('/app', parentLimiter, auth, requireRole('parent'), withRls, logsController.getAppLogs);
-router.get('/app-enforcement', parentLimiter, auth, requireRole('parent'), withRls, appEnforcement.list);
+router.get('/usage-summary', auth, requireRole('parent'), parentReadLimiter, withRls, logsController.getUsageSummary);
+router.get('/app', auth, requireRole('parent'), parentReadLimiter, withRls, logsController.getAppLogs);
+router.get('/app-enforcement', auth, requireRole('parent'), parentReadLimiter, withRls, appEnforcement.list);
 router.get('/break-reminders', auth, requireRole('parent'), breakReminderReadLimiter, withRls, breakReminder.list);
-router.get('/web', parentLimiter, auth, requireRole('parent'), withRls, logsController.getWebLogs);
+router.get('/web', auth, requireRole('parent'), parentReadLimiter, withRls, logsController.getWebLogs);
 
 module.exports = router;

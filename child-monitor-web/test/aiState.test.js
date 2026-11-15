@@ -117,7 +117,7 @@ function fixture() {
   const context = page.context = vm.createContext({
     state, document: dom.document, modalRoot: dom.modalRoot, URLSearchParams, aiSessions: new WeakMap(),
     api: async (route, options = {}) => { calls.push({ route, method: options.method || 'GET', body: options.body }); return page.request(route, options); },
-    pageHead: (_p, actions) => `<header>${actions}</header>`, sectionVisual: (_p, actions) => `<section>${actions}</section>`,
+    pageHead: (_p, actions = '') => `<header>${actions}</header>`, sectionVisual: (_p, actions) => `<section>${actions}</section>`,
     toast: (...args) => notices.push(args), localizeError: x => x,
     showModal: (...args) => { modals.push(args); dom.modalRoot.innerHTML = '<div class="modal"></div>'; },
     closeModal: () => { closed.push(true); dom.modalRoot.innerHTML = ''; }, navigate: p => nav.push(p),
@@ -262,7 +262,7 @@ test('POST success and failed GET remain distinct; retry only loads GET results'
   };
   await assert.doesNotReject(p.click('run-analysis'));
   assert.match(p.find('#ai-analysis-status').textContent, /đã hoàn thành, nhưng chưa tải lại/);
-  assert.equal(p.find('[data-action="run-analysis"]').textContent, '✦ Chạy phân tích mới');
+  assert.equal(p.find('[data-action="run-analysis"]').textContent, 'Chạy phân tích mới');
   assert.equal(p.notices.length, 0);
   fail = false; await p.click('retry-ai-analysis');
   assert.equal(p.calls.filter(c => c.method === 'POST').length, 1);
@@ -375,7 +375,7 @@ test('weekly result wins over an older daily response', async () => {
   daily.resolve({ summary: 'DAILY OLD' }); await first;
   assert.match(p.find('#summary-result').textContent, /WEEKLY NEW/);
   assert.doesNotMatch(p.find('#summary-result').textContent, /DAILY OLD/);
-  assert.match(p.find('#ai-summary-status').textContent, /Báo cáo tuần/);
+  assert.match(p.find('#ai-summary-status').textContent, /Báo cáo 7 ngày qua/);
 });
 
 test('old summary rejection cannot clear newer pending, change buttons or announce an old error', async () => {
@@ -639,4 +639,133 @@ test('same-view failed chat after device change keeps the draft and permits an e
   assert.equal(p.find('[name="message"]').readOnly, false);
   assert.equal(p.state.chat.length, 0);
   assert.equal(p.document.activeElement, p.find('#ai-device'));
+});
+
+test('AI controls have visible labels and valid, unique description and section targets', async () => {
+  const p = fixture(); await p.mount();
+  const elements = p.find('#ai-surface').querySelectorAll('[id]');
+  const ids = elements.map(node => node.id);
+  assert.equal(new Set(ids).size, ids.length);
+  for (const node of p.find('#ai-surface').querySelectorAll('[aria-labelledby], [aria-describedby]')) {
+    for (const attribute of ['aria-labelledby', 'aria-describedby']) {
+      for (const id of (node.getAttribute(attribute) || '').split(/\s+/).filter(Boolean)) {
+        assert.ok(p.find('#' + id)?.textContent.trim(), `${attribute}: ${id}`);
+      }
+    }
+  }
+  for (const id of ['ai-device', 'ai-chat-input']) {
+    assert.ok(p.find(`[for="${id}"]`).textContent.trim());
+    assert.ok(p.find('#' + id));
+  }
+  assert.equal(p.find('#chat-messages').getAttribute('tabindex'), '0');
+  for (const id of ['ai-history-status', 'ai-analysis-status', 'ai-summary-status', 'ai-chat-status', 'ai-latest-status']) {
+    assert.equal(p.find('#' + id).getAttribute('role'), 'status');
+    assert.equal(p.find('#' + id).getAttribute('aria-atomic'), 'true');
+  }
+});
+
+test('reports and chat remain ahead of all 50 results without removing or reordering history', async () => {
+  const p = fixture(), normal = p.request;
+  const records = Array.from({ length: 50 }, (_, i) => ({ ...row('A'), suggestion: `Gợi ý ${i}` }));
+  p.request = route => route.startsWith('/ai-analysis?') ? { data: records } : normal(route);
+  await p.mount();
+  const html = p.content.innerHTML;
+  assert.ok(html.indexOf('id="ai-summary-title"') < html.indexOf('id="ai-chat-title"'));
+  assert.ok(html.indexOf('id="ai-chat-title"') < html.indexOf('id="ai-history-title"'));
+  assert.doesNotMatch(html, /section-visual|section-ai-insights|<img/);
+  assert.equal(p.find('#ai-history').querySelectorAll('article').length, 50);
+  assert.equal(p.find('#ai-history').querySelectorAll('article')[49].querySelector('p').textContent, 'Gợi ý 49');
+  assert.match(p.find('.ai-history-panel').textContent, /Tối đa 50/);
+  assert.match(p.find('#ai-device-scope').textContent, /24 giờ qua/);
+  assert.deepEqual(Array.from(p.state.analyses), records);
+});
+
+test('behavior labels agree in history and latest modal without mutating risk or generated suggestions', async () => {
+  const labels = { learning: 'Học tập', entertainment: 'Giải trí', risk: 'Có rủi ro', normal: 'Thông thường' };
+  for (const [behavior, label] of Object.entries(labels)) {
+    const p = fixture(), normal = p.request;
+    const record = { ...row('A', behavior), suggestion: 'Nội dung nguyên bản <script> & dữ liệu' };
+    p.request = route => route.startsWith('/ai-analysis?') ? { data: [record] } : route.includes('/latest/') ? record : normal(route);
+    await p.mount(); await p.click('latest-analysis');
+    assert.equal(p.find('#ai-history').querySelector('h3').textContent, label);
+    assert.equal(p.find('#ai-history').querySelector('p').textContent, record.suggestion);
+    assert.match(p.modals[0][2], new RegExp(`<h3>${label}</h3>`));
+    assert.match(p.modals[0][2], /&lt;script&gt;/);
+    assert.equal(p.state.analyses[0].behavior_type, behavior);
+    assert.equal(p.find('#ai-history').querySelector('.badge').textContent, 'Rủi ro thấp');
+    assert.equal(p.state.analyses[0].risk_level, 'low');
+  }
+});
+
+test('empty device and empty analysis guidance differ from failed history loading', async () => {
+  const p = fixture(), normal = p.request;
+  p.request = async () => ({ data: [] }); await p.mount();
+  assert.match(p.find('#ai-history').textContent, /Chưa có thiết bị/);
+  assert.match(p.find('#ai-history').textContent, /vẫn có thể trò chuyện/);
+  p.request = route => route.startsWith('/devices') ? normal(route) : { data: [] };
+  await p.context.loadAIHistory(p.view);
+  assert.match(p.find('#ai-history').textContent, /Chưa có kết quả phân tích/);
+  assert.equal(p.find('[data-action="run-analysis"]').disabled, false);
+  p.request = async () => { throw Error('offline'); };
+  await p.context.loadAIHistory(p.view);
+  assert.doesNotMatch(p.find('#ai-history').textContent, /Chưa có thiết bị|Chưa có kết quả phân tích/);
+  assert.equal(p.find('[data-action="retry-ai-history"]').textContent, 'Tải lại kết quả');
+});
+
+test('chat explanation is static UI and never added to the conversation payload', async () => {
+  const p = fixture(); p.state.chat.push({ role: 'model', content: 'Lời chào gốc' });
+  await p.mount();
+  assert.match(p.find('#ai-chat-context').textContent, /20 tin nhắn/);
+  assert.match(p.find('#ai-chat-context').textContent, /không tự đọc/);
+  const input = p.draft('Câu hỏi thử');
+  assert.equal(input.getAttribute('maxlength'), '2000');
+  await p.submit();
+  const body = p.calls.find(call => call.route.endsWith('/chat')).body;
+  assert.deepEqual(JSON.parse(JSON.stringify(body)), { messages: [
+    { role: 'model', content: 'Lời chào gốc' }, { role: 'user', content: 'Câu hỏi thử' },
+  ] });
+});
+
+test('report period labels retain daily/weekly endpoints and long content intact', async () => {
+  const p = fixture(), normal = p.request, longName = 'Máy của gia đình '.repeat(30);
+  const longReport = 'https://example.test/' + 'no-spaces'.repeat(200) + '\nĐoạn tiếp theo';
+  p.request = route => route.startsWith('/devices') ? { data: [{ device_id: 'A', device_name: longName }] }
+    : route.includes('/summary/') ? { summary: longReport } : normal(route);
+  await p.mount();
+  assert.equal(p.find('#ai-device').querySelectorAll('option')[1].textContent, longName);
+  for (const [period, days] of [['daily', 1], ['weekly', 7]]) {
+    assert.equal(p.find(`[data-period="${period}"]`).textContent, `Tạo báo cáo ${days} ngày`);
+    await p.click('summary', period);
+    assert.equal(p.find('#summary-result').textContent, longReport);
+    assert.equal(p.find('#ai-summary-status').textContent, `Đã tải Báo cáo ${days} ngày qua — ${longName}.`);
+    assert.equal(p.calls.at(-1).route, `/ai-analysis/summary/A?period=${period}`);
+  }
+});
+
+test('AI presentation CSS is scoped, preserves focus geometry and uses wrapping and touch targets', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
+  const block = css.slice(css.indexOf('/* AI Center:'), css.indexOf('/* Alerts: flatten'));
+  assert.ok(block.length > 0);
+  const rules = [...block.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+  for (const rule of rules) assert.match(rule[1].trim(), /^#ai-surface\b/);
+  assert.doesNotMatch(block, /!important|text-overflow:\s*ellipsis|linear-gradient|radial-gradient/);
+  assert.match(block, /#ai-surface \.btn\s*\{[^}]*min-height:\s*44px/);
+  assert.match(block, /#ai-surface :is\(\.input, \.select\)\s*\{[^}]*min-height:\s*44px/);
+  const focus = rules.find(rule => rule[1].includes(':focus-visible'))[2].trim();
+  assert.equal(focus, 'outline-color: var(--forest);');
+  assert.match(block, /overflow-wrap:\s*anywhere/);
+  assert.match(block, /@media \(max-width: 1160px\)/);
+  assert.match(block, /@media \(max-width: 610px\)/);
+  // Token contrast only; this is not a browser rendering test.
+  const token = name => new RegExp(`--${name}:\\s*(#[0-9a-f]{6})`, 'i').exec(css)[1];
+  const luminance = hex => {
+    const rgb = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+      .map(v => v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+    return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+  };
+  const ratio = (a, b) => (Math.max(luminance(a), luminance(b)) + .05) / (Math.min(luminance(a), luminance(b)) + .05);
+  for (const surface of ['paper', 'cream', 'mint-2']) {
+    assert.ok(ratio(token('forest'), token(surface)) >= 3);
+    assert.ok(ratio(token('ink-soft'), token(surface)) >= 4.5);
+  }
 });

@@ -30,7 +30,7 @@ class SecureSession(context: Context) : SessionStore {
             cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw.copyOfRange(0, 12)))
             Gson().fromJson(String(cipher.doFinal(raw.copyOfRange(12, raw.size)), Charsets.UTF_8), Tokens::class.java)
         }
-    }.getOrElse { prefs.edit().clear().commit(); null }
+    }.getOrElse { runCatching { prefs.edit().remove("session").commit() }; null }
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(alias, null) as? SecretKey)?.let { return it }
@@ -42,10 +42,20 @@ class SecureSession(context: Context) : SessionStore {
     override var tokens: Tokens?
         @Synchronized get() = memory
         @Synchronized set(value) {
-            if (value == null) { prefs.edit().remove("session").commit(); memory = null; return }
+            if (value == null) {
+                // Local sign-out must succeed even if preferences are unavailable.
+                memory = null
+                runCatching { prefs.edit().remove("session").commit() }
+                return
+            }
             val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
             val encrypted = cipher.iv + cipher.doFinal(Gson().toJson(value).toByteArray(Charsets.UTF_8))
-            check(prefs.edit().putString("session", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit())
+            runCatching {
+                check(prefs.edit().putString("session", Base64.encodeToString(encrypted, Base64.NO_WRAP)).commit())
+            }.getOrElse {
+                // Never report a new session as saved when persistence failed.
+                throw IllegalStateException("Không thể lưu phiên đăng nhập an toàn. Vui lòng thử lại.", it)
+            }
             memory = value
         }
     override val generation: Long @Synchronized get() = epoch

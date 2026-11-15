@@ -60,12 +60,12 @@ const { parentLimiter, agentLimiter } = require('./middlewares/rateLimit.middlew
 
 // ── Routes ────────────────────────────────────────────────────────────────
 app.use('/api/auth', parentLimiter, require('./routes/auth.routes'));
-app.use('/api/children', parentLimiter, require('./routes/children.routes'));
-app.use('/api/devices', parentLimiter, require('./routes/devices.routes'));
-app.use('/api/settings', parentLimiter, require('./routes/settings.routes'));
+app.use('/api/children', require('./routes/children.routes'));
+app.use('/api/devices', require('./routes/devices.routes'));
+app.use('/api/settings', require('./routes/settings.routes'));
 app.use('/api/alerts', require('./routes/alerts.routes'));
 app.use('/api/notifications', parentLimiter, require('./routes/notifications.routes'));
-app.use('/api/ai-analysis', parentLimiter, require('./routes/aiAnalysis.routes'));
+app.use('/api/ai-analysis', require('./routes/aiAnalysis.routes'));
 app.use('/api/agent', agentLimiter, require('./routes/agent.routes'));
 app.use('/api/admin', parentLimiter, require('./routes/admin.routes'));
 

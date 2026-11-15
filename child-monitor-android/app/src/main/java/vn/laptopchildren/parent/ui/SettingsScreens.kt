@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -39,7 +41,8 @@ import vn.laptopchildren.parent.data.*
     var minutes by remember(settings.child_id, settings.daily_limit_minutes) { mutableStateOf(settings.daily_limit_minutes.toString()) }
     var start by remember(settings.child_id, settings.allowed_start_time) { mutableStateOf(settings.allowed_start_time.take(5)) }
     var end by remember(settings.child_id, settings.allowed_end_time) { mutableStateOf(settings.allowed_end_time.take(5)) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var timeError by remember(settings.child_id) { mutableStateOf<String?>(null) }
+    var breakError by remember(settings.child_id) { mutableStateOf<String?>(null) }
     var confirm by remember(settings.child_id) { mutableStateOf<Pair<String, Map<String, Any>>?>(null) }
     var visionMinutes by remember(settings.child_id, settings.vision_session_minutes) { mutableStateOf(settings.vision_session_minutes.toString()) }
     val validVisionMinutes = visionMinutes.toIntOrNull()?.takeIf { it in 1..60 }
@@ -89,24 +92,24 @@ import vn.laptopchildren.parent.data.*
                     Spacer(Modifier.width(8.dp))
                     Text("Thời gian sử dụng", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
-                Field("Giới hạn mỗi ngày (phút)", minutes, { minutes = it }, KeyboardType.Number, !s.busy)
+                Field("Giới hạn mỗi ngày (phút)", minutes, { minutes = it; timeError = null }, KeyboardType.Number, !s.busy)
                 Text("Nhập 0 nếu không muốn đặt giới hạn thời lượng.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Box(Modifier.weight(1f)) { Field("Từ giờ (HH:mm)", start, { start = it }, KeyboardType.Text, !s.busy) }
-                    Box(Modifier.weight(1f)) { Field("Đến giờ (HH:mm)", end, { end = it }, KeyboardType.Text, !s.busy) }
+                    Box(Modifier.weight(1f)) { Field("Từ giờ (HH:mm)", start, { start = it; timeError = null }, KeyboardType.Text, !s.busy) }
+                    Box(Modifier.weight(1f)) { Field("Đến giờ (HH:mm)", end, { end = it; timeError = null }, KeyboardType.Text, !s.busy) }
                 }
                 Text("Khung giờ cho phép sử dụng theo múi giờ Việt Nam.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                timeError?.let { PolicyValidationError(it) }
                 Button(
                     onClick = {
                         val count = minutes.toIntOrNull()
                         val time = Regex("^([01][0-9]|2[0-3]):[0-5][0-9]$")
-                        error = when {
+                        timeError = when {
                             count == null || count !in 0..1440 -> "Giới hạn cần từ 0 đến 1440 phút."
                             !time.matches(start) || !time.matches(end) -> "Nhập giờ theo dạng 07:00 hoặc 21:00."
                             else -> null
                         }
-                        if (error == null) vm.saveSettings(mapOf("daily_limit_minutes" to count!!, "allowed_start_time" to start, "allowed_end_time" to end))
+                        if (timeError == null) vm.saveSettings(mapOf("daily_limit_minutes" to count!!, "allowed_start_time" to start, "allowed_end_time" to end))
                     },
                     enabled = !s.busy,
                     shape = RoundedCornerShape(12.dp),
@@ -139,16 +142,22 @@ import vn.laptopchildren.parent.data.*
                     }
                 }
                 ToggleRow("Nhắc con nghỉ ngơi", "Hiển thị lời nhắc thân thiện trên laptop sau khoảng thời gian liên tục.", settings.enable_break_reminders, !s.busy) {
+                    breakError = null
                     vm.saveSettings(mapOf("enable_break_reminders" to it))
                 }
                 if (settings.enable_break_reminders) {
-                    Field("Nhắc sau mỗi (5–180 phút)", interval, { interval = it }, KeyboardType.Number, !s.busy)
-                    Field("Thời gian nghỉ (1–30 phút)", breakTime, { breakTime = it }, KeyboardType.Number, !s.busy)
+                    Field("Nhắc sau mỗi (5–180 phút)", interval, { interval = it; breakError = null }, KeyboardType.Number, !s.busy)
+                    Field("Thời gian nghỉ (1–30 phút)", breakTime, { breakTime = it; breakError = null }, KeyboardType.Number, !s.busy)
+                    breakError?.let { PolicyValidationError(it) }
                     Button(
                         onClick = {
                             val i = interval.toIntOrNull(); val d = breakTime.toIntOrNull()
-                            if (i == null || i !in 5..180 || d == null || d !in 1..30) error = "Kiểm tra khoảng nhắc nghỉ và thời gian nghỉ."
-                            else { error = null; vm.saveSettings(mapOf("break_interval_minutes" to i, "break_duration_minutes" to d)) }
+                            breakError = when {
+                                i == null || i !in 5..180 -> "Khoảng nhắc nghỉ phải từ 5 đến 180 phút."
+                                d == null || d !in 1..30 -> "Thời gian nghỉ phải từ 1 đến 30 phút."
+                                else -> null
+                            }
+                            if (breakError == null) vm.saveSettings(mapOf("break_interval_minutes" to i!!, "break_duration_minutes" to d!!))
                         },
                         enabled = !s.busy,
                         shape = RoundedCornerShape(12.dp),
@@ -227,21 +236,22 @@ import vn.laptopchildren.parent.data.*
                 OutlinedTextField(
                     value = visionMinutes, onValueChange = { visionMinutes = it },
                     label = { Text("Thời lượng phiên camera (phút)") },
-                    supportingText = { Text("Từ 1 đến 60 phút. Áp dụng khi bắt đầu phiên mới.") },
+                    supportingText = {
+                        if (validVisionMinutes == null) PolicyValidationError("Thời lượng phiên camera phải từ 1 đến 60 phút.")
+                        else Text("Từ 1 đến 60 phút. Áp dụng khi bắt đầu phiên mới.")
+                    },
                     isError = validVisionMinutes == null, enabled = !s.busy,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
                 ToggleRow("Theo dõi tư thế", "Nhắc nhở khi con ngồi sai tư thế.", settings.postureMonitoringEnabled, !s.busy) {
                     if (it && validVisionMinutes != null) confirm = "Bắt đầu phiên webcam tối đa $validVisionMinutes phút trên các laptop của con để theo dõi tư thế? Camera dừng khi hết giờ hoặc có cảnh báo đầu tiên. Lựa chọn khoảng cách mắt được giữ nguyên." to mapOf("enable_posture_monitoring" to true, "vision_session_minutes" to validVisionMinutes)
-                    else if (it) error = "Thời lượng phiên camera phải từ 1 đến 60 phút."
-                    else vm.saveSettings(mapOf("enable_posture_monitoring" to false))
+                    else if (!it) vm.saveSettings(mapOf("enable_posture_monitoring" to false))
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 ToggleRow("Cảnh báo khoảng cách mắt", "Nhắc nhở khi mắt con ở quá gần màn hình.", settings.eyeDistanceMonitoringEnabled, !s.busy) {
                     if (it && validVisionMinutes != null) confirm = "Bắt đầu phiên webcam tối đa $validVisionMinutes phút trên các laptop của con để cảnh báo khoảng cách mắt? Camera dừng khi hết giờ hoặc có cảnh báo đầu tiên. Lựa chọn tư thế được giữ nguyên." to mapOf("enable_eye_distance_monitoring" to true, "vision_session_minutes" to validVisionMinutes)
-                    else if (it) error = "Thời lượng phiên camera phải từ 1 đến 60 phút."
-                    else vm.saveSettings(mapOf("enable_eye_distance_monitoring" to false))
+                    else if (!it) vm.saveSettings(mapOf("enable_eye_distance_monitoring" to false))
                 }
                 Text("Camera tự tắt khi hết giờ hoặc có cảnh báo đầu tiên. Công tắc thể hiện chức năng được chọn, không phải trạng thái camera. Phiên đã dừng không tự chạy lại.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Button(
@@ -278,6 +288,15 @@ import vn.laptopchildren.parent.data.*
             dismissButton = { TextButton(onClick = { confirm = null }) { Text("Hủy") } }
         )
     }
+}
+
+@Composable private fun PolicyValidationError(message: String) {
+    Text(
+        message,
+        color = MaterialTheme.colorScheme.error,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }
+    )
 }
 
 @Composable private fun ToggleRow(title: String, subtitle: String, checked: Boolean, enabled: Boolean, change: (Boolean) -> Unit) {

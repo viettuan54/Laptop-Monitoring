@@ -1,6 +1,7 @@
 package vn.laptopchildren.parent
 
 import android.graphics.Bitmap
+import android.content.Intent
 import android.content.res.Configuration
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -19,6 +20,8 @@ import java.io.File
 import java.time.LocalDate
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import vn.laptopchildren.parent.data.VietnamZone
 
 /** Runs against a loopback fixture server on the phone. Never creates records in the real backend. */
@@ -32,6 +35,8 @@ class ParentFlowTest {
     private var screenshotDeleted = false
     private var imageRequests = 0
     private var deleteRequests = 0
+    @Volatile private var breakEnabled = false
+    @Volatile private var childrenGate: CountDownLatch? = null
     private val fixtureImage by lazy {
         val bitmap = Bitmap.createBitmap(960, 540, Bitmap.Config.ARGB_8888)
         val canvas = android.graphics.Canvas(bitmap)
@@ -53,6 +58,7 @@ class ParentFlowTest {
             server.dispatcher = object : Dispatcher() {
                 override fun dispatch(request: RecordedRequest): MockResponse {
                     val path = request.requestUrl!!.encodedPath
+                    if (path == "/api/children") childrenGate?.await(15, TimeUnit.SECONDS)
                     if (request.method != "GET") writes.add("${request.method} $path ${request.body.clone().readUtf8()}")
                     val today = LocalDate.now(VietnamZone).toString()
                     val now = Instant.now().toString()
@@ -86,7 +92,7 @@ class ParentFlowTest {
                         path.endsWith("/read") -> { read = true; """{"alert_id":11,"device_id":1,"alert_type":"text_risk","message":"Cảnh báo minh họa cho kiểm thử","is_read":true,"created_at":"$now"}""" }
                         path == "/api/alerts" -> """{"data":[{"alert_id":11,"device_id":1,"alert_type":"text_risk","message":"Cảnh báo minh họa cho kiểm thử","is_read":$read,"created_at":"$now"}],"count":1}"""
                         path.endsWith("/policies") -> """{"policies":[{"resource_type":"app","category":"learning","action":"allow"},{"resource_type":"web","category":"unsafe","action":"block"}]}"""
-                        path.startsWith("/api/settings/") -> """{"child_id":1,"daily_limit_minutes":120,"allowed_start_time":"07:00:00","allowed_end_time":"21:00:00","is_locked":false,"enable_app_classification":true,"enable_web_classification":true,"enable_text_moderation":false,"enable_webcam_monitoring":false,"enable_screenshot_review":false,"enable_break_reminders":false,"break_interval_minutes":30,"break_duration_minutes":5}"""
+                        path.startsWith("/api/settings/") -> """{"child_id":1,"daily_limit_minutes":120,"allowed_start_time":"07:00:00","allowed_end_time":"21:00:00","is_locked":false,"enable_app_classification":true,"enable_web_classification":true,"enable_text_moderation":false,"enable_webcam_monitoring":false,"enable_screenshot_review":false,"enable_break_reminders":$breakEnabled,"break_interval_minutes":30,"break_duration_minutes":5}"""
                         else -> return MockResponse().setResponseCode(404).setBody("{}")
                     }
                     return MockResponse().setHeader("Content-Type", "application/json").setBody(response)
@@ -96,6 +102,7 @@ class ParentFlowTest {
             graph.setServer(server.url("/").toString().replace("localhost", "127.0.0.1"), persist = false)
         }
         override fun after() {
+            childrenGate?.countDown()
             graph.session.clear()
             graph.prefs.edit().remove("email").remove("push_id").commit()
             graph.setServer(originalServer, persist = false)
@@ -119,6 +126,74 @@ class ParentFlowTest {
         File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }
+    private fun hideKeyboard() {
+        compose.runOnIdle {
+            val activity = compose.activity
+            activity.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                .hideSoftInputFromWindow(activity.window.decorView.windowToken, 0)
+            activity.currentFocus?.clearFocus()
+        }
+        compose.waitForIdle()
+    }
+    @Test fun policyValidationAppearsBesideTheEditedSection() {
+        breakEnabled = true
+        compose.onNodeWithTag("email").performTextInput("parent@example.test")
+        compose.onNodeWithTag("password").performTextInput("Fixture123!")
+        compose.onNodeWithTag("sign-in").performScrollTo().performClick()
+        waitFor("1 giờ 30 phút")
+        compose.onNodeWithTag("tab-3").performClick()
+        waitFor("Chính sách sử dụng")
+        compose.onNodeWithText("Chính sách sử dụng").performClick()
+        waitFor("Giới hạn mỗi ngày (phút)")
+        compose.onNodeWithText("Nhắc sau mỗi (5–180 phút)").performScrollTo().performTextReplacement("0")
+        hideKeyboard()
+        compose.onNodeWithText("Lưu cấu hình nhắc nghỉ").performScrollTo().performClick()
+        compose.onNodeWithText("Khoảng nhắc nghỉ phải từ 5 đến 180 phút.").assertIsDisplayed()
+        capture("policy-break-validation")
+        Assert.assertFalse(writes.any { it.startsWith("PUT /api/settings/") })
+        compose.onNodeWithText("Nhắc sau mỗi (5–180 phút)").performTextReplacement("30")
+        compose.onNodeWithText("Khoảng nhắc nghỉ phải từ 5 đến 180 phút.").assertDoesNotExist()
+        compose.onNodeWithText("Thời gian nghỉ (1–30 phút)").performScrollTo().performTextReplacement("31")
+        hideKeyboard()
+        compose.onNodeWithText("Lưu cấu hình nhắc nghỉ").performScrollTo().performClick()
+        compose.onNodeWithText("Thời gian nghỉ phải từ 1 đến 30 phút.").assertIsDisplayed()
+        compose.onNodeWithText("Thời lượng phiên camera (phút)").performScrollTo().performTextReplacement("61")
+        hideKeyboard()
+        compose.onNodeWithText("Thời lượng phiên camera phải từ 1 đến 60 phút.").assertIsDisplayed()
+        capture("policy-camera-validation")
+        Assert.assertFalse(writes.any { it.startsWith("PUT /api/settings/") })
+        compose.onNodeWithText("Thời lượng phiên camera (phút)").performTextReplacement("10")
+        compose.onNodeWithText("Thời lượng phiên camera phải từ 1 đến 60 phút.").assertDoesNotExist()
+    }
+
+    @Test fun notificationWaitsForFamilyLoadingAndThenOpensAlerts() {
+        val gate = CountDownLatch(1)
+        childrenGate = gate
+        try {
+            compose.onNodeWithTag("email").performTextInput("parent@example.test")
+            compose.onNodeWithTag("password").performTextInput("Fixture123!")
+            compose.onNodeWithTag("sign-in").performScrollTo().performClick()
+            val vm = ViewModelProvider(compose.activity)[ParentViewModel::class.java]
+            compose.waitUntil(10_000) { vm.state.signedIn && vm.state.loading && !vm.state.busy }
+            compose.runOnIdle {
+                InstrumentationRegistry.getInstrumentation().callActivityOnNewIntent(
+                    compose.activity, Intent(compose.activity.intent).putExtra("open_alerts", true)
+                )
+            }
+            compose.waitForIdle()
+            compose.runOnIdle { Assert.assertEquals(0, vm.state.tab) }
+            gate.countDown()
+            waitFor("Cảnh báo minh họa cho kiểm thử")
+            compose.runOnIdle {
+                Assert.assertEquals(2, vm.state.tab)
+                Assert.assertEquals(2, vm.state.children.size)
+                Assert.assertEquals(1L, vm.state.deviceId)
+            }
+        } finally {
+            gate.countDown()
+        }
+    }
+
     @Test fun parentCanSignInSwitchChildReadActivityAndSavePolicy() {
         // MIUI can lock the OS night-mode command. Override only the test composition,
         // exercising the production dark palette without altering the real app or OS setting.
