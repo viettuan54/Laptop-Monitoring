@@ -6,6 +6,7 @@ const adminController = require('../controllers/admin.controller');
 
 // Tất cả các route admin đều yêu cầu JWT hợp lệ VÀ role = 'admin'
 router.get('/users', auth, requireRole('admin'), adminController.getUsers);
+router.post('/users', auth, requireRole('admin'), adminController.createUser);
 router.get('/users/:id', auth, requireRole('admin'), adminController.getUserDetails);
 router.patch('/users/:id', auth, requireRole('admin'), adminController.updateUser);
 router.post('/users/:id/revoke-sessions', auth, requireRole('admin'), adminController.revokeUserSessions);

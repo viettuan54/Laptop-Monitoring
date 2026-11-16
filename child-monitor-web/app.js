@@ -105,6 +105,20 @@ const icons = {
   lab: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6m-5 0v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7 16h10"/></svg>',
   plus: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>',
   refresh: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7v5h-5"/><path d="M4 17v-5h5"/><path d="M6.1 9a7 7 0 0 1 11.6-2L20 12M4 12l2.3 5a7 7 0 0 0 11.6-2"/></svg>',
+  users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+  shieldBan: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9.5 9.5 5 5"/><path d="m14.5 9.5-5 5"/></svg>',
+  audit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>',
+  menu: '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>',
+  eye: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+  edit: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  revoke: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>',
+  trash: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+  search: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+  key: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/></svg>',
+  chevronLeft: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>',
+  chevronRight: '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>',
+  server: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg>',
+  close: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
 };
 
 const pageTitles = {
@@ -176,6 +190,16 @@ function localizeError(message = '') {
     'Child not found or access denied': 'Không tìm thấy hồ sơ trẻ hoặc bạn không có quyền truy cập.',
     'Domain already in blacklist': 'Tên miền đã có trong danh sách chặn.',
     'You cannot delete your own admin account': 'Bạn không thể xóa tài khoản quản trị của chính mình.',
+    'Account roles cannot be changed. Create a separate account instead': 'Không thể đổi vai trò tài khoản. Hãy tạo tài khoản riêng với vai trò cần dùng.',
+    'Name must contain 1 to 100 characters': 'Họ tên phải có từ 1 đến 100 ký tự.',
+    'Email already exists': 'Email này đã được sử dụng. Hãy dùng email khác.',
+    'Invalid role or verification status': 'Vai trò hoặc trạng thái xác minh không hợp lệ.',
+    'Password must be 8 to 72 bytes and include an uppercase letter, a number, and a special character': 'Mật khẩu cần ít nhất 8 ký tự, tối đa 72 byte, gồm chữ hoa, số và ký tự đặc biệt.',
+    'At least one active verified admin must remain': 'Không thể thực hiện: hệ thống phải còn ít nhất một quản trị viên đang hoạt động và đã xác minh email.',
+    'You cannot unverify your own admin account': 'Bạn không thể tự bỏ xác minh email của tài khoản quản trị.',
+    'Transfer child profiles and devices before promoting to admin': 'Tài khoản còn hồ sơ trẻ hoặc thiết bị. Hãy chuyển dữ liệu sang tài khoản phụ huynh khác trước khi cấp quyền quản trị.',
+    'Only parent accounts can own child profiles': 'Chỉ tài khoản phụ huynh được tạo hồ sơ trẻ. Vui lòng đăng nhập lại để cập nhật quyền.',
+    'Account changed. Please sign in again': 'Tài khoản đã thay đổi. Vui lòng đăng nhập lại.',
     'You cannot demote or disable your own admin account': 'Bạn không thể tự hạ quyền hoặc khóa tài khoản quản trị của mình.',
     'Push notifications are disabled on the server': 'Máy chủ chưa bật tính năng thông báo đẩy.',
     'No active push token is registered': 'Chưa có thiết bị nhận thông báo nào được đăng ký.',
@@ -572,9 +596,11 @@ function paginationMarkup(scope, result, label) {
   const pages = Math.max(1, Math.ceil(total / limit));
 
   return `<nav class="pagination" aria-label="Phân trang ${escapeHtml(label)}">
-    <button class="btn btn-secondary btn-sm" data-action="server-page" data-scope="${scope}" data-offset="${Math.max(0, offset - limit)}" ${offset === 0 ? 'disabled' : ''}>Trước</button>
-    <span>Trang ${page}/${pages} · ${start}–${end} / ${total}</span>
-    <button class="btn btn-secondary btn-sm" data-action="server-page" data-scope="${scope}" data-offset="${offset + limit}" ${end >= total ? 'disabled' : ''}>Sau</button>
+    <span class="pagination-info">Hiển thị <strong>${start}–${end}</strong> / ${total} · Trang ${page}/${pages}</span>
+    <div class="pagination-controls">
+      <button class="btn btn-secondary btn-sm pagination-btn" data-action="server-page" data-scope="${scope}" data-offset="${Math.max(0, offset - limit)}" aria-label="Trang trước" ${offset === 0 ? 'disabled' : ''}>${icons.chevronLeft}<span>Trước</span></button>
+      <button class="btn btn-secondary btn-sm pagination-btn" data-action="server-page" data-scope="${scope}" data-offset="${offset + limit}" aria-label="Trang sau" ${end >= total ? 'disabled' : ''}><span>Sau</span>${icons.chevronRight}</button>
+    </div>
   </nav>`;
 }
 
@@ -676,6 +702,7 @@ function clearSession() {
   activityRenderVersion += 1;
   stopAlertPolling();
   stopFaceCamera();
+  document.body?.classList?.remove('admin-surface');
   modalRoot.innerHTML = '';
   app.inert = false;
   toastRoot.innerHTML = '';
@@ -871,8 +898,27 @@ function loading() {
   return '<div class="loading"><div class="spinner" aria-label="Đang tải"></div></div>';
 }
 
+function adminLoadingSkeleton(page) {
+  if (page === 'admin-overview') {
+    return `<div class="admin-skeleton" role="status" aria-label="Đang tải tổng quan hệ thống">
+      <div class="admin-skeleton-head"><div class="skeleton-line w-lg"></div><div class="skeleton-line w-sm"></div></div>
+      <div class="admin-overview-grid">
+        <div class="skeleton-card h-md"></div>
+        <div class="skeleton-card h-md"></div>
+      </div>
+      <div class="skeleton-card h-lg"></div>
+    </div>`;
+  }
+  return `<div class="admin-skeleton" role="status" aria-label="Đang tải dữ liệu quản trị">
+    <div class="admin-skeleton-head"><div class="skeleton-line w-lg"></div><div class="skeleton-line w-sm"></div></div>
+    <div class="skeleton-bar"></div>
+    <div class="skeleton-card h-lg"></div>
+  </div>`;
+}
+
 function renderAuth(mode = 'login') {
   stopFaceCamera();
+  document.body?.classList?.remove('admin-surface');
   const params = new URLSearchParams(location.search);
   if (location.pathname.includes('verify') || params.get('token') && location.pathname.includes('verify')) {
     mode = 'verify';
@@ -884,6 +930,10 @@ function renderAuth(mode = 'login') {
       <form id="login-form" class="form-grid">
         <div class="field full"><label>Email</label><input class="input" type="email" name="email" required autocomplete="email" placeholder="parent@example.com"></div>
         <div class="field full"><label>Mật khẩu</label><input class="input" type="password" name="password" required autocomplete="current-password" placeholder="••••••••••"></div>
+        <div id="login-verification" class="field full hidden" role="status" aria-live="polite">
+          <p data-verification-message>Email chưa được xác minh. Bạn có thể yêu cầu gửi email xác minh ngay.</p>
+          <button class="btn btn-secondary" type="button" data-action="verify-login-email">Xác minh email ngay</button>
+        </div>
         <div class="form-actions between field full"><button class="link-button" type="button" data-auth-mode="forgot">Quên mật khẩu?</button><button class="btn" type="submit">Đăng nhập an toàn</button></div>
       </form>`,
     register: `
@@ -1050,7 +1100,10 @@ async function completeLogin(result) {
   toast('Đăng nhập thành công', 'Chào mừng bạn trở lại SafeNest.');
 }
 
-function brandMarkup() {
+function brandMarkup(adminMode = false) {
+  if (adminMode) {
+    return `<div class="brand admin-brand"><span class="brand-mark">${icons.policy}</span><span class="brand-copy">Laptop Monitor<small>Admin Console</small></span></div>`;
+  }
   return `<div class="brand"><span class="brand-mark">${icons.policy}</span><span class="brand-copy">SafeNest<small>Laptop Monitor</small></span></div>`;
 }
 
@@ -1110,6 +1163,8 @@ function currentDateLabel(date = new Date()) {
 }
 
 function renderShell() {
+  const isAdmin = state.role === 'admin';
+  document.body?.classList?.toggle('admin-surface', isAdmin);
   const parentNav = [
     ['overview', 'Tổng quan', 'home'],
     ['children', 'Hồ sơ trẻ', 'child'],
@@ -1122,13 +1177,19 @@ function renderShell() {
   ];
   const adminNav = [
     ['admin-overview', 'Tổng quan hệ thống', 'admin'],
-    ['users', 'Quản lý tài khoản', 'child'],
-    ['blacklist', 'Danh sách chặn', 'policy'],
-    ['audit', 'Nhật ký kiểm toán', 'activity'],
+    ['users', 'Quản lý tài khoản', 'users'],
+    ['blacklist', 'Danh sách chặn', 'shieldBan'],
+    ['audit', 'Nhật ký kiểm toán', 'audit'],
   ];
-  const nav = state.role === 'admin' ? adminNav : parentNav;
-  const mobileNav = state.role === 'admin'
-    ? [adminNav[0], adminNav[1], adminNav[3], ['account', 'Tài khoản', 'account']]
+  const nav = isAdmin ? adminNav : parentNav;
+  const mobileNav = isAdmin
+    ? [
+        ['admin-overview', 'Tổng quan', 'admin'],
+        ['users', 'Tài khoản', 'users'],
+        ['blacklist', 'DS chặn', 'shieldBan'],
+        ['audit', 'Kiểm toán', 'audit'],
+        ['account', 'Cá nhân', 'account'],
+      ]
     : ['overview', 'activity', 'alerts', 'controls'].map((page) => {
       const item = parentNav.find(([itemPage]) => itemPage === page);
       return page === 'controls' ? [item[0], 'Điều khiển', item[2]] : item;
@@ -1140,17 +1201,65 @@ function renderShell() {
     : state.connectionStatus === 'offline'
       ? 'Mất kết nối Backend'
       : 'Đang kiểm tra';
-  if (state.role === 'admin' && !adminNav.some(([page]) => page === state.page) && !systemPages.includes(state.page)) state.page = 'admin-overview';
+  if (isAdmin && !adminNav.some(([page]) => page === state.page) && !systemPages.includes(state.page)) state.page = 'admin-overview';
   if (state.role === 'parent' && !parentNav.some(([page]) => page === state.page) && !systemPages.includes(state.page)) state.page = 'overview';
+
+  if (isAdmin) {
+    app.innerHTML = `
+      <div class="app-shell is-admin">
+        <aside class="sidebar ${state.sidebarOpen ? 'open' : ''}" id="sidebar-navigation">
+          <div class="sidebar-brand">${brandMarkup(true)}</div>
+          <p class="side-section">Điều hành</p>
+          <nav aria-label="Điều hướng quản trị"><ul class="nav-list">${adminNav.map((item) => navItem(...item)).join('')}</ul></nav>
+          <p class="side-section">Hệ thống & công cụ</p>
+          <nav aria-label="Hệ thống và công cụ"><ul class="nav-list">
+            ${navItem('account', 'Tài khoản & bảo mật', 'account')}
+            ${navItem('api-lab', 'Công cụ Agent API', 'lab')}
+          </ul></nav>
+          <div class="sidebar-footer">
+            <button class="sidebar-profile" data-page="account">
+              <span class="sidebar-avatar">AD</span>
+              <span><strong>Quản trị viên</strong><small>Mã #${escapeHtml(state.userId || '—')} · Bảo mật</small></span>
+              <span class="sidebar-profile-arrow" aria-hidden="true">${icons.chevronRight}</span>
+            </button>
+          </div>
+        </aside>
+        ${state.sidebarOpen ? '<button type="button" class="mobile-overlay" data-action="toggle-sidebar" aria-label="Đóng menu điều hướng"></button>' : ''}
+        <div class="main-shell">
+          <header class="topbar">
+            <button class="btn btn-secondary btn-icon menu-toggle" data-action="toggle-sidebar" aria-label="${state.sidebarOpen ? 'Đóng menu' : 'Mở menu'}" aria-controls="sidebar-navigation" aria-expanded="${state.sidebarOpen}">${icons.menu}</button>
+            <div class="topbar-context"><p>Quản trị Laptop Monitor</p><strong id="topbar-title">${escapeHtml(pageTitles[state.page]?.[0] || 'Điều hành hệ thống')}</strong></div>
+            <div class="topbar-actions">
+              <button class="topbar-shortcut" data-page="api-lab" title="Phòng thử nghiệm Agent API">${icons.lab}<span>Agent API</span></button>
+              <span id="connection-pill" class="connection-pill ${state.connectionStatus}" title="Trạng thái kết nối API"><i></i><span>${connectionLabel}</span></span>
+              <div class="user-menu">
+                <button class="avatar" data-action="toggle-user-menu" aria-label="Mở menu tài khoản" aria-controls="user-popover" aria-expanded="${state.userMenuOpen}">AD<i class="avatar-status" aria-hidden="true"></i></button>
+                <div class="user-popover ${state.userMenuOpen ? '' : 'hidden'}" id="user-popover">
+                  <div class="identity"><strong>Quản trị viên</strong><small>Mã người dùng #${escapeHtml(state.userId || '—')}</small></div>
+                  <button class="popover-button" data-page="account">Tài khoản & bảo mật</button>
+                  <button class="popover-button danger" data-action="logout">Đăng xuất</button>
+                </div>
+              </div>
+            </div>
+          </header>
+          <main id="page-content" class="content" tabindex="-1"></main>
+          <footer class="admin-footer"><span>Laptop Monitor Admin Console</span><span>Phiên quản trị được bảo vệ bằng JWT &amp; Audit Log</span></footer>
+          <nav class="mobile-quick-nav is-admin-mobile-nav" aria-label="Điều hướng nhanh">${mobileNav.map((item) => mobileNavItem(...item)).join('')}</nav>
+        </div>
+      </div>`;
+    updateAlertIndicator();
+    return;
+  }
+
   app.innerHTML = `
     <div class="app-shell">
       <aside class="sidebar ${state.sidebarOpen ? 'open' : ''}" id="sidebar-navigation">
         <div class="sidebar-brand">${brandMarkup()}</div>
         <div class="workspace-card">
-          <span class="workspace-icon">${state.role === 'admin' ? icons.admin : icons.home}</span>
-          <span><small>Không gian hiện tại</small><strong>${state.role === 'admin' ? 'Quản trị hệ thống' : 'Gia đình của bạn'}</strong></span>
+          <span class="workspace-icon">${icons.home}</span>
+          <span><small>Không gian hiện tại</small><strong>Gia đình của bạn</strong></span>
         </div>
-        <p class="side-section">${state.role === 'admin' ? 'Điều hành' : 'Gia đình'}</p>
+        <p class="side-section">Gia đình</p>
         <nav aria-label="Điều hướng chính"><ul class="nav-list">${nav.map((item) => navItem(...item, item[0] === 'alerts' ? unreadAlerts : 0)).join('')}</ul></nav>
         <p class="side-section">Công cụ & bảo mật</p>
         <nav aria-label="Công cụ và bảo mật"><ul class="nav-list">
@@ -1159,22 +1268,22 @@ function renderShell() {
         </ul></nav>
         <div class="sidebar-footer">
           <div class="security-note"><span class="security-note-icon">${icons.policy}</span><span><strong>Kết nối được bảo vệ</strong><small>Phiên đăng nhập và Device Secret chỉ được giữ tạm thời.</small></span></div>
-          <button class="sidebar-profile" data-page="account"><span class="sidebar-avatar">${state.role === 'admin' ? 'AD' : 'PH'}</span><span><strong>${state.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</strong><small>Tài khoản & bảo mật</small></span><span aria-hidden="true">›</span></button>
+          <button class="sidebar-profile" data-page="account"><span class="sidebar-avatar">PH</span><span><strong>Phụ huynh</strong><small>Tài khoản & bảo mật</small></span><span aria-hidden="true">›</span></button>
         </div>
       </aside>
       ${state.sidebarOpen ? '<button type="button" class="mobile-overlay" data-action="toggle-sidebar" aria-label="Đóng menu điều hướng"></button>' : ''}
       <div class="main-shell">
         <header class="topbar">
           <button class="btn btn-secondary btn-icon menu-toggle" data-action="toggle-sidebar" aria-label="${state.sidebarOpen ? 'Đóng menu' : 'Mở menu'}" aria-controls="sidebar-navigation" aria-expanded="${state.sidebarOpen}">☰</button>
-          <div class="topbar-context"><p>${state.role === 'admin' ? 'Trung tâm điều hành' : 'Không gian gia đình'}</p><strong id="topbar-title">${escapeHtml(pageTitles[state.page]?.[0] || 'SafeNest')}</strong></div>
+          <div class="topbar-context"><p>Không gian gia đình</p><strong id="topbar-title">${escapeHtml(pageTitles[state.page]?.[0] || 'SafeNest')}</strong></div>
           <div class="topbar-actions">
-            <button class="topbar-shortcut" ${state.role === 'admin' ? 'data-page="api-lab"' : 'data-action="agent-guide"'}>${icons.lab}<span>${state.role === 'admin' ? 'Agent API' : 'Cài Agent'}</span></button>
+            <button class="topbar-shortcut" data-action="agent-guide">${icons.lab}<span>Cài Agent</span></button>
             <span id="connection-pill" class="connection-pill ${state.connectionStatus}" title="Trạng thái kết nối API"><i></i><span>${connectionLabel}</span></span>
             ${state.role === 'parent' ? `<button class="notification-button" data-page="alerts" aria-label="Mở cảnh báo" title="Cảnh báo chưa đọc">${icons.alert}${unreadAlerts ? `<b>${alertCountLabel(unreadAlerts)}</b>` : ''}</button>` : ''}
             <div class="user-menu">
-              <button class="avatar" data-action="toggle-user-menu" aria-label="Mở menu tài khoản" aria-controls="user-popover" aria-expanded="${state.userMenuOpen}">${state.role === 'admin' ? 'AD' : 'PH'}</button>
+              <button class="avatar" data-action="toggle-user-menu" aria-label="Mở menu tài khoản" aria-controls="user-popover" aria-expanded="${state.userMenuOpen}">PH</button>
               <div class="user-popover ${state.userMenuOpen ? '' : 'hidden'}" id="user-popover">
-                <div class="identity"><strong>${state.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</strong><small>Mã người dùng #${escapeHtml(state.userId || '—')}</small></div>
+                <div class="identity"><strong>Phụ huynh</strong><small>Mã người dùng #${escapeHtml(state.userId || '—')}</small></div>
                 <button class="popover-button" data-page="account">Tài khoản & bảo mật</button>
                 <button class="popover-button" data-action="logout">Đăng xuất</button>
               </div>
@@ -1208,10 +1317,14 @@ async function navigate(page) {
       ? '<div class="loading controls-loading" role="status"><div class="spinner" aria-hidden="true"></div><p>Đang tải điều khiển thiết bị...</p></div>'
       : page === 'policies'
         ? '<div class="loading policies-loading" role="status" aria-live="polite" aria-atomic="true"><div class="spinner" aria-hidden="true"></div><p>Đang tải chính sách...</p></div>'
-      : loading();
+        : state.role === 'admin'
+          ? adminLoadingSkeleton(page)
+          : loading();
   content.setAttribute('aria-busy', 'true');
   document.querySelector('#topbar-title').textContent = pageTitles[page]?.[0] || 'SafeNest';
-  document.title = `${pageTitles[page]?.[0] || 'Dashboard'} — SafeNest`;
+  document.title = state.role === 'admin'
+    ? `${pageTitles[page]?.[0] || 'Quản trị'} — Laptop Monitor Admin`
+    : `${pageTitles[page]?.[0] || 'Dashboard'} — SafeNest`;
   try {
     const renderers = {
       overview: renderOverview,
@@ -1231,7 +1344,11 @@ async function navigate(page) {
     };
     await (renderers[page] || renderOverview)(content);
   } catch (error) {
-    content.innerHTML = emptyState('!', 'Không thể tải dữ liệu', localizeError(error.message), '<button class="btn" data-action="reload-page">Thử lại</button>');
+    if (state.role === 'admin' && pageTitles[page]) {
+      content.innerHTML = `${pageHead(page)}<section class="card admin-error-card" role="alert">${emptyState('!', 'Không thể tải dữ liệu', localizeError(error.message), '<button class="btn" data-action="reload-page">Thử lại</button>')}</section>`;
+    } else {
+      content.innerHTML = emptyState('!', 'Không thể tải dữ liệu', localizeError(error.message), '<button class="btn" data-action="reload-page">Thử lại</button>');
+    }
   } finally {
     if (document.body.contains(content)) {
       content.removeAttribute('aria-busy');
@@ -1243,8 +1360,11 @@ async function navigate(page) {
 
 function pageHead(page, actions = '') {
   const [title, subtitle] = pageTitles[page];
+  if (state.role === 'admin') {
+    return `<header class="page-head admin-page-head"><div class="page-head-copy"><h1>${title}</h1><p>${subtitle}</p></div><div class="head-actions">${actions}</div></header>`;
+  }
   const pageClass = page === 'policies' ? ' page-head-policies' : '';
-  const context = page === 'policies' ? '' : `<div class="page-context"><p class="eyebrow">${state.role === 'admin' ? 'Điều hành hệ thống' : 'Đồng hành cùng gia đình'}</p><span>${escapeHtml(currentDateLabel())}</span></div>`;
+  const context = page === 'policies' ? '' : `<div class="page-context"><p class="eyebrow">Đồng hành cùng gia đình</p><span>${escapeHtml(currentDateLabel())}</span></div>`;
   return `<header class="page-head${pageClass}"><div class="page-head-copy">${context}<h1>${title}</h1><p>${subtitle}</p></div><div class="head-actions">${actions}</div></header>`;
 }
 
@@ -1291,55 +1411,6 @@ function sectionVisual(page, extra = '') {
   if (!visual) return '';
   const headingId = `section-visual-${page}-title`;
   return `<section class="section-visual section-visual-${page}" aria-labelledby="${headingId}"><div class="section-visual-copy"><p class="eyebrow">${escapeHtml(visual.eyebrow)}</p><h2 id="${headingId}">${escapeHtml(visual.title)}</h2><p>${escapeHtml(visual.text)}</p>${extra ? `<div class="section-visual-extra">${extra}</div>` : ''}</div><figure class="section-visual-media"><img src="${escapeHtml(visual.src)}" alt="${escapeHtml(visual.alt)}" width="1200" height="800" loading="lazy" decoding="async"></figure></section>`;
-}
-
-const adminSectionContent = {
-  users: {
-    icon: icons.child,
-    src: '/assets/admin-user-management.jpg',
-    alt: 'Không gian quản trị tài khoản phụ huynh và hồ sơ gia đình an toàn',
-    width: 1536,
-    height: 1024,
-    eyebrow: 'Quản trị danh tính',
-    title: 'Tài khoản rõ trạng thái, thao tác có kiểm soát.',
-    text: 'Tìm kiếm, phân quyền, xác minh và thu hồi phiên từ cùng một không gian quản trị.',
-  },
-  blacklist: {
-    icon: icons.policy,
-    src: '/assets/admin-domain-blacklist.jpg',
-    alt: 'Lá chắn bảo vệ laptop gia đình khỏi các tên miền không an toàn',
-    width: 1693,
-    height: 929,
-    eyebrow: 'Bảo vệ toàn hệ thống',
-    title: 'Một danh sách chặn, đồng bộ đến mọi Agent.',
-    text: 'Tên miền được kiểm tra định dạng tại Backend trước khi phân phối xuống các thiết bị đang quản lý.',
-  },
-  audit: {
-    icon: icons.activity,
-    src: '/assets/admin-audit-trail.jpg',
-    alt: 'Dòng thời gian minh bạch của các sự kiện quản trị hệ thống',
-    width: 1672,
-    height: 941,
-    eyebrow: 'Minh bạch vận hành',
-    title: 'Mọi thay đổi nhạy cảm đều để lại dấu vết.',
-    text: 'Theo dõi người thực hiện, đối tượng tác động, thời điểm, địa chỉ IP và metadata liên quan.',
-  },
-  'api-lab': {
-    icon: icons.lab,
-    eyebrow: 'Công cụ kỹ thuật',
-    title: 'Kiểm thử Agent API trong một quy trình có cấu trúc.',
-    text: 'Chọn endpoint, chuẩn bị payload và xem phản hồi mà không phải rời khỏi Dashboard quản trị.',
-  },
-};
-
-function adminSectionIntro(page, stats = []) {
-  const intro = adminSectionContent[page];
-  if (!intro) return '';
-  const headingId = `admin-intro-${page}-title`;
-  const media = intro.src
-    ? `<figure class="admin-intro-media"><img src="${escapeHtml(intro.src)}" alt="${escapeHtml(intro.alt)}" width="${intro.width}" height="${intro.height}" loading="lazy" decoding="async"></figure>`
-    : '';
-  return `<section class="admin-section-intro admin-section-intro-${page}" aria-labelledby="${headingId}"><div class="admin-intro-icon" aria-hidden="true">${intro.icon}</div><div class="admin-intro-copy"><p class="eyebrow">${escapeHtml(intro.eyebrow)}</p><h2 id="${headingId}">${escapeHtml(intro.title)}</h2><p>${escapeHtml(intro.text)}</p></div><div class="admin-intro-stats">${stats.map((item) => `<span class="admin-intro-stat"><b>${escapeHtml(item.value)}</b><small>${escapeHtml(item.label)}</small></span>`).join('')}</div>${media}</section>`;
 }
 
 async function loadParentCore(usageChildId = state.overviewChildId) {
@@ -2321,15 +2392,6 @@ function switchRow(name, label, text, checked, policyClassification = false) {
     ? `<small id="policy-${name}-status" class="policy-switch-status" data-policy-switch-status="${name}" data-save-state="${saveState}">${saveState}</small><small id="policy-${name}-note" class="policy-switch-note" data-policy-switch-note="${name}" ${saveNote ? '' : 'hidden'}>${saveNote}</small>`
     : '';
   return `<div class="switch-row"><div class="switch-copy">${labelMarkup}${descriptionMarkup}${policyState}</div><label class="switch"><input type="checkbox" name="${name}" ${accessibleName} ${checked ? 'checked' : ''}><span></span></label></div>`;
-}
-
-function syncAdminRoleEnrollment(form) {
-  const notice = form?.querySelector('[data-face-enrollment-warning]');
-  const confirmation = form?.elements.confirm_face_enrollment;
-  const role = form?.elements.role?.value;
-  const promoting = form?.dataset.originalRole === 'parent' && role === 'admin';
-  if (notice) notice.hidden = !promoting;
-  if (confirmation) confirmation.required = promoting;
 }
 
 function activityRequestCurrent(content, version, session = state.accessToken) {
@@ -3498,12 +3560,40 @@ async function renderAccount(content) {
   } else {
     state.pushTokens = [];
   }
+  if (state.role === 'admin') {
+    content.innerHTML = `
+      ${pageHead('account')}
+      <section class="account-grid admin-account-grid">
+        <div class="stack">
+          <article class="card card-pad admin-profile-card">
+            <div class="admin-profile-header">
+              <div class="profile-avatar admin-profile-avatar">QT</div>
+              <div>
+                <h2>Tài khoản quản trị viên</h2>
+                <p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · Quyền Admin Console (JWT + Face Verification).</p>
+              </div>
+              <span class="badge blue">Quản trị viên</span>
+            </div>
+            <div class="admin-profile-meta">
+              <div><small>Phiên làm việc</small><strong>JWT 15 phút &amp; Refresh token luân phiên</strong></div>
+              <div><small>Bảo mật bổ sung</small><strong>Xác thực khuôn mặt khi đăng nhập</strong></div>
+            </div>
+          </article>
+          <article class="card card-pad"><div class="card-head card-head-flush"><div><h2>Đổi mật khẩu</h2><p>Thao tác này thu hồi toàn bộ phiên đăng nhập cũ.</p></div></div><form id="change-password-form" class="form-grid"><div class="field full"><label>Mật khẩu hiện tại</label><input class="input" type="password" name="oldPassword" required></div><div class="field full"><label>Mật khẩu mới</label><input class="input" type="password" name="newPassword" required minlength="8"><small>Cần chữ hoa, số và ký tự đặc biệt.</small></div><div class="form-actions field full"><button class="btn" type="submit">Cập nhật mật khẩu</button></div></form></article>
+        </div>
+        <aside class="stack">
+          <article class="card card-pad"><h3>Phiên đăng nhập hiện tại</h3><p class="muted">Token chỉ được lưu trong sessionStorage của tab hiện tại và tự động xóa khi đóng trình duyệt.</p><button class="btn btn-secondary" data-action="logout">Đăng xuất phiên này</button></article>
+          <article class="card danger-zone"><div class="card-head"><div><h3>Vùng nguy hiểm</h3><p>Chỉ có thể xóa khi còn quản trị viên khác đang hoạt động và đã xác minh email. Thao tác xóa là vĩnh viễn.</p></div></div><div class="card-body"><button class="btn btn-danger" data-action="delete-account">Xóa tài khoản</button></div></article>
+        </aside>
+      </section>`;
+    return;
+  }
   content.innerHTML = `
     ${pageHead('account')}
     <section class="account-grid">
       <div class="stack">
-        <article class="card profile-card"><figure class="profile-cover"><img src="/assets/section-account-security.jpg" alt="Tài khoản gia đình được bảo vệ bằng mật khẩu và thiết bị tin cậy" width="1200" height="800" loading="lazy" decoding="async"></figure><div class="profile-body"><div class="profile-avatar">${state.role === 'admin' ? 'QT' : 'PH'}</div><h2>${state.role === 'admin' ? 'Tài khoản quản trị viên' : 'Tài khoản phụ huynh'}</h2><p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · JWT 15 phút và refresh token luân phiên.</p></div></article>
-        ${state.role === 'parent' ? `<article class="card card-pad push-settings">
+        <article class="card profile-card"><figure class="profile-cover"><img src="/assets/section-account-security.jpg" alt="Tài khoản gia đình được bảo vệ bằng mật khẩu và thiết bị tin cậy" width="1200" height="800" loading="lazy" decoding="async"></figure><div class="profile-body"><div class="profile-avatar">PH</div><h2>Tài khoản phụ huynh</h2><p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · JWT 15 phút và refresh token luân phiên.</p></div></article>
+        <article class="card card-pad push-settings">
           <div class="card-head card-head-flush"><div><h2>Thiết bị nhận thông báo</h2><p>Đăng ký Expo hoặc FCM token để nhận cảnh báo AI và cảnh báo từ Agent theo thời gian thực.</p></div><button class="btn btn-secondary btn-sm" data-action="test-push" ${state.pushTokens.some((item) => item.is_active) ? '' : 'disabled'}>Gửi thử</button></div>
           <div class="push-token-list">${state.pushTokens.map((item) => `<div class="push-token-row"><div class="list-icon">${item.provider === 'expo' ? 'EX' : 'FC'}</div><div class="list-copy"><strong>${escapeHtml(item.device_name || 'Thiết bị không tên')}</strong><small>${escapeHtml(item.provider.toUpperCase())} · ${escapeHtml(item.platform)} · ${escapeHtml(item.token_hint)}</small>${item.last_error ? `<small class="text-danger">${escapeHtml(item.last_error)}</small>` : ''}</div><span class="badge ${item.is_active ? '' : 'red'}">${item.is_active ? 'Đang nhận' : 'Đã tắt'}</span><button class="kebab danger" data-action="delete-push-token" data-id="${item.push_token_id}" title="Gỡ thiết bị">×</button></div>`).join('') || '<p class="muted">Chưa có thiết bị nhận thông báo.</p>'}</div>
           <form id="push-token-form" class="form-grid push-token-form">
@@ -3513,7 +3603,7 @@ async function renderAccount(content) {
             <div class="field full"><label>Push token</label><textarea class="textarea" name="token" maxlength="4096" required autocomplete="off" placeholder="ExponentPushToken[...] hoặc FCM registration token"></textarea><small>Token chỉ được gửi đến backend qua HTTPS và không hiển thị lại đầy đủ.</small></div>
             <div class="form-actions field full"><button class="btn" type="submit">Đăng ký thiết bị nhận thông báo</button></div>
           </form>
-        </article>` : ''}
+        </article>
         <article class="card card-pad"><div class="card-head card-head-flush"><div><h2>Đổi mật khẩu</h2><p>Thao tác này thu hồi toàn bộ phiên đăng nhập cũ.</p></div></div><form id="change-password-form" class="form-grid"><div class="field full"><label>Mật khẩu hiện tại</label><input class="input" type="password" name="oldPassword" required></div><div class="field full"><label>Mật khẩu mới</label><input class="input" type="password" name="newPassword" required minlength="8"><small>Cần chữ hoa, số và ký tự đặc biệt.</small></div><div class="form-actions field full"><button class="btn" type="submit">Cập nhật mật khẩu</button></div></form></article>
       </div>
       <aside class="stack">
@@ -3523,34 +3613,109 @@ async function renderAccount(content) {
     </section>`;
 }
 
+function auditActionTone(action = '') {
+  if (action.includes('delete') || action.includes('revoke')) return 'danger';
+  if (action.includes('update') || action.includes('rotate')) return 'warn';
+  return 'info';
+}
+
+function adminStatsStrip(items) {
+  return `<section class="admin-stats-strip" aria-label="Tóm tắt số liệu">${items.map((item) => `<div class="admin-stat-chip"><small>${escapeHtml(item.label)}</small><strong>${escapeHtml(item.value)}</strong>${item.note ? `<span>${escapeHtml(item.note)}</span>` : ''}</div>`).join('')}</section>`;
+}
+
 async function renderAdminOverview(content) {
-  state.adminStats = await api('/admin/stats');
+  const [statsRes, auditRes] = await Promise.allSettled([
+    api('/admin/stats'),
+    api('/admin/audit-logs?limit=5'),
+  ]);
+  if (statsRes.status !== 'fulfilled') throw statsRes.reason;
+  state.adminStats = statsRes.value;
   const s = state.adminStats;
+  const recentAudits = auditRes.status === 'fulfilled' ? (auditRes.value.data || []) : [];
+  state.adminAuditLogs = recentAudits;
   const onlinePercent = s.total_devices ? Math.round((s.devices_online / s.total_devices) * 100) : 0;
   const offlineDevices = Math.max(0, s.total_devices - s.devices_online);
+  const summaryTotalUsers = Math.max(s.total_users || 0, 1);
+  const summaryTotalDevices = Math.max(s.total_devices || 0, 1);
+  const childrenRatio = Math.min(100, Math.round(((s.total_children || 0) / summaryTotalUsers) * 50));
+  const alertBar = Math.min(100, Math.round(((s.alerts_today || 0) / summaryTotalDevices) * 25));
+  const blacklistBar = Math.min(100, Math.max(s.blacklist_count ? 24 : 0, Math.min(100, (s.blacklist_count || 0) * 4)));
   content.innerHTML = `
-    ${pageHead('admin-overview', '<button class="btn btn-secondary" data-action="reload-page">' + icons.refresh + ' Làm mới</button>')}
-    <section class="dashboard-hero admin-dashboard-hero">
-      <div class="dashboard-hero-copy">
-        <span class="hero-status"><i></i>Trung tâm vận hành SafeNest</span>
-        <p class="eyebrow">Quản trị chủ động</p>
-        <h2>Một góc nhìn rõ ràng<br>cho toàn bộ hệ thống.</h2>
-        <p>Theo dõi quy mô, trạng thái thiết bị và các hành động nhạy cảm để giữ nền tảng ổn định, minh bạch và an toàn.</p>
-        <div class="admin-hero-flags"><span>${icons.policy} JWT & RLS</span><span>${icons.activity} Audit log</span><span>${icons.device} Agent heartbeat</span></div>
-        <div class="hero-actions"><button class="btn" data-page="users">Quản lý tài khoản</button><button class="btn btn-secondary" data-page="audit">Xem nhật ký</button></div>
-      </div>
-      <figure class="dashboard-hero-media"><img src="/assets/admin-system-operations.jpg" alt="Quản trị viên theo dõi hoạt động và sức khỏe hệ thống" width="1200" height="800" decoding="async" fetchpriority="high"><figcaption class="hero-media-insight"><span class="hero-insight-icon">${icons.device}</span><span><small>Sức khỏe thiết bị</small><strong>${onlinePercent}% trực tuyến</strong><em>${s.devices_online} / ${s.total_devices} thiết bị có kết nối</em></span></figcaption></figure>
+    ${pageHead('admin-overview', '<button class="btn btn-secondary btn-sm" data-action="reload-page">' + icons.refresh + ' Làm mới</button><button class="btn btn-sm" data-page="users">' + icons.users + ' Tài khoản</button>')}
+    <section class="admin-overview-grid">
+      <article class="card admin-card admin-health-card">
+        <div class="admin-card-head">
+          <div>
+            <h2>Sức khỏe thiết bị</h2>
+            <p class="muted">Thiết bị có heartbeat trong 5 phút gần nhất được tính là trực tuyến.</p>
+          </div>
+          <span class="badge ${onlinePercent >= 50 || s.total_devices === 0 ? 'blue' : 'warn'}">${onlinePercent}% trực tuyến</span>
+        </div>
+        <div class="admin-health-body">
+          <div class="donut" role="img" aria-label="${onlinePercent}% thiết bị đang trực tuyến" style="--value:${onlinePercent}"><strong>${onlinePercent}%</strong></div>
+          <div class="legend admin-health-legend">
+            <div class="legend-row"><i class="legend-dot online"></i><span>Trực tuyến</span><b>${s.devices_online}</b></div>
+            <div class="legend-row"><i class="legend-dot offline"></i><span>Ngoại tuyến</span><b>${offlineDevices}</b></div>
+            <div class="legend-row"><i class="legend-dot total"></i><span>Tổng thiết bị</span><b>${s.total_devices}</b></div>
+          </div>
+        </div>
+        <div class="admin-runtime-strip">
+          <div class="runtime-item"><span>${icons.server} Backend API</span><strong class="${state.connectionStatus === 'online' ? 'ok' : 'warn'}">${state.connectionStatus === 'online' ? 'Ổn định' : 'Kiểm tra kết nối'}</strong></div>
+          <div class="runtime-item"><span>${icons.policy} JWT &amp; RLS</span><strong class="ok">Đang bật</strong></div>
+          <div class="runtime-item"><span>${icons.audit} Audit Log</span><strong class="ok">Đang ghi</strong></div>
+        </div>
+      </article>
+      <article class="card admin-card admin-summary-card">
+        <div class="admin-card-head">
+          <div>
+            <h2>Chỉ số hệ thống</h2>
+            <p class="muted">Tổng hợp quy mô tài khoản, trẻ em và lớp bảo vệ.</p>
+          </div>
+          <button class="btn btn-ghost btn-sm" data-page="blacklist">Danh sách chặn →</button>
+        </div>
+        <div class="admin-summary-grid">
+          <button class="summary-tile" type="button" data-page="users">
+            <div class="summary-tile-top"><span class="summary-icon indigo">${icons.users}</span><span class="summary-label">Người dùng</span></div>
+            <strong class="summary-value">${s.total_users}</strong>
+            <div class="summary-bar"><span style="width:100%"></span></div>
+            <small>Tài khoản đã đăng ký</small>
+          </button>
+          <button class="summary-tile" type="button" data-page="users">
+            <div class="summary-tile-top"><span class="summary-icon blue">${icons.child}</span><span class="summary-label">Hồ sơ trẻ em</span></div>
+            <strong class="summary-value">${s.total_children}</strong>
+            <div class="summary-bar"><span style="width:${childrenRatio}%"></span></div>
+            <small>Hồ sơ đang giám sát</small>
+          </button>
+          <div class="summary-tile">
+            <div class="summary-tile-top"><span class="summary-icon ${s.alerts_today > 0 ? 'amber' : 'slate'}">${icons.alert}</span><span class="summary-label">Cảnh báo hôm nay</span></div>
+            <strong class="summary-value">${s.alerts_today}</strong>
+            <div class="summary-bar warn"><span style="width:${alertBar}%"></span></div>
+            <small>Tín hiệu từ thiết bị</small>
+          </div>
+          <button class="summary-tile" type="button" data-page="blacklist">
+            <div class="summary-tile-top"><span class="summary-icon emerald">${icons.shieldBan}</span><span class="summary-label">Danh sách chặn</span></div>
+            <strong class="summary-value">${s.blacklist_count}</strong>
+            <div class="summary-bar emerald"><span style="width:${blacklistBar}%"></span></div>
+            <small>Tên miền toàn cục →</small>
+          </button>
+        </div>
+      </article>
     </section>
-    <section class="metrics admin-kpi-grid" aria-label="Chỉ số vận hành hệ thống">${metric('Người dùng', s.total_users, 'tài khoản', 'child', true)}${metric('Trẻ em', s.total_children, 'hồ sơ', 'child')}${metric('Thiết bị trực tuyến', s.devices_online, `/ ${s.total_devices} thiết bị`, 'device')}${metric('Cảnh báo hôm nay', s.alerts_today, 'tín hiệu', 'alert')}</section>
-    <section class="dashboard-grid admin-operations-grid">
-      <div class="stack">
-        <article class="card card-pad admin-health-card"><div class="admin-card-heading"><span class="admin-card-icon">${icons.device}</span><div><p class="eyebrow">Sức khỏe thiết bị</p><h2>${s.total_devices} thiết bị đang được quản lý</h2><p class="muted">Heartbeat trong 5 phút gần nhất được tính là trực tuyến.</p></div></div><div class="donut-row admin-health-chart"><div class="donut" role="img" aria-label="${onlinePercent}% thiết bị đang trực tuyến" style="--value:${onlinePercent}"><strong>${onlinePercent}%</strong></div><div class="legend"><div class="legend-row"><i class="legend-dot"></i><span>Trực tuyến</span><b>${s.devices_online}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Ngoại tuyến</span><b>${offlineDevices}</b></div><div class="legend-row"><i class="legend-dot"></i><span>Cảnh báo hôm nay</span><b>${s.alerts_today}</b></div></div></div></article>
-        <article class="card admin-shortcuts-card"><div class="card-head"><div><p class="eyebrow">Điều hành nhanh</p><h2>Lối tắt quản trị</h2><p>Đi thẳng đến các khu vực được sử dụng thường xuyên.</p></div></div><div class="card-body list quick-link-list"><button class="list-item" type="button" data-page="users"><span class="list-icon">TK</span><span class="list-copy"><strong>Tài khoản người dùng</strong><small>Xem, khóa, xác minh hoặc thu hồi phiên</small></span><span class="list-arrow">→</span></button><button class="list-item" type="button" data-page="blacklist"><span class="list-icon">BL</span><span class="list-copy"><strong>Danh sách chặn toàn cục</strong><small>${s.blacklist_count} tên miền đang được đồng bộ</small></span><span class="list-arrow">→</span></button><button class="list-item" type="button" data-page="audit"><span class="list-icon">AU</span><span class="list-copy"><strong>Nhật ký kiểm toán</strong><small>Kiểm tra các thao tác nhạy cảm</small></span><span class="list-arrow">→</span></button></div></article>
+    <section class="table-card admin-table-card admin-recent-audit-card">
+      <div class="admin-table-head">
+        <div>
+          <h2>Nhật ký kiểm toán gần đây</h2>
+          <p class="muted">5 thao tác quản trị hoặc bảo mật gần nhất được ghi nhận.</p>
+        </div>
+        <button class="btn btn-secondary btn-sm" data-page="audit">Xem tất cả →</button>
       </div>
-      <aside class="stack">
-        <article class="metric-card admin-blacklist-card"><div class="metric-icon">${icons.policy}</div><p class="metric-label">DANH SÁCH CHẶN TOÀN CỤC</p><div class="metric-value">${s.blacklist_count}<small>tên miền</small></div><button class="admin-card-link" data-page="blacklist">Quản lý danh sách <span>→</span></button></article>
-        <article class="card card-pad admin-status-card"><div class="admin-card-heading"><span class="admin-card-icon">${icons.activity}</span><div><p class="eyebrow">Trạng thái vận hành</p><h3>Các lớp bảo vệ cốt lõi</h3></div></div><div class="list"><div class="list-item"><div class="list-icon">API</div><div class="list-copy"><strong>Backend API</strong><small>${state.connectionStatus === 'online' ? 'Đã kết nối và phản hồi' : 'Cần kiểm tra kết nối'}</small></div><span class="badge ${state.connectionStatus === 'online' ? '' : 'coral'}">${state.connectionStatus === 'online' ? 'Ổn định' : 'Chú ý'}</span></div><div class="list-item"><div class="list-icon">RL</div><div class="list-copy"><strong>Phân tách dữ liệu gia đình</strong><small>Parent API được bảo vệ bằng JWT và RLS</small></div><span class="badge blue">Đã cấu hình</span></div><div class="list-item"><div class="list-icon">AL</div><div class="list-copy"><strong>Audit log</strong><small>Ghi nhận thao tác quản trị nhạy cảm</small></div><span class="badge blue">Đã cấu hình</span></div></div></article>
-      </aside>
+      ${recentAudits.length ? `<div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>Thao tác</th></tr></thead><tbody>${recentAudits.map((item) => `<tr>
+        <td>${formatDate(item.created_at)}</td>
+        <td><div class="admin-actor-cell"><span>#${item.actor_user_id ?? '—'}</span><span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></div></td>
+        <td><span class="audit-action-badge ${auditActionTone(item.action)}">${escapeHtml(item.action)}</span></td>
+        <td>${escapeHtml(item.target_type || '—')} <strong>#${escapeHtml(item.target_id || '—')}</strong></td>
+        <td><button class="btn btn-secondary btn-sm" data-action="view-audit" data-id="${item.audit_id}">${icons.eye} Chi tiết</button></td>
+      </tr>`).join('')}</tbody></table></div>` : `<div class="admin-inline-empty">${auditRes.status === 'fulfilled' ? 'Chưa ghi nhận thao tác quản trị nhạy cảm nào.' : 'Không thể tải danh sách nhật ký gần đây.'}</div>`}
     </section>`;
 }
 
@@ -3566,16 +3731,22 @@ async function renderUsers(content) {
     return renderUsers(content);
   }
   state.adminUsers = result.data || [];
+  const totalUsers = Number(result.total) || 0;
   const activeOnPage = state.adminUsers.filter((user) => user.is_active).length;
   const adminsOnPage = state.adminUsers.filter((user) => user.role === 'admin').length;
   content.innerHTML = `
-    ${pageHead('users', '<button class="btn btn-secondary" data-action="refresh-users">' + icons.refresh + ' Làm mới</button>')}
-    ${adminSectionIntro('users', [{ value: Number(result.total) || 0, label: 'Tài khoản' }, { value: activeOnPage, label: 'Đang hoạt động' }, { value: adminsOnPage, label: 'Quản trị viên' }])}
-    <form id="admin-user-filter" class="filters filters-users">
+    ${pageHead('users', '<button class="btn btn-secondary btn-sm" data-action="refresh-users">' + icons.refresh + ' Làm mới</button><button class="btn btn-sm" data-action="add-admin-user">' + icons.plus + ' Thêm tài khoản</button>')}
+    ${adminStatsStrip([
+      { label: 'Tổng tài khoản', value: totalUsers },
+      { label: 'Đang hiển thị', value: state.adminUsers.length, note: 'trang hiện tại' },
+      { label: 'Đang hoạt động', value: activeOnPage, note: 'trang hiện tại' },
+      { label: 'Quản trị viên', value: adminsOnPage, note: 'trang hiện tại' },
+    ])}
+    <form id="admin-user-filter" class="filters filters-users admin-filter-bar">
       <div class="field"><label>Tìm kiếm</label><input class="input" name="search" value="${escapeHtml(filter.search || '')}" placeholder="Tên hoặc email"></div>
       <div class="field"><label>Vai trò</label><select class="select" name="role"><option value="">Tất cả vai trò</option><option value="parent" ${filter.role === 'parent' ? 'selected' : ''}>Phụ huynh</option><option value="admin" ${filter.role === 'admin' ? 'selected' : ''}>Quản trị viên</option></select></div>
       <div class="field"><label>Trạng thái</label><select class="select" name="status"><option value="">Tất cả trạng thái</option><option value="active" ${filter.status === 'active' ? 'selected' : ''}>Đang hoạt động</option><option value="disabled" ${filter.status === 'disabled' ? 'selected' : ''}>Đã khóa</option></select></div>
-      <div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-admin-user-filter">Đặt lại</button><button class="btn" type="submit">Áp dụng</button></div>
+      <div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-admin-user-filter">Đặt lại</button><button class="btn btn-sm" type="submit">${icons.search} Áp dụng</button></div>
     </form>
     <section class="table-card admin-table-card"><div class="table-scroll"><table><thead><tr><th>Tài khoản</th><th>Vai trò</th><th>Trạng thái</th><th>Dữ liệu</th><th>Ngày tạo</th><th>Thao tác</th></tr></thead><tbody>${state.adminUsers.map((u) => {
       const isSelf = String(u.user_id) === String(state.userId);
@@ -3585,9 +3756,9 @@ async function renderUsers(content) {
         <td><span class="badge ${u.is_active ? '' : 'red'}">${u.is_active ? 'Đang hoạt động' : 'Đã khóa'}</span><small class="status-sub">${u.is_verified ? 'Đã xác minh email' : 'Chưa xác minh email'}</small></td>
         <td><strong>${u.child_count}</strong> trẻ · <strong>${u.device_count}</strong> thiết bị</td>
         <td>${formatDate(u.created_at)}</td>
-        <td><div class="row-actions"><button class="btn btn-secondary btn-sm" data-action="view-user" data-id="${u.user_id}">Chi tiết</button><button class="kebab" aria-label="Chỉnh sửa ${escapeHtml(u.name)}" title="Chỉnh sửa" data-action="edit-user" data-id="${u.user_id}">✎</button><button class="kebab" aria-label="Thu hồi phiên của ${escapeHtml(u.name)}" title="Thu hồi phiên" data-action="revoke-user-sessions" data-id="${u.user_id}">↻</button><button class="kebab danger" aria-label="${isSelf ? 'Không thể xóa tài khoản của chính mình' : `Xóa ${escapeHtml(u.name)}`}" title="${isSelf ? 'Không thể xóa chính mình' : 'Xóa tài khoản'}" data-action="delete-user" data-id="${u.user_id}" ${isSelf ? 'disabled' : ''}>×</button></div></td>
+        <td><div class="row-actions"><button class="btn btn-secondary btn-sm" data-action="view-user" data-id="${u.user_id}">${icons.eye} Chi tiết</button><button class="btn-icon-action" aria-label="Chỉnh sửa ${escapeHtml(u.name)}" title="Chỉnh sửa" data-action="edit-user" data-id="${u.user_id}">${icons.edit}</button><button class="btn-icon-action" aria-label="Thu hồi phiên của ${escapeHtml(u.name)}" title="Thu hồi phiên" data-action="revoke-user-sessions" data-id="${u.user_id}">${icons.revoke}</button><button class="btn-icon-action danger" aria-label="${isSelf ? 'Không thể xóa tài khoản của chính mình' : `Xóa ${escapeHtml(u.name)}`}" title="${isSelf ? 'Không thể xóa chính mình' : 'Xóa tài khoản'}" data-action="delete-user" data-id="${u.user_id}" ${isSelf ? 'disabled' : ''}>${icons.trash}</button></div></td>
       </tr>`;
-    }).join('')}</tbody></table></div>${state.adminUsers.length ? `<div class="table-footer"><span>Thao tác quản trị được ghi vào audit log</span>${paginationMarkup('users', result, 'tài khoản')}</div>` : emptyState('◎', 'Không tìm thấy tài khoản', 'Hãy thay đổi bộ lọc để xem kết quả khác.')}</section>`;
+    }).join('')}</tbody></table></div>${state.adminUsers.length ? `<div class="table-footer"><span>Mọi thay đổi được ghi vào nhật ký kiểm toán</span>${paginationMarkup('users', result, 'tài khoản')}</div>` : emptyState(icons.users, 'Không tìm thấy tài khoản', 'Hãy thay đổi từ khóa hoặc bộ lọc để xem kết quả khác.')}</section>`;
 }
 
 async function renderBlacklist(content) {
@@ -3601,11 +3772,16 @@ async function renderBlacklist(content) {
     state.blacklistOffset = Math.max(0, state.blacklistOffset - state.blacklistLimit);
     return renderBlacklist(content);
   }
+  const totalDomains = Number(result.total) || result.data.length;
   content.innerHTML = `
-    ${pageHead('blacklist', '<button class="btn" data-action="add-blacklist">' + icons.plus + ' Thêm tên miền</button>')}
-    ${adminSectionIntro('blacklist', [{ value: Number(result.total) || result.data.length, label: 'Tên miền phù hợp' }, { value: 'Backend', label: 'Lớp kiểm tra' }, { value: 'Agent', label: 'Nơi đồng bộ' }])}
-    <form id="blacklist-search" class="filters filters-search"><div class="field"><label>Tìm tên miền</label><input class="input" name="search" value="${escapeHtml(search)}" placeholder="example.com"></div><div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-blacklist-filter">Đặt lại</button><button class="btn btn-secondary" type="submit">Tìm kiếm</button></div></form>
-    <section class="table-card admin-table-card"><div class="table-scroll"><table><thead><tr><th>Tên miền</th><th>Lý do</th><th>Người thêm</th><th>Ngày thêm</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${result.data.map((item) => `<tr><td><div class="admin-domain-cell"><span>⊘</span><strong>${escapeHtml(item.domain)}</strong></div></td><td>${escapeHtml(item.reason || '—')}</td><td>${escapeHtml(item.added_by_name || 'Hệ thống')}</td><td>${formatDate(item.created_at)}</td><td><button class="btn btn-danger btn-sm" aria-label="Xóa ${escapeHtml(item.domain)} khỏi danh sách chặn" data-action="delete-blacklist" data-id="${item.blacklist_id}" data-name="${escapeHtml(item.domain)}">Xóa</button></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer">${paginationMarkup('blacklist', result, 'danh sách chặn')}</div>` : emptyState('⊘', search ? 'Không tìm thấy tên miền' : 'Danh sách chặn đang trống', search ? 'Không có mục nào phù hợp với từ khóa tìm kiếm.' : 'Thêm tên miền đầu tiên để Agent bắt đầu bảo vệ.', search ? '' : '<button class="btn" data-action="add-blacklist">Thêm tên miền</button>')}</section>`;
+    ${pageHead('blacklist', '<button class="btn btn-sm" data-action="add-blacklist">' + icons.plus + ' Thêm tên miền</button>')}
+    ${adminStatsStrip([
+      { label: 'Tổng tên miền chặn', value: totalDomains },
+      { label: 'Trang hiện tại', value: result.data.length },
+      { label: 'Đồng bộ', value: 'Backend → Agent' },
+    ])}
+    <form id="blacklist-search" class="filters filters-search admin-filter-bar"><div class="field"><label>Tìm tên miền</label><input class="input" name="search" value="${escapeHtml(search)}" placeholder="example.com"></div><div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-blacklist-filter">Đặt lại</button><button class="btn btn-secondary btn-sm" type="submit">${icons.search} Tìm kiếm</button></div></form>
+    <section class="table-card admin-table-card"><div class="table-scroll"><table><thead><tr><th>Tên miền</th><th>Lý do chặn</th><th>Người thêm</th><th>Ngày thêm</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${result.data.map((item) => `<tr><td><div class="admin-domain-cell"><span class="domain-icon">${icons.shieldBan}</span><strong>${escapeHtml(item.domain)}</strong></div></td><td>${escapeHtml(item.reason || '—')}</td><td>${escapeHtml(item.added_by_name || 'Hệ thống')}</td><td>${formatDate(item.created_at)}</td><td><button class="btn btn-danger btn-sm" aria-label="Xóa ${escapeHtml(item.domain)} khỏi danh sách chặn" data-action="delete-blacklist" data-id="${item.blacklist_id}" data-name="${escapeHtml(item.domain)}">${icons.trash} Xóa</button></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer">${paginationMarkup('blacklist', result, 'danh sách chặn')}</div>` : emptyState(icons.shieldBan, search ? 'Không tìm thấy tên miền' : 'Danh sách chặn đang trống', search ? 'Không có mục nào phù hợp với từ khóa tìm kiếm.' : 'Thêm tên miền đầu tiên để Agent bắt đầu bảo vệ.', search ? '' : '<button class="btn" data-action="add-blacklist">' + icons.plus + ' Thêm tên miền</button>')}</section>`;
 }
 
 function auditMetadataPreview(metadata) {
@@ -3625,11 +3801,16 @@ async function renderAudit(content) {
     return renderAudit(content);
   }
   state.adminAuditLogs = result.data || [];
+  const totalEvents = Number(result.total) || state.adminAuditLogs.length;
   content.innerHTML = `
-    ${pageHead('audit')}
-    ${adminSectionIntro('audit', [{ value: Number(result.total) || result.data.length, label: 'Sự kiện phù hợp' }, { value: 'IP', label: 'Nguồn truy cập' }, { value: 'JSON', label: 'Metadata chi tiết' }])}
-    <form id="audit-filter" class="filters filters-audit"><div class="field"><label>Hành động</label><input class="input" name="action" list="audit-action-options" value="${escapeHtml(filter.action || '')}" placeholder="Ví dụ: settings.update"><datalist id="audit-action-options"><option value="settings.update"><option value="user.update"><option value="user.delete"><option value="blacklist.create"><option value="blacklist.delete"><option value="device.delete"><option value="device.rotate_secret"></datalist></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}" placeholder="Ví dụ: 1"></div><div class="filter-actions"><button class="btn btn-ghost" type="button" data-action="clear-audit-filter">Đặt lại</button><button class="btn" type="submit">Áp dụng</button></div></form>
-    <section class="table-card admin-table-card audit-table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Chi tiết</th></tr></thead><tbody>${state.adminAuditLogs.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td><div class="admin-actor-cell"><span>#${item.actor_user_id ?? '—'}</span><span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></div></td><td><span class="audit-action-badge">${escapeHtml(item.action)}</span></td><td>${escapeHtml(item.target_type || '—')} <strong>#${escapeHtml(item.target_id || '—')}</strong></td><td><code class="audit-ip">${escapeHtml(item.ip_address || '—')}</code></td><td><button class="metadata-preview" aria-label="Xem chi tiết sự kiện ${escapeHtml(item.action)}" data-action="view-audit" data-id="${item.audit_id}"><code>${escapeHtml(auditMetadataPreview(item.metadata))}</code><span>Xem</span></button></td></tr>`).join('')}</tbody></table></div>${state.adminAuditLogs.length ? `<div class="table-footer">${paginationMarkup('audit', result, 'nhật ký kiểm toán')}</div>` : emptyState('⌁', 'Không có nhật ký', Object.values(filter).some(Boolean) ? 'Không có sự kiện nào phù hợp với bộ lọc.' : 'Chưa ghi nhận thao tác quản trị nhạy cảm nào.')}</section>`;
+    ${pageHead('audit', '<button class="btn btn-secondary btn-sm" data-action="reload-page">' + icons.refresh + ' Làm mới</button>')}
+    ${adminStatsStrip([
+      { label: 'Sự kiện phù hợp', value: totalEvents },
+      { label: 'Đang hiển thị', value: state.adminAuditLogs.length, note: 'trang hiện tại' },
+      { label: 'Dữ liệu ghi nhận', value: 'IP & JSON' },
+    ])}
+    <form id="audit-filter" class="filters filters-audit admin-filter-bar"><div class="field"><label>Hành động</label><input class="input" name="action" list="audit-action-options" value="${escapeHtml(filter.action || '')}" placeholder="Ví dụ: user.update"><datalist id="audit-action-options"><option value="blacklist.add"><option value="blacklist.delete"><option value="user.update"><option value="user.revoke_sessions"><option value="user.delete"><option value="device.delete"><option value="device.rotate_secret"><option value="settings.update"><option value="classification_policy.update"><option value="auth.admin_face_verified"></datalist></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}" placeholder="Ví dụ: 1"></div><div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-audit-filter">Đặt lại</button><button class="btn btn-sm" type="submit">${icons.search} Áp dụng</button></div></form>
+    <section class="table-card admin-table-card audit-table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Chi tiết</th></tr></thead><tbody>${state.adminAuditLogs.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td><div class="admin-actor-cell"><span>#${item.actor_user_id ?? '—'}</span><span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></div></td><td><span class="audit-action-badge ${auditActionTone(item.action)}">${escapeHtml(item.action)}</span></td><td>${escapeHtml(item.target_type || '—')} <strong>#${escapeHtml(item.target_id || '—')}</strong></td><td><code class="audit-ip">${escapeHtml(item.ip_address || '—')}</code></td><td><button class="metadata-preview" aria-label="Xem chi tiết sự kiện ${escapeHtml(item.action)}" data-action="view-audit" data-id="${item.audit_id}"><code>${escapeHtml(auditMetadataPreview(item.metadata))}</code><span>Xem</span></button></td></tr>`).join('')}</tbody></table></div>${state.adminAuditLogs.length ? `<div class="table-footer">${paginationMarkup('audit', result, 'nhật ký kiểm toán')}</div>` : emptyState(icons.audit, 'Không có nhật ký', Object.values(filter).some(Boolean) ? 'Không có sự kiện nào phù hợp với bộ lọc.' : 'Chưa ghi nhận thao tác quản trị nhạy cảm nào.')}</section>`;
 }
 
 const agentEndpoints = {
@@ -3651,13 +3832,17 @@ function renderApiLab(content) {
   const requestLabel = selected.method === 'GET' ? 'Tham số query JSON' : 'Nội dung JSON';
   content.innerHTML = `
     ${pageHead('api-lab')}
-    ${adminSectionIntro('api-lab', [{ value: Object.keys(agentEndpoints).length, label: 'Endpoint mẫu' }, { value: selected.method, label: 'Phương thức đã chọn' }, { value: state.agentSecret ? 'Sẵn sàng' : 'Chưa có', label: 'Device Secret' }])}
-    <div class="secret-box api-secret-box"><span class="api-secret-icon">${icons.policy}</span><span class="api-secret-copy"><small>Thông tin xác thực phiên thử nghiệm</small><strong>X-Device-Secret tạm thời</strong><code>${state.agentSecret ? '••••••••' + state.agentSecret.slice(-6) : 'Chưa nhập secret'}</code></span><span class="api-secret-actions"><button class="btn btn-secondary btn-sm" data-action="set-agent-secret">${state.agentSecret ? 'Thay secret' : 'Nhập secret'}</button><button class="btn btn-ghost btn-sm" data-action="clear-agent-secret" ${state.agentSecret ? '' : 'disabled'}>Xóa khỏi bộ nhớ</button></span></div>
+    ${adminStatsStrip([
+      { label: 'Endpoint mẫu', value: Object.keys(agentEndpoints).length },
+      { label: 'Phương thức', value: selected.method },
+      { label: 'X-Device-Secret', value: state.agentSecret ? 'Sẵn sàng' : 'Chưa nhập' },
+    ])}
+    <div class="secret-box api-secret-box"><span class="api-secret-icon">${icons.key}</span><span class="api-secret-copy"><small>Thông tin xác thực phiên thử nghiệm</small><strong>X-Device-Secret tạm thời</strong><code>${state.agentSecret ? '••••••••' + state.agentSecret.slice(-6) : 'Chưa nhập secret'}</code></span><span class="api-secret-actions"><button class="btn btn-secondary btn-sm" data-action="set-agent-secret">${state.agentSecret ? 'Thay secret' : 'Nhập secret'}</button><button class="btn btn-ghost btn-sm" data-action="clear-agent-secret" ${state.agentSecret ? '' : 'disabled'}>Xóa khỏi bộ nhớ</button></span></div>
     <section class="api-lab-grid">
       <aside class="card endpoint-list"><div class="endpoint-list-head"><p class="eyebrow">Danh mục endpoint</p><strong>${Object.keys(agentEndpoints).length} tình huống thử</strong></div>${Object.entries(agentEndpoints).map(([key, endpoint]) => `<button class="endpoint-button ${state.agentEndpoint === key ? 'active' : ''}" data-action="select-agent-endpoint" data-endpoint="${key}"><span class="method ${endpoint.method.toLowerCase()}">${endpoint.method}</span><span><strong>${escapeHtml(endpoint.label)}</strong><small>/api${escapeHtml(endpoint.path)}</small></span><span class="endpoint-arrow">→</span></button>`).join('')}</aside>
       <article class="card card-pad api-request-card">
         <div class="api-request-heading"><span class="method ${selected.method.toLowerCase()}">${selected.method}</span><div><p class="eyebrow">Trình tạo request</p><h2>${escapeHtml(selected.label)}</h2><p class="muted">/api${escapeHtml(selected.path)}</p></div></div>
-        <form id="agent-request-form"><div class="field"><label>${requestLabel}</label><textarea class="textarea agent-request-data" name="request_data" ${requestData === undefined ? 'disabled' : ''}>${requestData === undefined ? '' : escapeHtml(JSON.stringify(requestData, null, 2))}</textarea>${selected.method === 'GET' && requestData !== undefined ? '<small>Giá trị sẽ được mã hóa an toàn vào query string.</small>' : ''}</div><div class="form-actions"><button class="btn" type="submit" ${state.agentSecret ? '' : 'disabled'}>Gửi request</button></div></form>
+        <form id="agent-request-form"><div class="field"><label>${requestLabel}</label><textarea class="textarea agent-request-data" name="request_data" ${requestData === undefined ? 'disabled' : ''}>${requestData === undefined ? '' : escapeHtml(JSON.stringify(requestData, null, 2))}</textarea>${selected.method === 'GET' && requestData !== undefined ? '<small>Giá trị sẽ được mã hóa an toàn vào query string.</small>' : ''}</div><div class="form-actions">${state.agentSecret ? '' : '<small class="muted">Cần nhập X-Device-Secret ở trên trước khi gửi.</small>'}<button class="btn" type="submit" ${state.agentSecret ? '' : 'disabled'}>Gửi request</button></div></form>
         <div id="agent-response"></div>
       </article>
     </section>`;
@@ -3706,10 +3891,51 @@ function confirmModal(title, text, action, id, extra = '') {
   showModal(title, text, `<div class="form-actions"><button class="btn btn-secondary" data-action="close-modal">Hủy</button><button class="btn btn-danger" data-action="${action}" data-id="${id}" ${extra}>Xác nhận</button></div>`);
 }
 
+function showLoginVerification(form, email) {
+  const notice = form.querySelector('#login-verification');
+  if (!notice || !form.isConnected || form.elements.email.value.trim() !== email.trim()) return;
+  notice.dataset.email = email.trim();
+  notice.querySelector('[data-verification-message]').textContent = 'Email chưa được xác minh. Bạn có thể yêu cầu gửi email xác minh ngay.';
+  notice.querySelector('button').textContent = 'Xác minh email ngay';
+  notice.classList.remove('hidden');
+}
+
+async function sendLoginVerification(form) {
+  if (!form || form.dataset.verificationPending === 'true' || !form.reportValidity()) return;
+  const notice = form.querySelector('#login-verification');
+  const email = form.elements.email.value.trim();
+  if (!notice || notice.dataset.email !== email) return;
+  const button = notice.querySelector('button');
+  const message = notice.querySelector('[data-verification-message]');
+  form.dataset.verificationPending = 'true';
+  button.disabled = true;
+  button.textContent = 'Đang gửi…';
+  try {
+    await api('/auth/resend-verification', { method: 'POST', noAuth: true,
+      body: { email, password: form.elements.password.value } });
+    if (form.isConnected && form.elements.email.value.trim() === email) {
+      message.textContent = 'Đã tiếp nhận yêu cầu gửi email xác minh. Hãy kiểm tra hộp thư và thư rác, mở liên kết trong email để xác minh, rồi đăng nhập lại.';
+      button.textContent = 'Gửi lại email xác minh';
+    }
+  } catch (error) {
+    if (form.isConnected && form.elements.email.value.trim() === email) {
+      message.textContent = localizeError(error.message);
+      button.textContent = 'Thử gửi lại email xác minh';
+    }
+  } finally {
+    delete form.dataset.verificationPending;
+    button.disabled = false;
+  }
+}
+
 async function handleSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
+  if (form.id === 'admin-create-user-form') {
+    if (form.dataset.pending === 'true') return;
+    form.dataset.pending = 'true';
+  }
   if (form.id === 'chat-form') return await submitAIChat(form);
   if (form.id === 'device-form' && form.closest('.modal')?.dataset.devicePending === 'true') return;
   if (form.id === 'device-control-form' && (!isCurrentControlForm(form)
@@ -3724,6 +3950,7 @@ async function handleSubmit(event) {
   if (submit && form.id !== 'device-control-form') submit.disabled = true;
   try {
     if (form.id === 'login-form') {
+      form.querySelector('#login-verification')?.classList.add('hidden');
       const result = await api('/auth/login', { method: 'POST', body: data, noAuth: true });
       if (result.requiresFaceVerification) {
         await renderAdminFaceVerification(result);
@@ -3813,17 +4040,23 @@ async function handleSubmit(event) {
       state.adminUserFilter = data;
       state.adminUserOffset = 0;
       await renderUsers(document.querySelector('#page-content'));
+    } else if (form.id === 'admin-create-user-form') {
+      if (data.password !== data.confirm_password) throw new Error('Mật khẩu xác nhận không khớp');
+      const created = await api('/admin/users', { method: 'POST', body: {
+        name: data.name, email: data.email, password: data.password,
+        role: data.role, is_verified: form.elements.is_verified.checked,
+      } });
+      form.reset();
+      closeModal();
+      state.adminUserFilter = {};
+      state.adminUserOffset = 0;
+      toast('Đã tạo tài khoản', !created.is_verified ? 'Cần xác minh email trước khi đăng nhập.' : created.role === 'admin' ? 'Tài khoản quản trị cần xác thực khuôn mặt khi đăng nhập.' : 'Tài khoản phụ huynh đã sẵn sàng đăng nhập.');
+      await renderUsers(document.querySelector('#page-content'));
     } else if (form.id === 'admin-user-form') {
-      const currentUser = state.adminUsers.find((item) => String(item.user_id) === String(form.dataset.id));
       const body = {
-        role: data.role,
         is_active: form.elements.is_active.checked,
         is_verified: form.elements.is_verified.checked,
       };
-      const promotingToAdmin = currentUser?.role === 'parent' && body.role === 'admin';
-      if (promotingToAdmin && !form.elements.confirm_face_enrollment?.checked) {
-        throw new Error('Hãy xác nhận đã chuẩn bị quy trình đăng ký khuôn mặt cho quản trị viên mới');
-      }
       await api(`/admin/users/${form.dataset.id}`, { method: 'PATCH', body });
       closeModal();
       toast('Đã cập nhật tài khoản', 'Các thay đổi quyền hoặc trạng thái đã được áp dụng.');
@@ -3863,12 +4096,17 @@ async function handleSubmit(event) {
       toast('Request thành công', endpoint.label);
     }
   } catch (error) {
+    if (form.id === 'login-form' && error.status === 403
+        && error.message === 'Email not verified. Please verify your email first.') {
+      showLoginVerification(form, data.email);
+    }
     toast('Không thể hoàn tất', localizeError(error.message), 'error');
     if (form.id === 'agent-request-form') {
       const target = document.querySelector('#agent-response');
       if (target) target.innerHTML = `<p class="eyebrow api-response-status">Request thất bại</p><pre class="code-box">${escapeHtml(JSON.stringify(error.payload || { message: error.message }, null, 2))}</pre>`;
     }
   } finally {
+    if (form.id === 'admin-create-user-form') delete form.dataset.pending;
     if (submit && form.id !== 'device-control-form') {
       if (form.id === 'policy-form') syncPolicyFormState(String(form.dataset.childId));
       else submit.disabled = false;
@@ -4104,6 +4342,7 @@ async function handleClick(event) {
   }
   try {
     if (action === 'close-modal') return closeModal();
+    if (action === 'verify-login-email') return await sendLoginVerification(button.closest('#login-form'));
     if (action === 'retry-initialize') {
       button.disabled = true;
       button.textContent = 'Đang kết nối…';
@@ -4308,23 +4547,44 @@ async function handleClick(event) {
         `<div class="user-detail-summary"><div><small>Người thực hiện</small><strong>#${entry.actor_user_id ?? '—'} · ${escapeHtml(entry.actor_role || '—')}</strong></div><div><small>Đối tượng</small><strong>${escapeHtml(entry.target_type || '—')} #${escapeHtml(entry.target_id || '—')}</strong></div><div><small>Địa chỉ IP</small><strong>${escapeHtml(entry.ip_address || '—')}</strong></div></div><h3>Metadata</h3><pre class="code-box">${escapeHtml(JSON.stringify(entry.metadata || {}, null, 2))}</pre>${entry.user_agent ? `<h3>User agent</h3><p class="muted audit-user-agent">${escapeHtml(entry.user_agent)}</p>` : ''}`
       );
     }
+    if (action === 'add-admin-user') {
+      return showModal('Thêm tài khoản', 'Tạo tài khoản riêng cho quản trị viên hoặc phụ huynh. Vai trò không thể đổi sau khi tạo.', `
+        <form id="admin-create-user-form" class="form-grid">
+          <div class="field full"><label for="new-user-name">Họ tên</label><input id="new-user-name" class="input" name="name" required maxlength="100" autocomplete="name"></div>
+          <div class="field full"><label for="new-user-email">Email</label><input id="new-user-email" class="input" name="email" type="email" required maxlength="150" autocomplete="off"></div>
+          <div class="field full"><label for="new-user-role">Vai trò</label><select id="new-user-role" class="select" name="role"><option value="admin">Quản trị viên</option><option value="parent">Phụ huynh</option></select></div>
+          <div class="field full"><label for="new-user-password">Mật khẩu</label><input id="new-user-password" class="input" name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"><small>Ít nhất 8 ký tự, gồm chữ hoa, số và ký tự đặc biệt; tối đa 72 byte.</small></div>
+          <div class="field full"><label for="new-user-confirm">Xác nhận mật khẩu</label><input id="new-user-confirm" class="input" name="confirm_password" type="password" required autocomplete="new-password"></div>
+          <div class="field full"><label><input type="checkbox" name="is_verified"> Tôi đã xác minh email của người dùng này</label><small>Nếu chưa chọn, tài khoản chưa thể đăng nhập. Bạn có thể xác minh email sau trong Chỉnh sửa tài khoản.</small></div>
+          <p class="muted field full">Admin mới cần được đăng ký khuôn mặt vào mô hình nhận diện trước khi đăng nhập. Tạo tài khoản không tự đăng ký khuôn mặt.</p>
+          <div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Tạo tài khoản</button></div>
+        </form>`);
+    }
     if (action === 'edit-user') {
       const u = state.adminUsers.find((item) => String(item.user_id) === String(id));
       if (!u) throw new Error('Không tìm thấy tài khoản');
       const isSelf = String(u.user_id) === String(state.userId);
-      const roleControl = isSelf
-        ? '<input type="hidden" name="role" value="admin"><input class="input" value="Quản trị viên" disabled>'
-        : `<select class="select" name="role"><option value="parent" ${u.role === 'parent' ? 'selected' : ''}>Phụ huynh</option><option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Quản trị viên</option></select>`;
-      const enrollmentWarning = !isSelf && u.role === 'parent'
-        ? `<div class="field full" data-face-enrollment-warning hidden><div class="guide-note" role="note"><strong>Cần đăng ký khuôn mặt trước khi cấp quyền quản trị.</strong><p>Tài khoản admin phải được mô hình nhận diện đúng nhãn “admin”. Nếu chưa enroll khuôn mặt, người dùng này sẽ không thể hoàn tất đăng nhập.</p><label><input type="checkbox" name="confirm_face_enrollment"> Tôi xác nhận đã chuẩn bị quy trình đăng ký khuôn mặt cho tài khoản này.</label></div></div>`
-        : '';
+      const roleControl = `<input class="input" value="${u.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}" disabled><small>Vai trò cố định. Để dùng vai trò khác, hãy tạo tài khoản riêng.</small>`;
+      const enrollmentWarning = '';
       showModal('Chỉnh sửa tài khoản', `${u.name} · ${u.email}`, `<form id="admin-user-form" data-id="${u.user_id}" data-original-role="${u.role}" class="form-grid"><div class="field full"><label>Vai trò</label>${roleControl}</div>${enrollmentWarning}<div class="field full">${switchRow('is_active', 'Tài khoản đang hoạt động', isSelf ? 'Không thể tự khóa tài khoản quản trị.' : 'Tắt để chặn đăng nhập và thu hồi toàn bộ phiên.', u.is_active).replace('name="is_active"', `name="is_active" ${isSelf ? 'disabled' : ''}`)}${switchRow('is_verified', 'Email đã xác minh', 'Cho phép quản trị viên xác nhận email thủ công.', u.is_verified)}</div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu thay đổi</button></div></form>`);
-      syncAdminRoleEnrollment(document.querySelector('#admin-user-form'));
+      if (isSelf) {
+        const verifiedInput = document.querySelector('#admin-user-form [name="is_verified"]');
+        verifiedInput.disabled = true;
+        verifiedInput.closest('label')?.setAttribute('title', 'Không thể tự bỏ xác minh email của tài khoản quản trị.');
+      }
       return;
     }
-    if (action === 'revoke-user-sessions') return confirmModal('Thu hồi mọi phiên đăng nhập?', 'Tất cả access token và refresh token của tài khoản sẽ mất hiệu lực.', 'confirm-revoke-user-sessions', id);
+    if (action === 'revoke-user-sessions') {
+      const targetUser = state.adminUsers.find((item) => String(item.user_id) === String(id));
+      const userLabel = targetUser ? `${targetUser.name} (${targetUser.email})` : `tài khoản #${id}`;
+      return confirmModal(`Thu hồi phiên của ${targetUser ? targetUser.name : '#' + id}?`, `Tất cả access token và refresh token của ${userLabel} sẽ mất hiệu lực ngay lập tức.`, 'confirm-revoke-user-sessions', id);
+    }
     if (action === 'confirm-revoke-user-sessions') { await api(`/admin/users/${id}/revoke-sessions`, { method: 'POST' }); closeModal(); toast('Đã thu hồi toàn bộ phiên'); if (String(id) === String(state.userId)) return logout(false); return renderUsers(document.querySelector('#page-content')); }
-    if (action === 'delete-user') return confirmModal('Xóa vĩnh viễn tài khoản?', 'Toàn bộ hồ sơ trẻ, thiết bị, nhật ký và dữ liệu liên quan sẽ bị xóa. Không thể hoàn tác.', 'confirm-delete-user', id);
+    if (action === 'delete-user') {
+      const targetUser = state.adminUsers.find((item) => String(item.user_id) === String(id));
+      const userLabel = targetUser ? `${targetUser.name} (${targetUser.email})` : `tài khoản #${id}`;
+      return confirmModal(`Xóa vĩnh viễn ${targetUser ? targetUser.name : '#' + id}?`, `Toàn bộ hồ sơ trẻ, thiết bị, nhật ký và dữ liệu liên quan của ${userLabel} sẽ bị xóa. Không thể hoàn tác.`, 'confirm-delete-user', id);
+    }
     if (action === 'confirm-delete-user') { await api(`/admin/users/${id}`, { method: 'DELETE' }); closeModal(); toast('Đã xóa tài khoản và dữ liệu liên quan'); return renderUsers(document.querySelector('#page-content')); }
     if (action === 'delete-account') return showModal('Xóa vĩnh viễn tài khoản?', 'Nhập mật khẩu để xác nhận. Thao tác này không thể hoàn tác.', `<form id="delete-account-form"><div class="field"><label>Mật khẩu</label><input class="input" type="password" name="password" required></div><div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn btn-danger" type="submit">Xóa vĩnh viễn</button></div></form>`);
     if (action === 'add-blacklist') return showModal('Thêm tên miền vào danh sách chặn', 'Backend sẽ chuẩn hóa và kiểm tra tên miền trước khi lưu.', `<form id="blacklist-form" class="form-grid"><div class="field full"><label>Tên miền</label><input class="input" name="domain" required placeholder="example.com"></div><div class="field full"><label>Lý do</label><textarea class="textarea" name="reason" maxlength="500"></textarea></div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Thêm tên miền</button></div></form>`);
@@ -4387,8 +4647,6 @@ document.addEventListener('change', (event) => {
     if (group) group.classList.toggle('classification-off', !event.target.checked);
   } else if (event.target.name === 'provider' && event.target.closest('#push-token-form')) {
     syncPushPlatforms(event.target.closest('form'));
-  } else if (event.target.name === 'role' && event.target.closest('#admin-user-form')) {
-    syncAdminRoleEnrollment(event.target.closest('form'));
   }
 });
 document.addEventListener('keydown', (event) => {
@@ -4443,6 +4701,9 @@ document.addEventListener('keydown', (event) => {
   }
 });
 document.addEventListener('input', event => {
+  if (event.target.matches('#login-form [name="email"]')) {
+    event.target.closest('form').querySelector('#login-verification')?.classList.add('hidden');
+  }
   if (event.target.matches('#chat-form [name="message"]')) captureAIChatDraft(event.target);
 });
 

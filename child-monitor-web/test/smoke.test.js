@@ -386,7 +386,7 @@ test('redesigned dashboard shell keeps navigation usable on desktop and mobile',
     'sidebar-profile',
     'mobile-quick-nav',
     'mobile-nav-link',
-    'hero-media-insight',
+    'sidebar-brand',
     'page-summary-strip',
     'section-visual',
     'section-visual-media',
@@ -447,45 +447,37 @@ test('redesigned data pages expose summaries, resettable filters and accessible 
 test('admin workspace presents operational context, scannable records and responsive tools', () => {
   const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
-  const adminAssets = [
-    'admin-user-management.jpg',
-    'admin-domain-blacklist.jpg',
-    'admin-audit-trail.jpg',
-  ];
-
-  for (const asset of adminAssets) {
-    assert.ok(source.includes(`/assets/${asset}`), `Admin markup is missing ${asset}`);
-    const assetPath = path.join(ROOT, 'assets', asset);
-    assert.ok(fs.existsSync(assetPath), `${asset} is missing from assets`);
-    assert.ok(fs.statSync(assetPath).size > 10_000, `${asset} is unexpectedly small`);
-  }
 
   for (const className of [
-    'admin-hero-flags',
-    'admin-kpi-grid',
-    'admin-operations-grid',
-    'admin-section-intro',
-    'admin-intro-stats',
+    'is-admin',
+    'admin-overview-grid',
+    'admin-summary-grid',
+    'admin-stats-strip',
+    'admin-filter-bar',
     'admin-table-card',
     'admin-user-avatar',
     'admin-domain-cell',
     'audit-action-badge',
+    'btn-icon-action',
     'endpoint-list-head',
     'api-request-heading',
+    'is-admin-mobile-nav',
+    'admin-skeleton',
+    'admin-error-card',
   ]) {
     assert.ok(source.includes(className), `Admin markup is missing ${className}`);
     assert.ok(styles.includes(`.${className}`), `Admin styles are missing .${className}`);
   }
 
-  assert.match(source, /adminSectionIntro\('users'/);
-  assert.match(source, /adminSectionIntro\('blacklist'/);
-  assert.match(source, /adminSectionIntro\('audit'/);
-  assert.match(source, /adminSectionIntro\('api-lab'/);
-  assert.match(source, /class="admin-intro-media"><img[^>]+loading="lazy" decoding="async"/);
-  assert.match(styles, /\.admin-section-intro-users\s*\{[\s\S]*?grid-template-columns:\s*64px minmax\(0, 1fr\) minmax\(330px, 0\.78fr\)/);
-  assert.match(styles, /\.admin-section-intro-blacklist\s*\{[\s\S]*?grid-template-rows:\s*225px auto/);
-  assert.match(styles, /\.admin-section-intro-audit \.admin-intro-media\s*\{[\s\S]*?position:\s*absolute/);
-  assert.match(styles, /@media \(max-width:\s*610px\)[\s\S]*?\.admin-section-intro\s*\{[\s\S]*?grid-template-columns:\s*1fr/);
+  assert.match(source, /brandMarkup\(true\)[\s\S]*?Laptop Monitor/);
+  assert.doesNotMatch(source, /LaptopChi/);
+  assert.match(source, /adminLoadingSkeleton\(/);
+  assert.match(source, /Promise\.allSettled\(\[\s*api\('\/admin\/stats'\),\s*api\('\/admin\/audit-logs\?limit=5'\)/);
+  assert.match(source, /value="blacklist\.add"/);
+  assert.match(source, /data-action="edit-user"[^>]*>\$\{icons\.edit\}/);
+  assert.match(source, /data-action="revoke-user-sessions"[^>]*>\$\{icons\.revoke\}/);
+  assert.match(source, /data-action="delete-user"[^>]*>\$\{icons\.trash\}/);
+  assert.match(styles, /@media \(max-width:\s*610px\)[\s\S]*?\.mobile-quick-nav\.is-admin-mobile-nav\s*\{[\s\S]*?grid-template-columns:\s*repeat\(5,/);
   assert.match(styles, /@media \(max-width:\s*1024px\)[\s\S]*?\.endpoint-list\s*\{[\s\S]*?position:\s*static/);
 });
 

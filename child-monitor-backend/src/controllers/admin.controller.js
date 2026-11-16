@@ -2,6 +2,58 @@ const { adminPool } = require('../config/db');
 const { normalizeDomain } = require('../utils/domain');
 const { recordAudit } = require('../services/audit.service');
 const { deviceOnlineSql } = require('../services/devicePresence.service');
+const { lockAdminLifecycle, hasOtherEligibleAdmin, LAST_ADMIN_MESSAGE } = require('../services/adminLifecycle.service');
+const bcrypt = require('bcrypt');
+const { validatePassword } = require('../utils/validation');
+
+exports.createUser = async (req, res) => {
+  const { name, email, password, role, is_verified = false } = req.body || {};
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
+    return res.status(400).json({ message: 'Name must contain 1 to 100 characters' });
+  }
+  if (typeof email !== 'string' || email.trim().length > 150 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ message: 'Invalid email format' });
+  }
+  if (!validatePassword(password) || Buffer.byteLength(password, 'utf8') > 72) {
+    return res.status(400).json({ message: 'Password must be 8 to 72 bytes and include an uppercase letter, a number, and a special character' });
+  }
+  if (!['parent', 'admin'].includes(role) || typeof is_verified !== 'boolean') {
+    return res.status(400).json({ message: 'Invalid role or verification status' });
+  }
+  let client;
+  try {
+    const hashed = await bcrypt.hash(password, 12);
+    client = await adminPool.connect();
+    await client.query('BEGIN');
+    await lockAdminLifecycle(client);
+    const normalizedEmail = email.trim().toLowerCase();
+    const existing = await client.query('SELECT user_id FROM users WHERE LOWER(email) = $1', [normalizedEmail]);
+    if (existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Email already exists' });
+    }
+    const result = await client.query(
+      `INSERT INTO users(name, email, password, role, is_verified, is_active)
+       VALUES($1, $2, $3, $4, $5, true)
+       RETURNING user_id, name, email, role, is_verified, is_active, created_at`,
+      [name.trim(), normalizedEmail, hashed, role, is_verified]
+    );
+    const user = result.rows[0];
+    await recordAudit(client, req, {
+      action: 'user.create', targetType: 'user', targetId: user.user_id,
+      metadata: { email: user.email, role: user.role, is_verified: user.is_verified },
+    });
+    await client.query('COMMIT');
+    res.status(201).json(user);
+  } catch (error) {
+    if (client) await client.query('ROLLBACK').catch(() => {});
+    if (error.code === '23505') return res.status(409).json({ message: 'Email already exists' });
+    console.error('Admin createUser error:', error.message);
+    res.status(500).json({ message: 'Internal server error' });
+  } finally {
+    client?.release();
+  }
+};
 
 /**
  * GET /api/admin/users
@@ -306,10 +358,14 @@ exports.updateUser = async (req, res) => {
   if (userId === req.currentUser.user_id && ((hasRole && role !== 'admin') || (hasActive && !is_active))) {
     return res.status(400).json({ message: 'You cannot demote or disable your own admin account' });
   }
+  if (userId === req.currentUser.user_id && hasVerified && !is_verified) {
+    return res.status(400).json({ message: 'You cannot unverify your own admin account' });
+  }
 
   const client = await adminPool.connect();
   try {
     await client.query('BEGIN');
+    await lockAdminLifecycle(client);
     const currentResult = await client.query(
       `SELECT user_id, name, email, role, is_verified, is_active
          FROM users WHERE user_id = $1 FOR UPDATE`,
@@ -324,7 +380,17 @@ exports.updateUser = async (req, res) => {
     const nextRole = hasRole ? role : current.role;
     const nextActive = hasActive ? is_active : current.is_active;
     const nextVerified = hasVerified ? is_verified : current.is_verified;
-    const revokeSessions = nextRole !== current.role || nextActive !== current.is_active;
+    if (nextRole !== current.role) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Account roles cannot be changed. Create a separate account instead' });
+    }
+    if (current.role === 'admin' && (nextRole !== 'admin' || !nextActive || !nextVerified)
+        && !(await hasOtherEligibleAdmin(client, userId))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: LAST_ADMIN_MESSAGE });
+    }
+    const revokeSessions = nextRole !== current.role || nextActive !== current.is_active
+      || nextVerified !== current.is_verified;
 
     const updatedResult = await client.query(
       `UPDATE users
@@ -413,6 +479,7 @@ exports.deleteUser = async (req, res) => {
   const client = await adminPool.connect();
   try {
     await client.query('BEGIN');
+    await lockAdminLifecycle(client);
     const result = await client.query(
       'SELECT user_id, name, email, role FROM users WHERE user_id = $1 FOR UPDATE',
       [userId]
@@ -423,6 +490,10 @@ exports.deleteUser = async (req, res) => {
     }
 
     const target = result.rows[0];
+    if (target.role === 'admin' && !(await hasOtherEligibleAdmin(client, userId))) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: LAST_ADMIN_MESSAGE });
+    }
     await recordAudit(client, req, {
       action: 'user.delete',
       targetType: 'user',

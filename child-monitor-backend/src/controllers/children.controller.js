@@ -41,6 +41,15 @@ exports.createChild = async (req, res) => {
 
   try {
     // Thêm mới trẻ em gắn liền với user_id của phụ huynh hiện tại
+    // Hold the owner row until the RLS transaction completes. A concurrent
+    // promotion must either see this child or finish before this role check.
+    const owner = await req.db.query(
+      'SELECT role FROM users WHERE user_id = $1 FOR SHARE',
+      [req.user.user_id]
+    );
+    if (owner.rows[0]?.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parent accounts can own child profiles' });
+    }
     const result = await req.db.query(
       'INSERT INTO children(user_id, name, age) VALUES($1, $2, $3) RETURNING child_id, name, age, created_at',
       [req.user.user_id, name.trim(), age !== undefined ? Number(age) : null]

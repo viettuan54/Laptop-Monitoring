@@ -2,6 +2,7 @@ const { adminPool } = require('../config/db');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { recordAudit } = require('../services/audit.service');
+const { lockAdminLifecycle, hasOtherEligibleAdmin, LAST_ADMIN_MESSAGE } = require('../services/adminLifecycle.service');
 const { v4: uuidv4 } = require('uuid');
 const { revokeToken } = require('../utils/tokenBlacklist');
 const crypto = require('crypto');
@@ -800,6 +801,23 @@ exports.deleteAccount = async (req, res) => {
     // 2. Tiến hành xóa tài khoản. DB với ON DELETE CASCADE trên children, devices, logs, v.v.
     // sẽ tự động dọn dẹp sạch toàn bộ dữ liệu đi kèm.
     await dbClient.query('BEGIN');
+    await lockAdminLifecycle(dbClient);
+    const lockedUser = await dbClient.query(
+      'SELECT role, password FROM users WHERE user_id = $1 FOR UPDATE',
+      [user_id]
+    );
+    if (!lockedUser.rows.length) {
+      await dbClient.query('ROLLBACK');
+      return res.status(404).json({ message: 'User not found' });
+    }
+    if (lockedUser.rows[0].password !== userResult.rows[0].password) {
+      await dbClient.query('ROLLBACK');
+      return res.status(409).json({ message: 'Account changed. Please sign in again' });
+    }
+    if (lockedUser.rows[0].role === 'admin' && !(await hasOtherEligibleAdmin(dbClient, user_id))) {
+      await dbClient.query('ROLLBACK');
+      return res.status(409).json({ message: LAST_ADMIN_MESSAGE });
+    }
     await recordAudit(dbClient, req, {
       action: 'account.delete',
       targetType: 'user',

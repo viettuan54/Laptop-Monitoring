@@ -5857,6 +5857,1230 @@ button.list-item:hover .list-arrow {
   }
 }
 
+/* ============================================================================
+   Admin Workspace Redesign (Modern SaaS Light Theme — Symphony Style)
+   Scoped strictly to body.admin-surface & .app-shell.is-admin
+   ============================================================================ */
+
+body.admin-surface {
+  --adm-bg: #f8fafc;
+  --adm-surface: #ffffff;
+  --adm-surface-alt: #f1f5f9;
+  --adm-border: #e2e8f0;
+  --adm-border-strong: #cbd5e1;
+  --adm-ink: #0f172a;
+  --adm-ink-2: #334155;
+  --adm-muted: #64748b;
+  --adm-accent: #4f46e5;
+  --adm-accent-hover: #4338ca;
+  --adm-accent-soft: #eef2ff;
+  --adm-success: #059669;
+  --adm-success-soft: #ecfdf5;
+  --adm-warn: #d97706;
+  --adm-warn-soft: #fffbeb;
+  --adm-danger: #dc2626;
+  --adm-danger-soft: #fef2f2;
+  --adm-radius-sm: 6px;
+  --adm-radius-md: 8px;
+  --adm-radius-lg: 12px;
+  --adm-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --adm-shadow-md: 0 4px 12px rgba(15, 23, 42, 0.08);
+  background: var(--adm-bg);
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin {
+  grid-template-columns: 252px minmax(0, 1fr);
+  background: var(--adm-bg);
+  min-height: 100vh;
+}
+
+.app-shell.is-admin .sidebar {
+  background: var(--adm-surface);
+  color: var(--adm-ink-2);
+  border-right: 1px solid var(--adm-border);
+  box-shadow: none;
+  padding: 18px 14px;
+}
+
+.app-shell.is-admin .sidebar-brand {
+  padding: 2px 6px 14px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .sidebar .brand {
+  color: var(--adm-ink);
+  gap: 10px;
+}
+
+.app-shell.is-admin .sidebar .brand-mark {
+  background: var(--adm-accent);
+  color: #ffffff;
+  border-radius: 10px;
+  box-shadow: none;
+}
+
+.app-shell.is-admin .sidebar .brand-copy {
+  color: var(--adm-ink);
+  font-size: 0.98rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app-shell.is-admin .sidebar .brand small {
+  color: var(--adm-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.app-shell.is-admin .side-section {
+  color: var(--adm-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 14px 10px 6px;
+  margin: 0;
+}
+
+.app-shell.is-admin .nav-list {
+  gap: 3px;
+}
+
+.app-shell.is-admin .nav-link {
+  color: var(--adm-ink-2);
+  border-radius: var(--adm-radius-md);
+  padding: 9px 11px;
+  min-height: 40px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+.app-shell.is-admin .nav-link svg {
+  width: 18px;
+  height: 18px;
+  color: var(--adm-muted);
+  transition: color 160ms ease;
+}
+
+.app-shell.is-admin .nav-link:hover {
+  background: var(--adm-surface-alt);
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .nav-link:hover svg {
+  color: var(--adm-ink-2);
+}
+
+.app-shell.is-admin .nav-link.active {
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.app-shell.is-admin .nav-link.active::after {
+  display: none;
+}
+
+.app-shell.is-admin .nav-link.active svg {
+  color: var(--adm-accent);
+}
+
+.app-shell.is-admin .sidebar-footer {
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .sidebar-profile {
+  background: var(--adm-bg);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  color: var(--adm-ink);
+  padding: 9px 10px;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.app-shell.is-admin .sidebar-profile:hover {
+  background: var(--adm-surface-alt);
+  border-color: var(--adm-border-strong);
+}
+
+.app-shell.is-admin .sidebar-avatar {
+  background: var(--adm-accent);
+  color: #ffffff;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.app-shell.is-admin .sidebar-profile strong {
+  color: var(--adm-ink);
+  font-size: 0.84rem;
+}
+
+.app-shell.is-admin .sidebar-profile small {
+  color: var(--adm-muted);
+  font-size: 0.74rem;
+}
+
+.app-shell.is-admin .sidebar-profile-arrow {
+  display: inline-flex;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .sidebar-profile-arrow svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Main Shell & Topbar */
+
+.app-shell.is-admin .main-shell {
+  background: var(--adm-bg);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100vh;
+}
+
+.app-shell.is-admin .topbar {
+  background: var(--adm-surface);
+  border-bottom: 1px solid var(--adm-border);
+  box-shadow: none;
+  min-height: 64px;
+  padding: 10px 28px;
+}
+
+.app-shell.is-admin .topbar-context p {
+  color: var(--adm-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+.app-shell.is-admin .topbar-context strong {
+  color: var(--adm-ink);
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.app-shell.is-admin .topbar-shortcut {
+  background: var(--adm-surface);
+  color: var(--adm-ink-2);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  font-size: 0.82rem;
+  font-weight: 600;
+  min-height: 36px;
+  padding: 6px 12px;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.app-shell.is-admin .topbar-shortcut:hover {
+  background: var(--adm-surface-alt);
+  border-color: var(--adm-border-strong);
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .connection-pill {
+  background: var(--adm-surface-alt);
+  border: 1px solid var(--adm-border);
+  color: var(--adm-ink-2);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 10px;
+}
+
+.app-shell.is-admin .connection-pill.online {
+  background: var(--adm-success-soft);
+  border-color: #a7f3d0;
+  color: #065f46;
+}
+
+.app-shell.is-admin .avatar {
+  position: relative;
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  border: 1px solid #c7d2fe;
+  font-size: 0.8rem;
+  font-weight: 700;
+  width: 38px;
+  height: 38px;
+}
+
+.app-shell.is-admin .avatar .avatar-status {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #10b981;
+  border: 2px solid #ffffff;
+}
+
+.app-shell.is-admin .user-popover {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-lg);
+  box-shadow: var(--adm-shadow-md);
+}
+
+.app-shell.is-admin .user-popover .identity strong {
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .user-popover .popover-button.danger {
+  color: var(--adm-danger);
+}
+
+.app-shell.is-admin .content {
+  flex: 1 0 auto;
+  max-width: 1380px;
+  width: 100%;
+  padding: 24px 28px 32px;
+}
+
+.app-shell.is-admin .admin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 28px;
+  border-top: 1px solid var(--adm-border);
+  background: var(--adm-surface);
+  color: var(--adm-muted);
+  font-size: 0.78rem;
+}
+
+/* Buttons, Inputs, Badges scoped to Admin */
+
+.app-shell.is-admin .btn {
+  background: var(--adm-accent);
+  color: #ffffff;
+  border: 1px solid transparent;
+  border-radius: var(--adm-radius-md);
+  font-size: 0.875rem;
+  font-weight: 600;
+  min-height: 38px;
+  padding: 8px 14px;
+  box-shadow: none;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.app-shell.is-admin .btn:hover:not(:disabled) {
+  background: var(--adm-accent-hover);
+  transform: none;
+}
+
+.app-shell.is-admin .btn-secondary {
+  background: var(--adm-surface);
+  color: var(--adm-ink-2);
+  border: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .btn-secondary:hover:not(:disabled) {
+  background: var(--adm-surface-alt);
+  border-color: var(--adm-border-strong);
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .btn-ghost {
+  background: transparent;
+  color: var(--adm-muted);
+  border: 1px solid transparent;
+}
+
+.app-shell.is-admin .btn-ghost:hover:not(:disabled) {
+  background: var(--adm-surface-alt);
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .btn-danger {
+  background: var(--adm-danger-soft);
+  color: var(--adm-danger);
+  border: 1px solid #fecaca;
+}
+
+.app-shell.is-admin .btn-danger:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #fca5a5;
+}
+
+.app-shell.is-admin .btn-sm {
+  min-height: 34px;
+  padding: 5px 11px;
+  font-size: 0.8125rem;
+}
+
+.app-shell.is-admin .btn svg,
+.app-shell.is-admin .btn-icon-action svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.app-shell.is-admin .input,
+.app-shell.is-admin .select,
+.app-shell.is-admin .textarea {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  color: var(--adm-ink);
+  font-size: 0.875rem;
+  box-shadow: none;
+  transition: border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.app-shell.is-admin .input:focus,
+.app-shell.is-admin .select:focus,
+.app-shell.is-admin .textarea:focus {
+  border-color: var(--adm-accent);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
+  outline: none;
+}
+
+.app-shell.is-admin :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--adm-accent);
+  outline-offset: 2px;
+}
+
+.app-shell.is-admin .badge {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--adm-success-soft);
+  color: #047857;
+  border: 1px solid #a7f3d0;
+}
+
+.app-shell.is-admin .badge.blue {
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  border-color: #c7d2fe;
+}
+
+.app-shell.is-admin .badge.warn {
+  background: var(--adm-warn-soft);
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.app-shell.is-admin .badge.coral,
+.app-shell.is-admin .badge.red {
+  background: var(--adm-danger-soft);
+  color: var(--adm-danger);
+  border-color: #fecaca;
+}
+
+.app-shell.is-admin .badge.neutral {
+  background: var(--adm-surface-alt);
+  color: var(--adm-ink-2);
+  border-color: var(--adm-border);
+}
+
+/* Page Head */
+
+.app-shell.is-admin .admin-page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.app-shell.is-admin .admin-page-head h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .admin-page-head p {
+  margin: 4px 0 0;
+  font-size: 0.875rem;
+  color: var(--adm-muted);
+  max-width: 68ch;
+}
+
+.app-shell.is-admin .page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Cards */
+
+.app-shell.is-admin .card,
+.app-shell.is-admin .admin-table-card {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-lg);
+  box-shadow: var(--adm-shadow-sm);
+}
+
+.app-shell.is-admin .admin-card {
+  padding: 20px;
+}
+
+.app-shell.is-admin .admin-card-head,
+.app-shell.is-admin .admin-table-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.app-shell.is-admin .admin-card-head h2,
+.app-shell.is-admin .admin-table-head h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .admin-card-head .muted,
+.app-shell.is-admin .admin-table-head .muted {
+  margin: 3px 0 0;
+  font-size: 0.8125rem;
+  color: var(--adm-muted);
+}
+
+/* Overview Layout (Symphony 2-Column Top + Recent Table Bottom) */
+
+.app-shell.is-admin .admin-overview-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.app-shell.is-admin .admin-health-body {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 0 16px;
+}
+
+.app-shell.is-admin .donut {
+  width: 132px;
+  height: 132px;
+  flex-shrink: 0;
+  background: conic-gradient(
+    var(--adm-accent) calc(var(--value, 0) * 1%),
+    var(--adm-surface-alt) 0
+  );
+  box-shadow: none;
+}
+
+.app-shell.is-admin .donut::before {
+  inset: 14px;
+  background: var(--adm-surface);
+  box-shadow: none;
+}
+
+.app-shell.is-admin .donut strong {
+  color: var(--adm-ink);
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell.is-admin .admin-health-legend {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.app-shell.is-admin .admin-health-legend .legend-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--adm-radius-md);
+  background: var(--adm-bg);
+  font-size: 0.84rem;
+  color: var(--adm-ink-2);
+}
+
+.app-shell.is-admin .admin-health-legend .legend-row b {
+  margin-left: auto;
+  color: var(--adm-ink);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell.is-admin .legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--adm-border-strong);
+  box-shadow: none;
+}
+
+.app-shell.is-admin .legend-dot.online {
+  background: var(--adm-accent);
+}
+
+.app-shell.is-admin .legend-dot.offline {
+  background: #cbd5e1;
+}
+
+.app-shell.is-admin .legend-dot.total {
+  background: #0f172a;
+}
+
+.app-shell.is-admin .admin-runtime-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .runtime-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px;
+  border-radius: var(--adm-radius-md);
+  background: var(--adm-bg);
+  font-size: 0.78rem;
+}
+
+.app-shell.is-admin .runtime-item span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .runtime-item svg {
+  width: 14px;
+  height: 14px;
+}
+
+.app-shell.is-admin .runtime-item strong {
+  font-weight: 600;
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .runtime-item strong.ok {
+  color: var(--adm-success);
+}
+
+.app-shell.is-admin .runtime-item strong.warn {
+  color: var(--adm-warn);
+}
+
+.app-shell.is-admin .admin-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.app-shell.is-admin .summary-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  background: var(--adm-surface);
+  font: inherit;
+  color: inherit;
+  transition: border-color 160ms ease, background-color 160ms ease;
+}
+
+.app-shell.is-admin button.summary-tile {
+  cursor: pointer;
+}
+
+.app-shell.is-admin button.summary-tile:hover {
+  border-color: var(--adm-accent);
+  background: #fafaff;
+}
+
+.app-shell.is-admin .summary-tile-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.app-shell.is-admin .summary-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--adm-surface-alt);
+  color: var(--adm-ink-2);
+}
+
+.app-shell.is-admin .summary-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.app-shell.is-admin .summary-icon.indigo {
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+}
+
+.app-shell.is-admin .summary-icon.blue {
+  background: #eff6ff;
+  color: #2563eb;
+}
+
+.app-shell.is-admin .summary-icon.amber {
+  background: var(--adm-warn-soft);
+  color: var(--adm-warn);
+}
+
+.app-shell.is-admin .summary-icon.emerald {
+  background: var(--adm-success-soft);
+  color: var(--adm-success);
+}
+
+.app-shell.is-admin .summary-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .summary-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--adm-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell.is-admin .summary-bar {
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--adm-surface-alt);
+  overflow: hidden;
+}
+
+.app-shell.is-admin .summary-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--adm-accent);
+}
+
+.app-shell.is-admin .summary-bar.warn span {
+  background: var(--adm-warn);
+}
+
+.app-shell.is-admin .summary-bar.emerald span {
+  background: var(--adm-success);
+}
+
+.app-shell.is-admin .summary-tile small {
+  font-size: 0.75rem;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .admin-recent-audit-card .admin-table-head {
+  padding: 18px 20px 14px;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .admin-inline-empty {
+  padding: 24px 20px;
+  text-align: center;
+  color: var(--adm-muted);
+  font-size: 0.875rem;
+}
+
+/* Compact Stats Strip on Subpages */
+
+.app-shell.is-admin .admin-stats-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.app-shell.is-admin .admin-stat-chip {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.app-shell.is-admin .admin-stat-chip small {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .admin-stat-chip strong {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--adm-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell.is-admin .admin-stat-chip span {
+  font-size: 0.72rem;
+  color: var(--adm-muted);
+}
+
+/* Filters */
+
+.app-shell.is-admin .admin-filter-bar {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-lg);
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: none;
+}
+
+.app-shell.is-admin .admin-filter-bar label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--adm-muted);
+}
+
+/* Tables & Actions */
+
+.app-shell.is-admin .admin-table-card {
+  overflow: hidden;
+}
+
+.app-shell.is-admin .admin-table-card table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.app-shell.is-admin .admin-table-card thead th {
+  background: var(--adm-bg);
+  color: var(--adm-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--adm-border);
+  white-space: nowrap;
+}
+
+.app-shell.is-admin .admin-table-card tbody td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--adm-border);
+  font-size: 0.875rem;
+  color: var(--adm-ink-2);
+  vertical-align: middle;
+}
+
+.app-shell.is-admin .admin-table-card tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.app-shell.is-admin .admin-table-card tbody tr:hover td {
+  background: #fafbfc;
+}
+
+.app-shell.is-admin .admin-user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.app-shell.is-admin .admin-user-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.app-shell.is-admin .admin-user-cell .cell-title strong,
+.app-shell.is-admin .admin-user-cell .cell-title small {
+  overflow-wrap: anywhere;
+}
+
+.app-shell.is-admin .status-sub {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-shell.is-admin .btn-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--adm-radius-md);
+  border: 1px solid var(--adm-border);
+  background: var(--adm-surface);
+  color: var(--adm-ink-2);
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.app-shell.is-admin .btn-icon-action:hover:not(:disabled) {
+  background: var(--adm-surface-alt);
+  border-color: var(--adm-border-strong);
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .btn-icon-action.danger:hover:not(:disabled) {
+  background: var(--adm-danger-soft);
+  border-color: #fecaca;
+  color: var(--adm-danger);
+}
+
+.app-shell.is-admin .btn-icon-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.app-shell.is-admin .admin-domain-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.app-shell.is-admin .admin-domain-cell .domain-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--adm-radius-sm);
+  background: var(--adm-danger-soft);
+  color: var(--adm-danger);
+}
+
+.app-shell.is-admin .admin-domain-cell .domain-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.app-shell.is-admin .audit-action-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: var(--adm-radius-sm);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+  border: 1px solid #c7d2fe;
+}
+
+.app-shell.is-admin .audit-action-badge.warn {
+  background: var(--adm-warn-soft);
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.app-shell.is-admin .audit-action-badge.danger {
+  background: var(--adm-danger-soft);
+  color: var(--adm-danger);
+  border-color: #fecaca;
+}
+
+.app-shell.is-admin .metadata-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 5px 9px;
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-sm);
+  background: var(--adm-bg);
+  color: var(--adm-ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+
+.app-shell.is-admin .metadata-preview code {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.76rem;
+}
+
+.app-shell.is-admin .metadata-preview span {
+  flex-shrink: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--adm-accent);
+}
+
+.app-shell.is-admin .table-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--adm-bg);
+  border-top: 1px solid var(--adm-border);
+  font-size: 0.8125rem;
+  color: var(--adm-muted);
+}
+
+/* Pagination */
+
+.app-shell.is-admin .pagination {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-shell.is-admin .pagination-info {
+  font-size: 0.8125rem;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.app-shell.is-admin .pagination-btn {
+  gap: 4px;
+  min-height: 34px;
+}
+
+/* Account & API Lab */
+
+.app-shell.is-admin .admin-profile-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.app-shell.is-admin .admin-profile-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: var(--adm-accent);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: static;
+  margin: 0;
+  box-shadow: none;
+}
+
+.app-shell.is-admin .admin-profile-header .badge {
+  margin-left: auto;
+}
+
+.app-shell.is-admin .admin-profile-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .admin-profile-meta small {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--adm-muted);
+}
+
+.app-shell.is-admin .admin-profile-meta strong {
+  font-size: 0.875rem;
+  color: var(--adm-ink);
+}
+
+.app-shell.is-admin .api-secret-box {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-lg);
+  box-shadow: var(--adm-shadow-sm);
+  margin-bottom: 16px;
+}
+
+.app-shell.is-admin .api-secret-icon {
+  background: var(--adm-accent-soft);
+  color: var(--adm-accent);
+}
+
+.app-shell.is-admin .endpoint-button.active {
+  background: var(--adm-accent-soft);
+  border-color: #c7d2fe;
+  color: var(--adm-ink);
+}
+
+/* Skeleton Loading & Error Recovery */
+
+.app-shell.is-admin .admin-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.app-shell.is-admin .skeleton-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.app-shell.is-admin .skeleton-card {
+  height: 128px;
+  border-radius: var(--adm-radius-lg);
+  border: 1px solid var(--adm-border);
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 200% 100%;
+  animation: admin-shimmer 1.4s ease infinite;
+}
+
+.app-shell.is-admin .skeleton-table {
+  height: 280px;
+}
+
+@keyframes admin-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.app-shell.is-admin .admin-error-card {
+  padding: 24px;
+}
+
+/* Modal & Toast on Admin Surface */
+
+body.admin-surface .modal-backdrop {
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+body.admin-surface .modal-panel {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-lg);
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.16);
+}
+
+body.admin-surface .toast {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  box-shadow: var(--adm-shadow-md);
+  color: var(--adm-ink);
+}
+
+/* Responsive Admin Breakpoints */
+
+@media (max-width: 1160px) {
+  .app-shell.is-admin .admin-overview-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-shell.is-admin {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.is-admin .topbar {
+    padding: 10px 18px;
+  }
+
+  .app-shell.is-admin .content {
+    padding: 18px;
+  }
+
+  .app-shell.is-admin .admin-footer {
+    padding: 12px 18px;
+  }
+}
+
+@media (max-width: 610px) {
+  .app-shell.is-admin .admin-page-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-shell.is-admin .admin-health-body {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-shell.is-admin .admin-health-legend {
+    width: 100%;
+  }
+
+  .app-shell.is-admin .admin-runtime-strip,
+  .app-shell.is-admin .admin-summary-grid,
+  .app-shell.is-admin .admin-profile-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell.is-admin .admin-footer {
+    flex-direction: column;
+    align-items: flex-start;
+    padding-bottom: 84px;
+  }
+
+  .app-shell.is-admin .mobile-quick-nav.is-admin-mobile-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    background: var(--adm-surface);
+    border-top: 1px solid var(--adm-border);
+  }
+
+  .app-shell.is-admin .mobile-quick-nav.is-admin-mobile-nav .mobile-nav-link.active {
+    color: var(--adm-accent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell.is-admin .skeleton-card {
+    animation: none;
+  }
+}
+
 /* Screen history extends the existing activity tabs and form styles. */
 .activity-tabs { flex-wrap: wrap; }
 .screen-monitor-intro { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 8px 0 24px; }
