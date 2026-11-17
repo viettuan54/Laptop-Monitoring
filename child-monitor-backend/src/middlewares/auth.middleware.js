@@ -54,7 +54,7 @@ module.exports = async (req, res, next) => {
     let userResult;
     try {
       userResult = await adminPool.query(
-        'SELECT user_id, name, email, role, token_version, is_active FROM users WHERE user_id = $1',
+        'SELECT user_id, name, email, role, token_version, is_active, is_verified, face_enrolled FROM users WHERE user_id = $1',
         [decoded.user_id]
       );
     } catch (dbError) {
@@ -68,6 +68,9 @@ module.exports = async (req, res, next) => {
     }
 
     const dbUser = userResult.rows[0];
+    if (dbUser.role === 'admin' && (!dbUser.face_enrolled || !dbUser.is_verified || decoded.face_verified !== true)) {
+      return res.status(401).json({ message: 'Admin face verification required. Please sign in again' });
+    }
     if (!dbUser.is_active) {
       return res.status(401).json({ message: 'Account has been disabled' });
     }

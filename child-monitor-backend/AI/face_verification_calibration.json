@@ -1,0 +1,126 @@
+{
+  "policy": {
+    "version": 1,
+    "metric": "cosine",
+    "model_id": "facenet128-rgb160-per-image-standardization-l2-v1:90659cc97bfda5999120f95d8e122f4d262cca11715a21e59ba024bcce816d5c",
+    "threshold": 0.713,
+    "enrollment_threshold": 0.713,
+    "detection_threshold": 0.98,
+    "min_face_pixels": 80,
+    "dataset_sha256": "70629c130c852a314a4d253df97696d9c7bc04d816c813fd4c3ce0f4a0134405",
+    "webcam_validated": false
+  },
+  "sample_counts": {
+    "DuongDomic": 20,
+    "MarkZuckerberg": 19,
+    "Mbappe": 20,
+    "Messi": 24,
+    "SonTung": 20,
+    "TienLinh": 20,
+    "TranThanh": 20,
+    "TruongGiang": 20,
+    "admin": 138
+  },
+  "split": {
+    "calibration": 179,
+    "holdout": 122,
+    "seed": 20261117
+  },
+  "calibration": {
+    "genuine_comparisons": 15200,
+    "impostor_comparisons": 143200,
+    "false_accepts": 0,
+    "false_reject_rate": 0.11927631578947369,
+    "max_impostor": 0.6926230084303502,
+    "min_genuine": -0.10926203114783906
+  },
+  "holdout": {
+    "genuine_comparisons": 9500,
+    "impostor_comparisons": 97600,
+    "false_accepts": 0,
+    "false_reject_rate": 0.05357894736842105,
+    "max_impostor": 0.6840013696801879,
+    "min_genuine": 0.11675461581039617
+  },
+  "enrollment_pair_reject_rate": 0.4285185185185185,
+  "holdout_enrollment_pair_reject_rate": 0.31666666666666665,
+  "holdout_three_frame_pipeline": {
+    "DuongDomic": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 85,
+      "accepted_enrollments": 15,
+      "rejected_genuine_batches": 15,
+      "impostor_batches": 120,
+      "false_accepts": 0
+    },
+    "MarkZuckerberg": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 14,
+      "accepted_enrollments": 86,
+      "rejected_genuine_batches": 18,
+      "impostor_batches": 688,
+      "false_accepts": 0
+    },
+    "Mbappe": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 0,
+      "accepted_enrollments": 100,
+      "rejected_genuine_batches": 0,
+      "impostor_batches": 800,
+      "false_accepts": 0
+    },
+    "Messi": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 62,
+      "accepted_enrollments": 38,
+      "rejected_genuine_batches": 30,
+      "impostor_batches": 304,
+      "false_accepts": 0
+    },
+    "SonTung": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 99,
+      "accepted_enrollments": 1,
+      "rejected_genuine_batches": 1,
+      "impostor_batches": 8,
+      "false_accepts": 0
+    },
+    "TienLinh": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 75,
+      "accepted_enrollments": 25,
+      "rejected_genuine_batches": 22,
+      "impostor_batches": 200,
+      "false_accepts": 0
+    },
+    "TranThanh": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 17,
+      "accepted_enrollments": 83,
+      "rejected_genuine_batches": 29,
+      "impostor_batches": 664,
+      "false_accepts": 0
+    },
+    "TruongGiang": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 67,
+      "accepted_enrollments": 33,
+      "rejected_genuine_batches": 24,
+      "impostor_batches": 264,
+      "false_accepts": 0
+    },
+    "admin": {
+      "enrollment_trials": 100,
+      "rejected_enrollments": 20,
+      "accepted_enrollments": 80,
+      "rejected_genuine_batches": 17,
+      "impostor_batches": 640,
+      "false_accepts": 0
+    }
+  },
+  "limitations": [
+    "Image-level split may share capture sessions; no live webcam validation.",
+    "Repeated correlated comparisons are not independent trials.",
+    "9 identities cannot establish production FAR; no presentation-attack detection."
+  ]
+}

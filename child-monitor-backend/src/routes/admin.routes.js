@@ -3,6 +3,8 @@ const router = express.Router();
 const auth = require('../middlewares/auth.middleware');
 const requireRole = require('../middlewares/role.middleware');
 const adminController = require('../controllers/admin.controller');
+const resetFace = require('../controllers/adminFaceReset.controller');
+const { loginLimiter } = require('../middlewares/rateLimit.middleware');
 
 // Tất cả các route admin đều yêu cầu JWT hợp lệ VÀ role = 'admin'
 router.get('/users', auth, requireRole('admin'), adminController.getUsers);
@@ -10,6 +12,7 @@ router.post('/users', auth, requireRole('admin'), adminController.createUser);
 router.get('/users/:id', auth, requireRole('admin'), adminController.getUserDetails);
 router.patch('/users/:id', auth, requireRole('admin'), adminController.updateUser);
 router.post('/users/:id/revoke-sessions', auth, requireRole('admin'), adminController.revokeUserSessions);
+router.post('/users/:id/reset-face', auth, requireRole('admin'), loginLimiter, resetFace);
 router.delete('/users/:id', auth, requireRole('admin'), adminController.deleteUser);
 router.get('/stats', auth, requireRole('admin'), adminController.getStats);
 router.get('/blacklist', auth, requireRole('admin'), adminController.getBlacklist);

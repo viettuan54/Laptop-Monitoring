@@ -6,12 +6,35 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 
 const execFileAsync = promisify(execFile);
-const FACE_SCRIPT = path.resolve(__dirname, '../../AI/face_recognition_attendance.py');
+const FACE_SCRIPT = path.resolve(__dirname, '../../AI/face_embedding_extractor.py');
+const policy = require('../../AI/face_verification_policy.json');
 const RESULT_PREFIX = 'SAFENEST_FACE_RESULT:';
-const REQUIRED_FRAME_COUNT = 3;
+const REQUIRED_FRAME_COUNT = 5;
 const MAX_FRAME_BYTES = 500 * 1024;
-const MAX_TOTAL_BYTES = 1500 * 1024;
+const MAX_TOTAL_BYTES = REQUIRED_FRAME_COUNT * MAX_FRAME_BYTES;
 let activeVerifications = 0;
+const DIAGNOSTIC_PATH = path.resolve(__dirname, '../../../.runtime/face-auth-last-error.json');
+
+function pythonFailureDiagnostic(error) {
+  // Keep the exception at the END of stderr, not just TensorFlow startup warnings.
+  // Do not record stdout: it can contain biometric embeddings.
+  return {
+    at: new Date().toISOString(),
+    code: error.code || null,
+    signal: error.signal || null,
+    killed: Boolean(error.killed),
+    stderr: String(error.stderr || error.message || 'Python failed without a diagnostic').slice(-6000),
+  };
+}
+
+async function recordPythonFailure(error) {
+  const diagnostic = pythonFailureDiagnostic(error);
+  console.error('[FaceAuth] Python execution failed:', JSON.stringify(diagnostic));
+  try {
+    await fs.mkdir(path.dirname(DIAGNOSTIC_PATH), { recursive: true });
+    await fs.writeFile(DIAGNOSTIC_PATH, JSON.stringify(diagnostic, null, 2), { mode: 0o600 });
+  } catch (_) { /* Diagnostic storage must not change authentication behavior. */ }
+}
 
 class FaceAuthUnavailableError extends Error {
   constructor(message = 'Face recognition service is unavailable') {
@@ -74,6 +97,47 @@ function decodeFaceFrames(frames) {
   return decoded;
 }
 
+function normalizeEmbedding(vector) {
+  if (!Array.isArray(vector) || vector.length !== 128 || !vector.every(v => typeof v === 'number' && Number.isFinite(v))) {
+    throw new FaceAuthUnavailableError('Invalid face embedding');
+  }
+  const norm = Math.hypot(...vector);
+  if (!Number.isFinite(norm) || norm < 1e-8) throw new FaceAuthUnavailableError('Invalid face embedding');
+  return vector.map(v => v / norm);
+}
+
+const cosine = (a, b) => a.reduce((sum, v, i) => sum + v * b[i], 0);
+
+function hasDuplicateFace(candidate, templates) {
+  if (candidate.model_id !== policy.model_id) throw new FaceAuthUnavailableError('Face model mismatch');
+  const embedding = normalizeEmbedding(candidate.embedding);
+  return templates.some(template => {
+    if (template.model_id !== policy.model_id) throw new FaceAuthUnavailableError('Face model changed; administrator reset required');
+    return cosine(embedding, normalizeEmbedding(template.embedding)) >= policy.threshold;
+  });
+}
+
+function evaluateEmbeddings(result, template = null) {
+  if (result.model_id !== policy.model_id || (template && template.model_id !== policy.model_id)) {
+    throw new FaceAuthUnavailableError('Face model changed; administrator reset required');
+  }
+  const vectors = result.embeddings.map(normalizeEmbedding);
+  if (vectors.length !== REQUIRED_FRAME_COUNT) throw new FaceAuthUnavailableError();
+  // One person's face in every frame, for both enrollment and verification.
+  for (let i = 0; i < vectors.length; i++) {
+    for (let j = i + 1; j < vectors.length; j++) {
+      if (cosine(vectors[i], vectors[j]) < policy.enrollment_threshold) return { accepted: false };
+    }
+  }
+  if (template) {
+    const reference = normalizeEmbedding(template.embedding);
+    const scores = vectors.map(v => cosine(v, reference));
+    return { accepted: scores.every(score => score >= policy.threshold), matched_frames: scores.filter(s => s >= policy.threshold).length };
+  }
+  const embedding = normalizeEmbedding(vectors[0].map((_, i) => vectors.reduce((sum, v) => sum + v[i], 0) / vectors.length));
+  return { accepted: true, embedding, model_id: policy.model_id, matched_frames: vectors.length };
+}
+
 function parseModelResult(stdout) {
   const line = String(stdout || '')
     .split(/\r?\n/)
@@ -90,18 +154,17 @@ function parseModelResult(stdout) {
   if (result?.reason === 'model_error') {
     throw new FaceAuthUnavailableError();
   }
-  if (!result || typeof result.label !== 'string' || result.label.length > 50) {
+  if (result?.ok === false && typeof result.reason === 'string') {
+    throw new TypeError('Face quality check failed: ' + result.reason);
+  }
+  if (!result || result.ok !== true || result.model_id !== policy.model_id
+      || !Array.isArray(result.embeddings) || result.embeddings.length !== REQUIRED_FRAME_COUNT) {
     throw new FaceAuthUnavailableError('Face model result is incomplete');
   }
-  return {
-    label: result.label.trim().toLowerCase(),
-    confidence: Number.isFinite(Number(result.confidence)) ? Number(result.confidence) : 0,
-    matched_frames: Number(result.matched_frames) || 0,
-    required_frames: Number(result.required_frames) || 0,
-  };
+  return { model_id: result.model_id, embeddings: result.embeddings.map(normalizeEmbedding) };
 }
 
-async function verifyAdminFace(frames) {
+async function verifyAdminFace(frames, template = null) {
   const decoded = decodeFaceFrames(frames);
   const maxConcurrent = Math.max(1, Math.min(2, Number(process.env.FACE_AUTH_MAX_CONCURRENT) || 1));
   if (activeVerifications >= maxConcurrent) {
@@ -136,12 +199,21 @@ async function verifyAdminFace(frames) {
         maxBuffer: 2 * 1024 * 1024,
       });
     } catch (error) {
-      const diagnostic = String(error.stderr || error.message || '').slice(0, 500);
-      console.error('[FaceAuth] Python execution failed:', diagnostic);
+      await recordPythonFailure(error);
       throw new FaceAuthUnavailableError();
     }
-    return parseModelResult(output.stdout);
+    let extracted;
+    try {
+      extracted = parseModelResult(output.stdout);
+    } catch (error) {
+      if (error instanceof FaceAuthUnavailableError) {
+        await recordPythonFailure({ code: 'MODEL_PROTOCOL_ERROR', stderr: output.stderr, message: error.message });
+      }
+      throw error;
+    }
+    return evaluateEmbeddings(extracted, template);
   } catch (error) {
+    if (error instanceof TypeError) throw error;
     if (error instanceof FaceAuthUnavailableError) throw error;
     console.error('[FaceAuth] Service error:', String(error.message || error).slice(0, 500));
     throw new FaceAuthUnavailableError();
@@ -159,4 +231,8 @@ module.exports = {
   decodeFaceFrames,
   parseModelResult,
   verifyAdminFace,
+  evaluateEmbeddings,
+  normalizeEmbedding,
+  hasDuplicateFace,
+  pythonFailureDiagnostic,
 };

@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "metric": "cosine",
+  "model_id": "facenet128-rgb160-per-image-standardization-l2-v1:90659cc97bfda5999120f95d8e122f4d262cca11715a21e59ba024bcce816d5c",
+  "threshold": 0.713,
+  "enrollment_threshold": 0.713,
+  "detection_threshold": 0.98,
+  "min_face_pixels": 80,
+  "dataset_sha256": "70629c130c852a314a4d253df97696d9c7bc04d816c813fd4c3ce0f4a0134405",
+  "webcam_validated": false
+}

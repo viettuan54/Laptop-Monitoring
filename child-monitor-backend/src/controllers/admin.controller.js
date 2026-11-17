@@ -35,7 +35,7 @@ exports.createUser = async (req, res) => {
     const result = await client.query(
       `INSERT INTO users(name, email, password, role, is_verified, is_active)
        VALUES($1, $2, $3, $4, $5, true)
-       RETURNING user_id, name, email, role, is_verified, is_active, created_at`,
+       RETURNING user_id, name, email, role, is_verified, is_active, face_enrolled, created_at`,
       [name.trim(), normalizedEmail, hashed, role, is_verified]
     );
     const user = result.rows[0];
@@ -63,7 +63,7 @@ exports.createUser = async (req, res) => {
 exports.getUsers = async (req, res) => {
   let { limit, offset, search, role, status } = req.query;
 
-  limit = Math.min(parseInt(limit) || 50, 500);
+  limit = Math.min(Math.max(parseInt(limit) || 50, 1), 500);
   offset = Math.max(parseInt(offset) || 0, 0);
 
   const conditions = [];
@@ -96,7 +96,7 @@ exports.getUsers = async (req, res) => {
 
   try {
     const result = await adminPool.query(
-      `SELECT u.user_id, u.name, u.email, u.role, u.is_verified, u.is_active,
+      `SELECT u.user_id, u.name, u.email, u.role, u.is_verified, u.is_active, u.face_enrolled,
               u.created_at,
               (SELECT COUNT(*)::INTEGER FROM children c WHERE c.user_id = u.user_id) AS child_count,
               (SELECT COUNT(*)::INTEGER
@@ -165,7 +165,7 @@ exports.getStats = async (req, res) => {
 exports.getBlacklist = async (req, res) => {
   let { limit, offset, search } = req.query;
 
-  limit  = Math.min(parseInt(limit) || 50, 500);
+  limit  = Math.min(Math.max(parseInt(limit) || 50, 1), 500);
   offset = Math.max(parseInt(offset) || 0, 0);
 
   try {
@@ -223,7 +223,7 @@ exports.getBlacklist = async (req, res) => {
  * Body: { domain, reason }
  */
 exports.addBlacklist = async (req, res) => {
-  const { domain, reason } = req.body;
+  const { domain, reason } = req.body || {};
   const adminUserId = req.currentUser.user_id;
 
   if (!domain || typeof domain !== 'string' || domain.trim().length === 0) {
@@ -235,7 +235,11 @@ exports.addBlacklist = async (req, res) => {
     return res.status(400).json({ message: 'Invalid domain format' });
   }
 
-  if (reason && reason.length > 500) {
+  if (reason !== undefined && reason !== null && typeof reason !== 'string') {
+    return res.status(400).json({ message: 'Reason must be a string' });
+  }
+
+  if (typeof reason === 'string' && reason.length > 500) {
     return res.status(400).json({ message: 'Reason cannot exceed 500 characters' });
   }
 
@@ -287,7 +291,7 @@ exports.getUserDetails = async (req, res) => {
   try {
     const [userResult, childrenResult, devicesResult] = await Promise.all([
       adminPool.query(
-        `SELECT user_id, name, email, role, is_verified, is_active, created_at
+        `SELECT user_id, name, email, role, is_verified, is_active, face_enrolled, created_at
            FROM users WHERE user_id = $1`,
         [userId]
       ),
@@ -517,14 +521,17 @@ exports.deleteUser = async (req, res) => {
  * Xóa domain khỏi danh sách đen.
  */
 exports.deleteBlacklist = async (req, res) => {
-  const { id } = req.params;
+  const blacklistId = parseUserId(req.params.id);
+  if (!blacklistId) {
+    return res.status(400).json({ message: 'Blacklist id must be a positive integer' });
+  }
 
   const client = await adminPool.connect();
   try {
     await client.query('BEGIN');
     const result = await client.query(
       'DELETE FROM website_blacklist WHERE blacklist_id = $1 RETURNING blacklist_id, domain',
-      [id]
+      [blacklistId]
     );
 
     if (result.rows.length === 0) {

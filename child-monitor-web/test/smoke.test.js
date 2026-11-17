@@ -463,6 +463,9 @@ test('admin workspace presents operational context, scannable records and respon
     'api-request-heading',
     'is-admin-mobile-nav',
     'admin-skeleton',
+    'admin-skeleton-head',
+    'skeleton-line',
+    'skeleton-bar',
     'admin-error-card',
   ]) {
     assert.ok(source.includes(className), `Admin markup is missing ${className}`);
@@ -472,6 +475,11 @@ test('admin workspace presents operational context, scannable records and respon
   assert.match(source, /brandMarkup\(true\)[\s\S]*?Laptop Monitor/);
   assert.doesNotMatch(source, /LaptopChi/);
   assert.match(source, /adminLoadingSkeleton\(/);
+  assert.match(source, /u\.role === 'admin' \? 'blue' : 'neutral'/);
+  assert.match(styles, /\.app-shell\.is-admin\s*\{\s*--sidebar:\s*252px;/);
+  assert.match(styles, /body\.admin-surface\s+\.modal\b/);
+  assert.match(styles, /\.app-shell\.is-admin\s+\.head-actions\b/);
+  assert.match(styles, /\.app-shell\.is-admin\s+\.pagination-controls\b/);
   assert.match(source, /Promise\.allSettled\(\[\s*api\('\/admin\/stats'\),\s*api\('\/admin\/audit-logs\?limit=5'\)/);
   assert.match(source, /value="blacklist\.add"/);
   assert.match(source, /data-action="edit-user"[^>]*>\$\{icons\.edit\}/);

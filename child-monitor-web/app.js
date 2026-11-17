@@ -54,7 +54,7 @@ const state = {
   adminAuditLogs: [],
   pushTokens: [],
   faceChallenge: '',
-  faceRequiredFrames: 3,
+  faceRequiredFrames: 5,
   faceStream: null,
   adminUserFilter: {},
   adminUserOffset: 0,
@@ -189,6 +189,8 @@ function localizeError(message = '') {
     'Device not found or access denied': 'Không tìm thấy thiết bị hoặc bạn không có quyền truy cập.',
     'Child not found or access denied': 'Không tìm thấy hồ sơ trẻ hoặc bạn không có quyền truy cập.',
     'Domain already in blacklist': 'Tên miền đã có trong danh sách chặn.',
+    'Reason must be a string': 'Lý do chặn phải là chuỗi văn bản.',
+    'Blacklist id must be a positive integer': 'Mã danh sách chặn không hợp lệ.',
     'You cannot delete your own admin account': 'Bạn không thể xóa tài khoản quản trị của chính mình.',
     'Account roles cannot be changed. Create a separate account instead': 'Không thể đổi vai trò tài khoản. Hãy tạo tài khoản riêng với vai trò cần dùng.',
     'Name must contain 1 to 100 characters': 'Họ tên phải có từ 1 đến 100 ký tự.',
@@ -207,11 +209,17 @@ function localizeError(message = '') {
     'Invalid EXPO push token': 'Expo push token không hợp lệ.',
     'Invalid FCM push token': 'FCM push token không hợp lệ.',
     'This push token is already registered to another account': 'Push token này đã được đăng ký cho một tài khoản khác.',
-    'Face verification failed': 'Khuôn mặt không khớp với nhãn quản trị viên.',
+    'Face verification failed': 'Khuôn mặt không khớp với tài khoản hoặc các ảnh chụp không nhất quán. Hãy thử lại với đủ ánh sáng.',
+    'Invalid camera frames': 'Cần 5 ảnh khác nhau, mỗi ảnh có đúng một khuôn mặt rõ nét, đủ sáng và không bị cắt.',
+    'Face already enrolled on another account': 'Khuôn mặt đã được đăng kí ở một tài khoản khác. Vui lòng đăng kí lại bằng khuôn mặt của chủ tài khoản này.',
+    'Only another admin can reset your face data': 'Chỉ quản trị viên khác mới có thể đặt lại dữ liệu khuôn mặt của bạn.',
+    'Your password is required to reset face data': 'Nhập mật khẩu của bạn để xác nhận đặt lại khuôn mặt.',
+    'Password or admin session is invalid': 'Mật khẩu hoặc phiên quản trị không hợp lệ. Hãy kiểm tra hoặc đăng nhập lại.',
+    'Admin face verification required. Please sign in again': 'Cần xác thực khuôn mặt. Vui lòng đăng nhập lại.',
+    'Admin face enrollment required. Please sign in again': 'Cần đăng ký khuôn mặt. Vui lòng đăng nhập lại.',
     'Face verification challenge is invalid or expired': 'Phiên xác thực khuôn mặt đã hết hạn. Vui lòng đăng nhập lại.',
     'Face verification challenge has already been used': 'Phiên xác thực khuôn mặt đã được sử dụng.',
     'Face recognition service is unavailable': 'Dịch vụ nhận diện khuôn mặt chưa sẵn sàng.',
-    'Invalid camera frames': 'Khung hình camera không hợp lệ.',
     'Too many face verification attempts, try again later': 'Bạn đã thử xác thực khuôn mặt quá nhiều lần. Vui lòng thử lại sau.',
   };
   return translations[message] || message;
@@ -731,7 +739,7 @@ function clearSession() {
     adminAuditLogs: [],
     pushTokens: [],
     faceChallenge: '',
-    faceRequiredFrames: 3,
+    faceRequiredFrames: 5,
     adminUserFilter: {},
     adminUserOffset: 0,
     blacklistSearch: '',
@@ -918,6 +926,7 @@ function adminLoadingSkeleton(page) {
 
 function renderAuth(mode = 'login') {
   stopFaceCamera();
+  state.faceChallenge = '';
   document.body?.classList?.remove('admin-surface');
   const params = new URLSearchParams(location.search);
   if (location.pathname.includes('verify') || params.get('token') && location.pathname.includes('verify')) {
@@ -1008,24 +1017,25 @@ function renderAuth(mode = 'login') {
 
 async function renderAdminFaceVerification(challengeResult) {
   stopFaceCamera();
-  document.title = 'Xác minh khuôn mặt — SafeNest';
+  const enrolling = challengeResult.faceMode === 'enroll';
+  const faceTitle = enrolling ? 'Đăng ký khuôn mặt lần đầu' : 'Xác thực khuôn mặt';
+  document.title = `${faceTitle} — SafeNest`;
   state.faceChallenge = challengeResult.faceChallenge;
-  state.faceRequiredFrames = challengeResult.requiredFrames || 3;
+  state.faceRequiredFrames = challengeResult.requiredFrames || 5;
   app.innerHTML = `
     <main class="auth-shell">
       <section class="auth-story">
         ${brandMarkup()}
         <div class="auth-message">
           <p class="eyebrow">Bảo vệ quyền quản trị</p>
-          <h1>Mật khẩu đúng.<br><em>Xác minh khuôn mặt.</em></h1>
-          <p>SafeNest chỉ cấp phiên quản trị khi mô hình FaceNet xác nhận nhãn khuôn mặt là “admin” và nhãn này vẫn khớp role trong cơ sở dữ liệu.</p>
+          <h1>Mật khẩu đúng.<br><em>${faceTitle}.</em></h1>
+          <p>${enrolling ? 'Tài khoản này chưa có dữ liệu khuôn mặt. Hãy tự chụp 5 ảnh để đăng ký cho tài khoản của bạn. Các lần đăng nhập sau sẽ đối chiếu với dữ liệu này.' : 'Hệ thống đối chiếu khuôn mặt với dữ liệu đã đăng ký riêng cho tài khoản đang đăng nhập.'}</p>
         </div>
         <div class="trust-row"><span><i class="trust-dot"></i>Challenge dùng một lần</span><span><i class="trust-dot"></i>Không lưu ảnh khuôn mặt</span><span><i class="trust-dot"></i>JWT chưa được cấp</span></div>
       </section>
       <section class="auth-panel" id="page-content" tabindex="-1">
         <div class="auth-card face-auth-card">
-          <p class="eyebrow">Bước xác thực thứ hai</p>
-          <h2>Đưa khuôn mặt vào khung hình</h2>
+          <h2>${faceTitle}</h2>
           <p>Giữ khuôn mặt thẳng, đủ sáng và không có người khác trong ảnh. Hệ thống sẽ chụp ${state.faceRequiredFrames} khung hình liên tiếp.</p>
           <div class="face-camera">
             <video id="face-video" autoplay muted playsinline></video>
@@ -1035,15 +1045,16 @@ async function renderAdminFaceVerification(challengeResult) {
           <canvas id="face-canvas" class="hidden"></canvas>
           <div class="form-actions between">
             <button class="link-button" type="button" data-action="cancel-face-auth">Hủy và đăng nhập lại</button>
-            <button class="btn" type="button" data-action="verify-admin-face" disabled>Xác minh khuôn mặt</button>
+            <button class="btn" type="button" data-action="verify-admin-face" disabled>${enrolling ? 'Đăng ký và đăng nhập' : 'Xác thực và đăng nhập'}</button>
           </div>
-          <p class="face-privacy">Ảnh chỉ được giữ tạm trong bộ nhớ để suy luận và bị xóa ngay sau khi có kết quả.</p>
+          <p class="face-privacy">Ảnh được xử lý tạm thời và xóa sau khi suy luận. Hệ thống lưu vector đặc trưng khuôn mặt gắn với tài khoản, không lưu ảnh gốc. Muốn đăng ký lại, hãy nhờ quản trị viên khác đặt lại dữ liệu khuôn mặt.</p>
         </div>
       </section>
     </main>`;
 
   const status = document.querySelector('#face-camera-status');
   const verifyButton = document.querySelector('[data-action="verify-admin-face"]');
+  const activeChallenge = state.faceChallenge;
   try {
     if (!navigator.mediaDevices?.getUserMedia) {
       throw new Error('Trình duyệt không hỗ trợ camera');
@@ -1056,6 +1067,10 @@ async function renderAdminFaceVerification(challengeResult) {
       },
       audio: false,
     });
+    if (state.faceChallenge !== activeChallenge || !status.isConnected) {
+      stream.getTracks().forEach(track => track.stop());
+      return;
+    }
     state.faceStream = stream;
     const video = document.querySelector('#face-video');
     video.srcObject = stream;
@@ -3752,8 +3767,8 @@ async function renderUsers(content) {
       const isSelf = String(u.user_id) === String(state.userId);
       return `<tr>
         <td><div class="admin-user-cell"><span class="admin-user-avatar">${escapeHtml(initials(u.name))}</span><span class="cell-title"><strong>${escapeHtml(u.name)} ${isSelf ? '<span class="badge blue">Bạn</span>' : ''}</strong><small>#${u.user_id} · ${escapeHtml(u.email)}</small></span></div></td>
-        <td><span class="badge ${u.role === 'admin' ? 'coral' : ''}">${u.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</span></td>
-        <td><span class="badge ${u.is_active ? '' : 'red'}">${u.is_active ? 'Đang hoạt động' : 'Đã khóa'}</span><small class="status-sub">${u.is_verified ? 'Đã xác minh email' : 'Chưa xác minh email'}</small></td>
+        <td><span class="badge ${u.role === 'admin' ? 'blue' : 'neutral'}">${u.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</span></td>
+        <td><span class="badge ${u.is_active ? '' : 'red'}">${u.is_active ? 'Đang hoạt động' : 'Đã khóa'}</span><small class="status-sub">${u.is_verified ? 'Đã xác minh email' : 'Chưa xác minh email'}</small>${u.role === 'admin' ? `<small class="status-sub">${u.face_enrolled ? 'Đã đăng ký khuôn mặt' : 'Chưa đăng ký khuôn mặt'}</small>${!isSelf ? `<button class="link-button" data-action="reset-user-face" data-id="${u.user_id}">Đặt lại dữ liệu khuôn mặt</button>` : ''}` : ''}</td>
         <td><strong>${u.child_count}</strong> trẻ · <strong>${u.device_count}</strong> thiết bị</td>
         <td>${formatDate(u.created_at)}</td>
         <td><div class="row-actions"><button class="btn btn-secondary btn-sm" data-action="view-user" data-id="${u.user_id}">${icons.eye} Chi tiết</button><button class="btn-icon-action" aria-label="Chỉnh sửa ${escapeHtml(u.name)}" title="Chỉnh sửa" data-action="edit-user" data-id="${u.user_id}">${icons.edit}</button><button class="btn-icon-action" aria-label="Thu hồi phiên của ${escapeHtml(u.name)}" title="Thu hồi phiên" data-action="revoke-user-sessions" data-id="${u.user_id}">${icons.revoke}</button><button class="btn-icon-action danger" aria-label="${isSelf ? 'Không thể xóa tài khoản của chính mình' : `Xóa ${escapeHtml(u.name)}`}" title="${isSelf ? 'Không thể xóa chính mình' : 'Xóa tài khoản'}" data-action="delete-user" data-id="${u.user_id}" ${isSelf ? 'disabled' : ''}>${icons.trash}</button></div></td>
@@ -3809,7 +3824,7 @@ async function renderAudit(content) {
       { label: 'Đang hiển thị', value: state.adminAuditLogs.length, note: 'trang hiện tại' },
       { label: 'Dữ liệu ghi nhận', value: 'IP & JSON' },
     ])}
-    <form id="audit-filter" class="filters filters-audit admin-filter-bar"><div class="field"><label>Hành động</label><input class="input" name="action" list="audit-action-options" value="${escapeHtml(filter.action || '')}" placeholder="Ví dụ: user.update"><datalist id="audit-action-options"><option value="blacklist.add"><option value="blacklist.delete"><option value="user.update"><option value="user.revoke_sessions"><option value="user.delete"><option value="device.delete"><option value="device.rotate_secret"><option value="settings.update"><option value="classification_policy.update"><option value="auth.admin_face_verified"></datalist></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}" placeholder="Ví dụ: 1"></div><div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-audit-filter">Đặt lại</button><button class="btn btn-sm" type="submit">${icons.search} Áp dụng</button></div></form>
+    <form id="audit-filter" class="filters filters-audit admin-filter-bar"><div class="field"><label>Hành động</label><input class="input" name="action" list="audit-action-options" value="${escapeHtml(filter.action || '')}" placeholder="Ví dụ: user.update"><datalist id="audit-action-options"><option value="blacklist.add"><option value="blacklist.delete"><option value="user.update"><option value="user.revoke_sessions"><option value="user.delete"><option value="device.delete"><option value="device.rotate_secret"><option value="settings.update"><option value="classification_policy.update"><option value="auth.admin_face_verified"><option value="auth.admin_face_enrolled"><option value="user.face_reset"></datalist></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}" placeholder="Ví dụ: 1"></div><div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-audit-filter">Đặt lại</button><button class="btn btn-sm" type="submit">${icons.search} Áp dụng</button></div></form>
     <section class="table-card admin-table-card audit-table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Chi tiết</th></tr></thead><tbody>${state.adminAuditLogs.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td><div class="admin-actor-cell"><span>#${item.actor_user_id ?? '—'}</span><span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></div></td><td><span class="audit-action-badge ${auditActionTone(item.action)}">${escapeHtml(item.action)}</span></td><td>${escapeHtml(item.target_type || '—')} <strong>#${escapeHtml(item.target_id || '—')}</strong></td><td><code class="audit-ip">${escapeHtml(item.ip_address || '—')}</code></td><td><button class="metadata-preview" aria-label="Xem chi tiết sự kiện ${escapeHtml(item.action)}" data-action="view-audit" data-id="${item.audit_id}"><code>${escapeHtml(auditMetadataPreview(item.metadata))}</code><span>Xem</span></button></td></tr>`).join('')}</tbody></table></div>${state.adminAuditLogs.length ? `<div class="table-footer">${paginationMarkup('audit', result, 'nhật ký kiểm toán')}</div>` : emptyState(icons.audit, 'Không có nhật ký', Object.values(filter).some(Boolean) ? 'Không có sự kiện nào phù hợp với bộ lọc.' : 'Chưa ghi nhận thao tác quản trị nhạy cảm nào.')}</section>`;
 }
 
@@ -3932,7 +3947,7 @@ async function handleSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
-  if (form.id === 'admin-create-user-form') {
+  if (['admin-create-user-form', 'admin-reset-face-form'].includes(form.id)) {
     if (form.dataset.pending === 'true') return;
     form.dataset.pending = 'true';
   }
@@ -4040,6 +4055,12 @@ async function handleSubmit(event) {
       state.adminUserFilter = data;
       state.adminUserOffset = 0;
       await renderUsers(document.querySelector('#page-content'));
+    } else if (form.id === 'admin-reset-face-form') {
+      await api(`/admin/users/${form.dataset.id}/reset-face`, { method: 'POST', body: { password: data.password } });
+      form.reset();
+      closeModal();
+      toast('Đã đặt lại khuôn mặt', 'Các phiên cũ đã bị thu hồi. Người dùng cần đăng ký khuôn mặt ở lần đăng nhập tiếp theo.');
+      await renderUsers(document.querySelector('#page-content'));
     } else if (form.id === 'admin-create-user-form') {
       if (data.password !== data.confirm_password) throw new Error('Mật khẩu xác nhận không khớp');
       const created = await api('/admin/users', { method: 'POST', body: {
@@ -4106,7 +4127,7 @@ async function handleSubmit(event) {
       if (target) target.innerHTML = `<p class="eyebrow api-response-status">Request thất bại</p><pre class="code-box">${escapeHtml(JSON.stringify(error.payload || { message: error.message }, null, 2))}</pre>`;
     }
   } finally {
-    if (form.id === 'admin-create-user-form') delete form.dataset.pending;
+    if (['admin-create-user-form', 'admin-reset-face-form'].includes(form.id)) delete form.dataset.pending;
     if (submit && form.id !== 'device-control-form') {
       if (form.id === 'policy-form') syncPolicyFormState(String(form.dataset.childId));
       else submit.disabled = false;
@@ -4428,16 +4449,21 @@ async function handleClick(event) {
       return renderAuth('login');
     }
     if (action === 'verify-admin-face') {
+      if (button.dataset.busy === 'true') return;
+      button.dataset.busy = 'true';
       button.disabled = true;
+      const activeChallenge = state.faceChallenge;
       const status = document.querySelector('#face-camera-status');
       status.textContent = 'Đang chụp và xác minh…';
       const frames = await captureAdminFaceFrames();
+      if (state.faceChallenge !== activeChallenge) return;
       const result = await api('/auth/admin-face', {
         method: 'POST',
-        body: { challenge: state.faceChallenge, frames },
+        body: { challenge: activeChallenge, frames },
         noAuth: true,
       });
-      if (result.faceLabel !== 'admin') throw new Error('Face verification failed');
+      if (state.faceChallenge !== activeChallenge) return;
+      if (result.faceVerified !== true) throw new Error('Face verification failed');
       stopFaceCamera();
       state.faceChallenge = '';
       await completeLogin(result);
@@ -4547,6 +4573,16 @@ async function handleClick(event) {
         `<div class="user-detail-summary"><div><small>Người thực hiện</small><strong>#${entry.actor_user_id ?? '—'} · ${escapeHtml(entry.actor_role || '—')}</strong></div><div><small>Đối tượng</small><strong>${escapeHtml(entry.target_type || '—')} #${escapeHtml(entry.target_id || '—')}</strong></div><div><small>Địa chỉ IP</small><strong>${escapeHtml(entry.ip_address || '—')}</strong></div></div><h3>Metadata</h3><pre class="code-box">${escapeHtml(JSON.stringify(entry.metadata || {}, null, 2))}</pre>${entry.user_agent ? `<h3>User agent</h3><p class="muted audit-user-agent">${escapeHtml(entry.user_agent)}</p>` : ''}`
       );
     }
+    if (action === 'reset-user-face') {
+      const user = state.adminUsers.find(item => String(item.user_id) === String(id));
+      if (!user || user.role !== 'admin' || String(id) === String(state.userId)) return;
+      return showModal('Đặt lại dữ liệu khuôn mặt?', `${user.name} · ${user.email}`, `
+        <p>Dữ liệu khuôn mặt và các phiên đăng nhập của tài khoản này sẽ bị thu hồi. Người dùng sẽ phải nhập đúng mật khẩu, có email đã xác minh và chụp khuôn mặt mới ở lần đăng nhập tiếp theo.</p>
+        <form id="admin-reset-face-form" data-id="${user.user_id}">
+          <div class="field"><label for="face-reset-password">Mật khẩu của bạn (người thực hiện)</label><input id="face-reset-password" class="input" type="password" name="password" required autocomplete="current-password"></div>
+          <div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn btn-danger" type="submit">Đặt lại khuôn mặt</button></div>
+        </form>`);
+    }
     if (action === 'add-admin-user') {
       return showModal('Thêm tài khoản', 'Tạo tài khoản riêng cho quản trị viên hoặc phụ huynh. Vai trò không thể đổi sau khi tạo.', `
         <form id="admin-create-user-form" class="form-grid">
@@ -4556,7 +4592,7 @@ async function handleClick(event) {
           <div class="field full"><label for="new-user-password">Mật khẩu</label><input id="new-user-password" class="input" name="password" type="password" required minlength="8" maxlength="72" autocomplete="new-password"><small>Ít nhất 8 ký tự, gồm chữ hoa, số và ký tự đặc biệt; tối đa 72 byte.</small></div>
           <div class="field full"><label for="new-user-confirm">Xác nhận mật khẩu</label><input id="new-user-confirm" class="input" name="confirm_password" type="password" required autocomplete="new-password"></div>
           <div class="field full"><label><input type="checkbox" name="is_verified"> Tôi đã xác minh email của người dùng này</label><small>Nếu chưa chọn, tài khoản chưa thể đăng nhập. Bạn có thể xác minh email sau trong Chỉnh sửa tài khoản.</small></div>
-          <p class="muted field full">Admin mới cần được đăng ký khuôn mặt vào mô hình nhận diện trước khi đăng nhập. Tạo tài khoản không tự đăng ký khuôn mặt.</p>
+          <p class="muted field full">Admin mới sẽ tự đăng ký khuôn mặt ở lần đăng nhập đầu tiên, sau khi xác minh email và nhập đúng mật khẩu. Không cần chụp khuôn mặt ở máy đang tạo tài khoản.</p>
           <div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Tạo tài khoản</button></div>
         </form>`);
     }
@@ -4597,6 +4633,13 @@ async function handleClick(event) {
     if (action === 'verify-admin-face') {
       const status = document.querySelector('#face-camera-status');
       if (status) status.textContent = localizeError(error.message);
+      if (error.payload?.code === 'FACE_ALREADY_ENROLLED') {
+        button.textContent = 'Chụp lại khuôn mặt';
+      }
+      if (error.payload?.attemptsRemaining === 0) {
+        button.dataset.exhausted = 'true';
+        if (status) status.textContent += ' Đã hết lượt thử. Hãy chọn “Hủy và đăng nhập lại” để bắt đầu lại.';
+      }
     }
     toast('Không thể hoàn tất', localizeError(error.message), 'error');
   } finally {
@@ -4605,7 +4648,10 @@ async function handleClick(event) {
       button.dataset.busy = 'false';
       button.removeAttribute('aria-busy');
     }
-    if (button && action === 'verify-admin-face' && document.body.contains(button)) button.disabled = false;
+    if (button && action === 'verify-admin-face') {
+      delete button.dataset.busy;
+      if (document.body.contains(button)) button.disabled = button.dataset.exhausted === 'true';
+    }
   }
 }
 

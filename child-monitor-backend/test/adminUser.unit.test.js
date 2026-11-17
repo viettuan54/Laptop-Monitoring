@@ -1,6 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 
+const { adminPool } = require('../src/config/db');
 const adminController = require('../src/controllers/admin.controller');
 
 function response() {
@@ -65,4 +66,52 @@ test('admin cannot delete their own account', async () => {
 
   assert.equal(res.statusCode, 400);
   assert.match(res.body.message, /cannot delete your own/i);
+});
+
+test('admin getUsers and getBlacklist clamp negative limits to at least 1', async (t) => {
+  const capturedParams = [];
+  t.mock.method(adminPool, 'query', async (_sql, params) => {
+    capturedParams.push(params);
+    return { rows: [{ total: '0', data: [] }] };
+  });
+
+  const usersRes = response();
+  await adminController.getUsers({ query: { limit: '-10', offset: '-5' } }, usersRes);
+  assert.equal(usersRes.statusCode, 200);
+  assert.equal(usersRes.body.limit, 1);
+  assert.equal(usersRes.body.offset, 0);
+  assert.deepEqual(capturedParams[0], [1, 0]);
+
+  const blacklistRes = response();
+  await adminController.getBlacklist({ query: { limit: '-1', offset: '-2' } }, blacklistRes);
+  assert.equal(blacklistRes.statusCode, 200);
+  assert.equal(blacklistRes.body.limit, 1);
+  assert.equal(blacklistRes.body.offset, 0);
+  assert.deepEqual(capturedParams[1], [1, 0]);
+});
+
+test('admin addBlacklist rejects non-string reason and deleteBlacklist rejects invalid id before querying DB', async (t) => {
+  t.mock.method(adminPool, 'connect', async () => {
+    throw new Error('Unexpected database access');
+  });
+
+  for (const reason of [123, true, {}, ['bad']]) {
+    const res = response();
+    await adminController.addBlacklist(
+      { body: { domain: 'example.com', reason }, currentUser: { user_id: 7, role: 'admin' } },
+      res
+    );
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /reason must be a string/i);
+  }
+
+  for (const id of ['abc', '0', '-5', '1.5']) {
+    const res = response();
+    await adminController.deleteBlacklist(
+      { params: { id }, currentUser: { user_id: 7, role: 'admin' } },
+      res
+    );
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body.message, /positive integer/i);
+  }
 });

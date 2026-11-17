@@ -52,7 +52,7 @@ app.use('/api/logs', require('./routes/logs.routes'));
 
 // Giữ limit 100kb global để ngăn chặn DoS (Payload lớn có thể làm cạn kiệt băng thông, CPU, RAM)
 // đối với các route còn lại.
-app.use('/api/auth/admin-face', express.json({ limit: '2200kb' }));
+app.use('/api/auth/admin-face', express.json({ limit: '3600kb' }));
 app.use(express.json({ limit: '100kb' }));
 app.use(express.urlencoded({ limit: '100kb', extended: true }));
 

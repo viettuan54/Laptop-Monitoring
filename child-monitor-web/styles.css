@@ -5890,7 +5890,7 @@ body.admin-surface {
 }
 
 .app-shell.is-admin {
-  grid-template-columns: 252px minmax(0, 1fr);
+  --sidebar: 252px;
   background: var(--adm-bg);
   min-height: 100vh;
 }
@@ -6158,7 +6158,7 @@ body.admin-surface {
 
 /* Buttons, Inputs, Badges scoped to Admin */
 
-.app-shell.is-admin .btn {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn {
   background: var(--adm-accent);
   color: #ffffff;
   border: 1px solid transparent;
@@ -6171,61 +6171,61 @@ body.admin-surface {
   transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
 }
 
-.app-shell.is-admin .btn:hover:not(:disabled) {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn:hover:not(:disabled) {
   background: var(--adm-accent-hover);
   transform: none;
 }
 
-.app-shell.is-admin .btn-secondary {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn-secondary {
   background: var(--adm-surface);
   color: var(--adm-ink-2);
   border: 1px solid var(--adm-border);
 }
 
-.app-shell.is-admin .btn-secondary:hover:not(:disabled) {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn-secondary:hover:not(:disabled) {
   background: var(--adm-surface-alt);
   border-color: var(--adm-border-strong);
   color: var(--adm-ink);
 }
 
-.app-shell.is-admin .btn-ghost {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn-ghost {
   background: transparent;
   color: var(--adm-muted);
   border: 1px solid transparent;
 }
 
-.app-shell.is-admin .btn-ghost:hover:not(:disabled) {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn-ghost:hover:not(:disabled) {
   background: var(--adm-surface-alt);
   color: var(--adm-ink);
 }
 
-.app-shell.is-admin .btn-danger {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn-danger {
   background: var(--adm-danger-soft);
   color: var(--adm-danger);
   border: 1px solid #fecaca;
 }
 
-.app-shell.is-admin .btn-danger:hover:not(:disabled) {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn-danger:hover:not(:disabled) {
   background: #fee2e2;
   border-color: #fca5a5;
 }
 
-.app-shell.is-admin .btn-sm {
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn-sm {
   min-height: 34px;
   padding: 5px 11px;
   font-size: 0.8125rem;
 }
 
-.app-shell.is-admin .btn svg,
+:is(.app-shell.is-admin, body.admin-surface .modal) .btn svg,
 .app-shell.is-admin .btn-icon-action svg {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
 }
 
-.app-shell.is-admin .input,
-.app-shell.is-admin .select,
-.app-shell.is-admin .textarea {
+:is(.app-shell.is-admin, body.admin-surface .modal) .input,
+:is(.app-shell.is-admin, body.admin-surface .modal) .select,
+:is(.app-shell.is-admin, body.admin-surface .modal) .textarea {
   background: var(--adm-surface);
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-radius-md);
@@ -6235,20 +6235,20 @@ body.admin-surface {
   transition: border-color 160ms ease, box-shadow 160ms ease;
 }
 
-.app-shell.is-admin .input:focus,
-.app-shell.is-admin .select:focus,
-.app-shell.is-admin .textarea:focus {
+:is(.app-shell.is-admin, body.admin-surface .modal) .input:focus,
+:is(.app-shell.is-admin, body.admin-surface .modal) .select:focus,
+:is(.app-shell.is-admin, body.admin-surface .modal) .textarea:focus {
   border-color: var(--adm-accent);
   box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.14);
   outline: none;
 }
 
-.app-shell.is-admin :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+:is(.app-shell.is-admin, body.admin-surface .modal) :is(button, a, input, select, textarea, [tabindex]):focus-visible {
   outline: 2px solid var(--adm-accent);
   outline-offset: 2px;
 }
 
-.app-shell.is-admin .badge {
+:is(.app-shell.is-admin, body.admin-surface .modal) .badge {
   font-size: 0.75rem;
   font-weight: 600;
   padding: 3px 9px;
@@ -6258,26 +6258,26 @@ body.admin-surface {
   border: 1px solid #a7f3d0;
 }
 
-.app-shell.is-admin .badge.blue {
+:is(.app-shell.is-admin, body.admin-surface .modal) .badge.blue {
   background: var(--adm-accent-soft);
   color: var(--adm-accent);
   border-color: #c7d2fe;
 }
 
-.app-shell.is-admin .badge.warn {
+:is(.app-shell.is-admin, body.admin-surface .modal) .badge.warn {
   background: var(--adm-warn-soft);
   color: #b45309;
   border-color: #fde68a;
 }
 
-.app-shell.is-admin .badge.coral,
-.app-shell.is-admin .badge.red {
+:is(.app-shell.is-admin, body.admin-surface .modal) .badge.coral,
+:is(.app-shell.is-admin, body.admin-surface .modal) .badge.red {
   background: var(--adm-danger-soft);
   color: var(--adm-danger);
   border-color: #fecaca;
 }
 
-.app-shell.is-admin .badge.neutral {
+:is(.app-shell.is-admin, body.admin-surface .modal) .badge.neutral {
   background: var(--adm-surface-alt);
   color: var(--adm-ink-2);
   border-color: var(--adm-border);
@@ -6309,6 +6309,7 @@ body.admin-surface {
   max-width: 68ch;
 }
 
+.app-shell.is-admin .head-actions,
 .app-shell.is-admin .page-actions {
   display: flex;
   flex-wrap: wrap;
@@ -6874,6 +6875,7 @@ body.admin-surface {
   color: var(--adm-muted);
 }
 
+.app-shell.is-admin .pagination-controls,
 .app-shell.is-admin .pagination-actions {
   display: inline-flex;
   align-items: center;
@@ -6961,21 +6963,57 @@ body.admin-surface {
   gap: 16px;
 }
 
+.app-shell.is-admin .admin-skeleton-head {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .app-shell.is-admin .skeleton-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
 }
 
+.app-shell.is-admin .skeleton-line,
+.app-shell.is-admin .skeleton-bar,
 .app-shell.is-admin .skeleton-card {
-  height: 128px;
-  border-radius: var(--adm-radius-lg);
-  border: 1px solid var(--adm-border);
   background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
   background-size: 200% 100%;
   animation: admin-shimmer 1.4s ease infinite;
 }
 
+.app-shell.is-admin .skeleton-line {
+  height: 14px;
+  border-radius: var(--adm-radius-sm);
+}
+
+.app-shell.is-admin .skeleton-line.w-lg {
+  width: min(260px, 65%);
+  height: 22px;
+}
+
+.app-shell.is-admin .skeleton-line.w-sm {
+  width: min(380px, 85%);
+}
+
+.app-shell.is-admin .skeleton-bar {
+  height: 58px;
+  border-radius: var(--adm-radius-lg);
+  border: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .skeleton-card {
+  height: 128px;
+  border-radius: var(--adm-radius-lg);
+  border: 1px solid var(--adm-border);
+}
+
+.app-shell.is-admin .skeleton-card.h-md {
+  height: 220px;
+}
+
+.app-shell.is-admin .skeleton-card.h-lg,
 .app-shell.is-admin .skeleton-table {
   height: 280px;
 }
@@ -6996,11 +7034,55 @@ body.admin-surface .modal-backdrop {
   backdrop-filter: blur(2px);
 }
 
+body.admin-surface .modal,
 body.admin-surface .modal-panel {
   background: var(--adm-surface);
   border: 1px solid var(--adm-border);
   border-radius: var(--adm-radius-lg);
   box-shadow: 0 20px 44px rgba(15, 23, 42, 0.16);
+  color: var(--adm-ink);
+}
+
+body.admin-surface .modal-head {
+  border-bottom: 1px solid var(--adm-border);
+}
+
+body.admin-surface .modal-head h2 {
+  font-family: var(--font-body);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--adm-ink);
+}
+
+body.admin-surface .modal-head p {
+  color: var(--adm-muted);
+  font-size: 0.8125rem;
+}
+
+body.admin-surface .modal-close {
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
+  background: var(--adm-surface);
+  color: var(--adm-ink-2);
+}
+
+body.admin-surface .modal-close:hover:not(:disabled) {
+  background: var(--adm-surface-alt);
+  border-color: var(--adm-border-strong);
+  color: var(--adm-ink);
+}
+
+body.admin-surface .modal-body > h3 {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--adm-ink);
+}
+
+body.admin-surface .user-detail-summary > div {
+  background: var(--adm-bg);
+  border: 1px solid var(--adm-border);
+  border-radius: var(--adm-radius-md);
 }
 
 body.admin-surface .toast {
@@ -7020,10 +7102,6 @@ body.admin-surface .toast {
 }
 
 @media (max-width: 1024px) {
-  .app-shell.is-admin {
-    grid-template-columns: 1fr;
-  }
-
   .app-shell.is-admin .topbar {
     padding: 10px 18px;
   }
@@ -7076,6 +7154,8 @@ body.admin-surface .toast {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .app-shell.is-admin .skeleton-line,
+  .app-shell.is-admin .skeleton-bar,
   .app-shell.is-admin .skeleton-card {
     animation: none;
   }

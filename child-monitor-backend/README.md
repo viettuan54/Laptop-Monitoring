@@ -158,35 +158,10 @@ EXPO_ACCESS_TOKEN=
 
 Ứng dụng Expo cần lấy token bằng `Notifications.getExpoPushTokenAsync({ projectId })` rồi gửi token đó đến `POST /api/notifications/tokens`. Xem hướng dẫn chính thức: https://docs.expo.dev/push-notifications/push-notifications-setup/
 
-## Xác thực khuôn mặt cho quản trị viên
+## Account-bound admin face verification
 
-Tài khoản `parent` đăng nhập bằng mật khẩu như bình thường. Với tài khoản có role `admin`, `POST /api/auth/login` chỉ trả challenge ngắn hạn sau khi mật khẩu đúng; chưa phát hành JWT hay refresh token. Dashboard chụp 3 khung hình từ camera và gửi đến `POST /api/auth/admin-face`.
+Admin login now uses per-user FaceNet cosine verification, with first-login enrollment and reset by another Admin. Apply `migration_v32.sql` before starting the updated backend. Existing Admin sessions are revoked once and each Admin enrolls their own face at next login.
 
-Backend chỉ phát hành phiên khi:
+See [AI/FACE_VERIFICATION.md](AI/FACE_VERIFICATION.md) for the enrollment/reset protocol, threshold calibration results, environment setup, migration and required live-webcam acceptance checks. The offline threshold is provisional; neither webcam validation nor anti-spoofing is claimed.
 
-1. Challenge còn hạn, đúng IP/User-Agent, chưa dùng và chưa vượt quá 3 lần thử.
-2. Model FaceNet + SVM trong thư mục `AI/face_models_facenet` trả nhãn `admin`.
-3. Nhãn `admin` vẫn trùng role `admin` trong PostgreSQL tại thời điểm cấp token.
-
-Cài Python 3.11 và môi trường AI:
-
-```powershell
-cd child-monitor-backend
-py -3.11 -m venv .venv-face
-.\.venv-face\Scripts\python.exe -m pip install --upgrade pip
-.\.venv-face\Scripts\python.exe -m pip install -r AI\requirements.txt
-```
-
-Cấu hình:
-
-```env
-FACE_AUTH_REQUIRED_FOR_ADMIN=true
-FACE_PYTHON_BIN=C:\DoAn\Laptopmonitoring\child-monitor-backend\.venv-face\Scripts\python.exe
-FACE_AUTH_TIMEOUT_MS=120000
-FACE_CLASSIFICATION_THRESHOLD=0.75
-FACE_DETECTION_THRESHOLD=0.60
-```
-
-Ảnh chỉ được ghi vào thư mục tạm với tên ngẫu nhiên trong lúc suy luận và bị xóa trong khối `finally`; database chỉ lưu challenge đã băm, không lưu ảnh hoặc embedding mới.
-
-Ba khung hình khác nhau giúp loại bỏ việc gửi lặp đúng một file, nhưng chưa phải cơ chế chống giả mạo/liveness chuyên dụng. Khi triển khai production, cần bổ sung anti-spoofing và kiểm thử ngưỡng bằng dữ liệu camera thực tế của quản trị viên.
+Use the existing Python environment (`.venv-face`) with `AI/requirements.txt`, and configure `FACE_PYTHON_BIN`, `FACE_AUTH_TIMEOUT_MS` and `FACE_AUTH_MAX_CONCURRENT`. The old SVM threshold and optional face-auth bypass are no longer used for Admin login.
