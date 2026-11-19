@@ -1,7 +1,7 @@
 #define MyAppName "Child Monitor Agent"
 #define MyAppPublisher "Laptop Monitoring Project"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.28"
+  #define MyAppVersion "1.0.29"
 #endif
 #ifndef ReleaseRoot
   #define ReleaseRoot "release\ChildMonitorAgent"
@@ -44,6 +44,7 @@ VersionInfoProductVersion={#MyAppVersion}
 Source: "{#ReleaseRoot}\browser-host\*"; DestDir: "{app}\browser-host"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ReleaseRoot}\browser-extension\*"; DestDir: "{app}\browser-extension"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ReleaseRoot}\WEB-BLOCKING.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#ReleaseRoot}\ADMIN-BLACKLIST.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ReleaseRoot}\service\*"; DestDir: "{app}\service"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ReleaseRoot}\companion\*"; DestDir: "{app}\companion"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ReleaseRoot}\installer\*"; DestDir: "{app}\installer"; Flags: ignoreversion recursesubdirs createallsubdirs

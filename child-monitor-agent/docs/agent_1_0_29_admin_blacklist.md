@@ -10,11 +10,10 @@ Backend cũ không gửi trường này hoặc lỗi mạng không làm xóa dan
 
 ## Cập nhật và kiểm tra
 
-**Trạng thái đóng gói:** mã nguồn và Service đã được build, Service self-test đạt.
-Windows Application Control chặn chạy Companion self-test trên máy build, nên
-chưa tạo bộ cài 1.0.29 hoàn chỉnh. Các bước cài dưới đây áp dụng sau khi build
-thành công trên máy được phép chạy các executable này; không dùng bộ cài cũ
-để kiểm tra bản sửa mới.
+**Giới hạn kiểm chứng bản đóng gói:** Service self-test đạt; kiểm tra mã đóng gói
+của Service, Companion và tiện ích đạt. Windows Application Control chặn chạy
+Companion self-test trên máy build. Bộ cài cần được kiểm tra trên máy đích trước
+khi coi là đã nghiệm thu đầy đủ; chính sách bảo vệ Windows không bị thay đổi.
 
 1. Triển khai Backend mới và khởi động lại tiến trình Backend một lần.
 2. Cài `build/output/ChildMonitorSetup-1.0.29.exe` bằng quyền quản trị trên máy Agent.
