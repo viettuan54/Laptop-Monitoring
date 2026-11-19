@@ -481,6 +481,11 @@ test('admin workspace presents operational context, scannable records and respon
   assert.match(styles, /\.app-shell\.is-admin\s+\.head-actions\b/);
   assert.match(styles, /\.app-shell\.is-admin\s+\.pagination-controls\b/);
   assert.match(source, /Promise\.allSettled\(\[\s*api\('\/admin\/stats'\),\s*api\('\/admin\/audit-logs\?limit=5'\)/);
+  assert.match(source, /auditRes\.status === 'fulfilled' \? 'Đang hoạt động' : 'Không tải được'/);
+  assert.match(source, /created\?\.domain \|\| data\.domain/);
+  assert.match(source, /value="user\.create"/);
+  assert.match(source, /value="account\.delete"/);
+  assert.match(source, /action\.includes\('reset'\)/);
   assert.match(source, /value="blacklist\.add"/);
   assert.match(source, /data-action="edit-user"[^>]*>\$\{icons\.edit\}/);
   assert.match(source, /data-action="revoke-user-sessions"[^>]*>\$\{icons\.revoke\}/);

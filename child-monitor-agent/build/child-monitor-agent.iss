@@ -1,7 +1,7 @@
 #define MyAppName "Child Monitor Agent"
 #define MyAppPublisher "Laptop Monitoring Project"
 #ifndef MyAppVersion
-  #define MyAppVersion "1.0.27"
+  #define MyAppVersion "1.0.28"
 #endif
 #ifndef ReleaseRoot
   #define ReleaseRoot "release\ChildMonitorAgent"
@@ -41,6 +41,9 @@ VersionInfoProductName={#MyAppName}
 VersionInfoProductVersion={#MyAppVersion}
 
 [Files]
+Source: "{#ReleaseRoot}\browser-host\*"; DestDir: "{app}\browser-host"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#ReleaseRoot}\browser-extension\*"; DestDir: "{app}\browser-extension"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#ReleaseRoot}\WEB-BLOCKING.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#ReleaseRoot}\service\*"; DestDir: "{app}\service"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ReleaseRoot}\companion\*"; DestDir: "{app}\companion"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#ReleaseRoot}\installer\*"; DestDir: "{app}\installer"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -53,11 +56,13 @@ Name: "{app}\logs"
 Name: "{app}\temp"
 
 [Run]
+Filename: "{app}\browser-host\SafeNestBrowserHost.exe"; Parameters: "--register"; StatusMsg: "Đang đăng ký kết nối tiện ích trình duyệt..."; Flags: runhidden waituntilterminated
 Filename: "{app}\installer\ChildMonitorProvision.exe"; Parameters: "{code:GetProvisionArguments}"; StatusMsg: "Đang xác thực và lưu cấu hình Agent..."; Flags: runhidden waituntilterminated
 Filename: "{app}\service\ChildMonitorService.exe"; Parameters: "--startup auto install"; StatusMsg: "Đang cài Windows Service..."; Flags: runhidden waituntilterminated
 Filename: "{app}\service\ChildMonitorService.exe"; Parameters: "--wait=30 start"; StatusMsg: "Đang khởi động Agent..."; Flags: runhidden waituntilterminated
 
 [UninstallRun]
+Filename: "{app}\browser-host\SafeNestBrowserHost.exe"; Parameters: "--unregister"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RemoveBrowserBridge"
 Filename: "{app}\service\ChildMonitorService.exe"; Parameters: "--wait=30 stop"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "StopService"
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM ChildMonitorCompanion.exe /T /F"; Flags: runhidden waituntilterminated; RunOnceId: "StopCompanion"
 Filename: "{app}\service\ChildMonitorService.exe"; Parameters: "remove"; Flags: runhidden waituntilterminated skipifdoesntexist; RunOnceId: "RemoveService"

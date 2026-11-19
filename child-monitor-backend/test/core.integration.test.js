@@ -837,10 +837,11 @@ test(`Agent search query ${label} reaches the provider and applies the parent al
     process.env.TEXT_MODERATION_PROVIDER = 'local';
     process.env.LOCAL_MODERATION_URL = `http://127.0.0.1:${providerServer.address().port}`;
     process.env.LOCAL_MODERATION_API_KEY = providerSecret;
-    await adminPool.query(
+    const consent = await adminPool.query(
       `INSERT INTO settings(child_id, enable_text_moderation)
        VALUES($1, TRUE)
-       ON CONFLICT (child_id) DO UPDATE SET enable_text_moderation = TRUE`,
+       ON CONFLICT (child_id) DO UPDATE SET enable_text_moderation = TRUE
+       RETURNING updated_at`,
       [childOne]
     );
 
@@ -849,7 +850,8 @@ test(`Agent search query ${label} reaches the provider and applies the parent al
         client_record_id: clientRecordId,
         source_type: 'search_query',
         text: rawText,
-        occurred_at: new Date().toISOString(),
+        // Place this synthetic event inside the policy window independently of clock skew.
+        occurred_at: new Date(consent.rows[0].updated_at.getTime() + 1).toISOString(),
         domain: 'search.example.test',
       }],
     };

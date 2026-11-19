@@ -55,6 +55,12 @@ if ($service) {
     }
 }
 
+$browserHost = Join-Path $resolvedInstallDir 'browser-host\SafeNestBrowserHost.exe'
+if (Test-Path -LiteralPath $browserHost -PathType Leaf) {
+    & $browserHost --unregister
+    if ($LASTEXITCODE -ne 0) { throw 'Failed to unregister browser policy bridge.' }
+}
+
 if ($PurgeData) {
     if (-not (Test-Path -LiteralPath $serviceExe -PathType Leaf) -and
         -not (Test-Path -LiteralPath $serviceScript -PathType Leaf)) {

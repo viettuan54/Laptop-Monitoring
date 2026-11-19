@@ -326,6 +326,25 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         self.queue._sync_apps(FakeApiClient([]))
         self.assertEqual(self._synced_state(), {record_id: 0})
 
+    def test_rejected_batch_remains_on_disk_and_does_not_starve_later_records(self):
+        with self.queue.get_connection() as conn:
+            conn.executemany(
+                "INSERT INTO app_logs(client_record_id, app_name, start_time, duration_seconds) "
+                "VALUES (?, 'fixture.exe', '2026-11-18T08:00:00Z', ?)",
+                [(str(i), 121 if i < 100 else 30) for i in range(101)],
+            )
+        rejected = Mock(status_code=400)
+        rejected.json.return_value = {"skipped_reasons": [f"[{i}] invalid duration" for i in range(100)]}
+        api = Mock()
+        api.post.side_effect = [rejected, FakeResponse(["100"])]
+        with patch("offline_queue.time.sleep"):
+            self.queue._sync_apps(api)
+        self.assertEqual(api.post.call_count, 2)
+        self.assertEqual(self._synced_state(), {str(i): -1 if i < 100 else 1 for i in range(101)})
+        reopened = OfflineQueue(db_path=self.queue.db_path, secure_file=False)
+        reopened._sync_apps(api)
+        self.assertEqual(api.post.call_count, 2)
+
     def test_duplicate_web_record_id_is_idempotent(self):
         record_id = "f0b43af8-7318-4d73-8a46-3d8452937f93"
         first_id, inserted = self.queue.enqueue_web_log(

@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy lần lượt toàn bộ migration đến `migration_v26.sql`. Với database hiện có, tối thiểu phải chạy:
+Chạy các migration còn thiếu theo thứ tự số đến `migration_v33.sql` bằng role sở hữu schema. Bản v33 cấp quyền nhật ký kiểm toán cho `app_admin`. Các lệnh dưới đây minh họa một phần trình tự nâng cấp:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql

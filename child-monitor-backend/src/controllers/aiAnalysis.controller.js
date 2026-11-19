@@ -60,11 +60,15 @@ exports.triggerAnalysis = async (req, res) => {
     // Ownership đã được requireOwnedDevice kiểm tra và RLS connection đã được
     // giải phóng trước khi bắt đầu tác vụ mạng có thể kéo dài này.
     const result = await aiService.analyzeDeviceActivity(device_id);
+    if (result === null) return res.status(422).json({
+      code: 'INSUFFICIENT_ACTIVITY', message: 'Chưa đủ nhật ký hoạt động trong 24 giờ qua để đánh giá rủi ro.'
+    });
     res.json({
       message: 'AI analysis completed successfully',
       analysis: result
     });
   } catch (error) {
+    if (error.code === 'INVALID_AI_RESULT') return res.status(502).json({ code: error.code, message: error.message });
     console.error('Trigger AI analysis error:', error);
     res.status(500).json({ message: 'Failed to run AI analysis' });
   }

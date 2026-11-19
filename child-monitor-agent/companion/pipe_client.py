@@ -74,6 +74,9 @@ class PipeClient:
     def check_applications(self, processes):
         return self._send_and_receive({"action": "CHECK_APPS", "processes": processes})
 
+    def get_browser_web_policy(self):
+        return self._send_and_receive({"action": "GET_BROWSER_WEB_POLICY"})
+
     def send_break_tick(self, idle_seconds, desktop_active):
         return self._send_and_receive({'action': 'BREAK_TICK', 'idle_seconds': idle_seconds, 'desktop_active': desktop_active})
 
@@ -110,13 +113,17 @@ class PipeClient:
                     win32file.OPEN_EXISTING,
                     0, None
                 )
+                # Native policy snapshots may exceed the server's pipe buffer.
+                # Message mode waits for the complete reply instead of parsing
+                # a partial byte-mode read as JSON.
+                win32pipe.SetNamedPipeHandleState(handle, win32pipe.PIPE_READMODE_MESSAGE, None, None)
 
                 # Gửi dữ liệu JSON
                 message_bytes = json.dumps(payload_dict).encode('utf-8')
                 win32file.WriteFile(handle, message_bytes)
 
                 # Đọc dữ liệu phản hồi từ Service
-                result, data = win32file.ReadFile(handle, 65536)
+                result, data = win32file.ReadFile(handle, 1048576)
 
                 if result == 0 and data:
                     return json.loads(data.decode('utf-8'))

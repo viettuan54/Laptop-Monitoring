@@ -1,5 +1,8 @@
 # Child Monitor Agent
 
+Agent **1.0.28** bổ sung tiện ích chặn website đang mở khi phụ huynh bật lại chính sách.
+Cần cài tiện ích một lần trong từng trình duyệt của trẻ; xem [hướng dẫn cập nhật và kiểm thử](docs/agent_1_0_28_web_blocking.md).
+
 Agent **1.0.27** hỗ trợ phiên camera có thời hạn, dừng sau cảnh báo đầu tiên hoặc hết giờ,
 chỉ chạy lại khi phụ huynh chủ động bắt đầu. Xem [hướng dẫn phiên camera](docs/agent_1_0_27_vision_sessions.md).
 
@@ -98,7 +101,7 @@ tại `child-monitor-agent` rồi chạy:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.27"
+  -Version "1.0.28"
 ```
 
 Script cài dependency build vào môi trường Python được chọn, tạo bundle
@@ -106,14 +109,14 @@ PyInstaller dạng one-folder cho Service/Companion, chạy self-test native
 MediaPipe/OpenCV, rồi tạo:
 
 ```text
-build\output\ChildMonitorSetup-1.0.27.exe
+build\output\ChildMonitorSetup-1.0.28.exe
 ```
 
 Để đóng gói model/profile cá nhân vào installer:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\build\build-agent.ps1 `
-  -Version "1.0.27" `
+  -Version "1.0.28" `
   -EyeDistanceProfilePath ".\models\eye-distance-cua-tre.json" `
   -PostureModelPath "..\ai-training\artifacts\posture_baseline_v1.json" `
   -PostureProfilePath "..\ai-training\datasets\pilot\subject-001.posture-profile.json"

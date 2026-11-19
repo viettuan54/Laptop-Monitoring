@@ -120,10 +120,10 @@ exports.heartbeat = async (req, res) => {
 
     // Trả cả các nhóm allow/block để Agent có thể thực thi ngay sau khi AI
     // phân loại domain, thay vì chỉ lưu nhãn vào nhật ký.
-    const { config, policy_blocked_domains } = await getAgentPolicySnapshot(
-      adminPool,
-      child_id
-    );
+    const [{ config, policy_blocked_domains }, blacklistResult] = await Promise.all([
+      getAgentPolicySnapshot(adminPool, child_id),
+      adminPool.query('SELECT domain FROM website_blacklist ORDER BY domain ASC'),
+    ]);
     config.screenshot_request = await pendingScreenshotRequest(adminPool, device_id);
 
     res.json({
@@ -132,6 +132,7 @@ exports.heartbeat = async (req, res) => {
       last_seen_at: last_seen_at instanceof Date ? last_seen_at.toISOString() : last_seen_at,
       config,
       policy_blocked_domains,
+      blacklisted_domains: blacklistResult.rows.map((row) => row.domain),
     });
   } catch (error) {
     console.error('Heartbeat error:', error);

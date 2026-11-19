@@ -263,9 +263,12 @@ class ChildMonitorService(ServiceBaseClass):
                 payload = res.json()
                 config = payload.get("config")
                 if isinstance(config, dict):
-                    # Heartbeat is the fastest policy channel (5s). Preserve the
-                    # global blacklist, but replace the per-child classified-domain
-                    # snapshot whenever the new backend includes it.
+                    # Apply global additions AND removals on the 5s channel.
+                    # Missing fields from older backends preserve the local cache;
+                    # an explicit empty list clears the global blacklist.
+                    blacklisted_domains = payload.get("blacklisted_domains")
+                    if not isinstance(blacklisted_domains, list):
+                        blacklisted_domains = None
                     policy_blocked_domains = (
                         payload.get("policy_blocked_domains")
                         if "policy_blocked_domains" in payload
@@ -273,6 +276,7 @@ class ChildMonitorService(ServiceBaseClass):
                     )
                     self.enforcement_core.save_settings_cache(
                         config,
+                        blacklisted_domains=blacklisted_domains,
                         policy_blocked_domains=policy_blocked_domains,
                     )
                     logging.info("Applied policy config received with heartbeat.")

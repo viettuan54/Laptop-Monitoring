@@ -733,6 +733,16 @@ class PipeServer:
             break_reminder = None
             break_response_accepted = None
 
+            if action == "GET_BROWSER_WEB_POLICY":
+                if self.app_processes is None or not self.app_processes.client_allowed(pipe_handle):
+                    raise ValueError("Browser policy requires the monitored user session")
+                snapshot = self.enforcement_core.get_browser_web_policy()
+                response = json.dumps({"web_policy": snapshot}).encode("utf-8")
+                if len(response) > 900000:
+                    raise ValueError("Browser policy exceeds native message limit")
+                win32file.WriteFile(pipe_handle, response)
+                return
+
             if action in {"BREAK_TICK", "BREAK_RESPONSE"}:
                 if self.app_processes is None or not self.app_processes.client_allowed(pipe_handle):
                     raise ValueError("Break reminders require the monitored user session")

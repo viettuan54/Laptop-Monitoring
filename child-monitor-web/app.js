@@ -3225,6 +3225,7 @@ function aiControls(view) {
   const message = !run ? '' : run.phase === 'posting' ? 'Đang phân tích thiết bị đang chọn…'
     : run.phase === 'refreshing' ? 'Phân tích đã hoàn thành. Đang tải lại kết quả…'
     : run.phase === 'refresh-error' ? 'Phân tích đã hoàn thành, nhưng chưa tải lại được kết quả.'
+    : run.phase === 'no-result' ? run.error
     : run.phase === 'unconfirmed' ? `Chưa xác nhận được kết quả phân tích. ${run.error} Bạn có thể tải lại lịch sử để kiểm tra.`
     : 'Phân tích đã hoàn thành.';
   aiStatus(view, '#ai-analysis-status', message);
@@ -3331,6 +3332,7 @@ async function runAIAnalysis(view, button) {
   } catch (error) {
     if (!current()) return;
     operation.phase = postCompleted ? 'refresh-error' : 'unconfirmed';
+    if (['INSUFFICIENT_ACTIVITY', 'INVALID_AI_RESULT'].includes(error.payload?.code)) operation.phase = 'no-result';
     operation.error = localizeError(error.message);
   } finally {
     if (current()) {
@@ -3630,7 +3632,7 @@ async function renderAccount(content) {
 
 function auditActionTone(action = '') {
   if (action.includes('delete') || action.includes('revoke')) return 'danger';
-  if (action.includes('update') || action.includes('rotate')) return 'warn';
+  if (action.includes('update') || action.includes('rotate') || action.includes('reset')) return 'warn';
   return 'info';
 }
 
@@ -3676,8 +3678,8 @@ async function renderAdminOverview(content) {
         </div>
         <div class="admin-runtime-strip">
           <div class="runtime-item"><span>${icons.server} Backend API</span><strong class="${state.connectionStatus === 'online' ? 'ok' : 'warn'}">${state.connectionStatus === 'online' ? 'Ổn định' : 'Kiểm tra kết nối'}</strong></div>
-          <div class="runtime-item"><span>${icons.policy} JWT &amp; RLS</span><strong class="ok">Đang bật</strong></div>
-          <div class="runtime-item"><span>${icons.audit} Audit Log</span><strong class="ok">Đang ghi</strong></div>
+          <div class="runtime-item"><span>${icons.policy} Cơ chế bảo vệ</span><strong class="ok">JWT, Face 1:1 &amp; RLS</strong></div>
+          <div class="runtime-item"><span>${icons.audit} Nhật ký kiểm toán</span><strong class="${auditRes.status === 'fulfilled' ? 'ok' : 'warn'}">${auditRes.status === 'fulfilled' ? 'Đang hoạt động' : 'Không tải được'}</strong></div>
         </div>
       </article>
       <article class="card admin-card admin-summary-card">
@@ -3793,7 +3795,7 @@ async function renderBlacklist(content) {
     ${adminStatsStrip([
       { label: 'Tổng tên miền chặn', value: totalDomains },
       { label: 'Trang hiện tại', value: result.data.length },
-      { label: 'Đồng bộ', value: 'Backend → Agent' },
+      { label: 'Đồng bộ', value: 'Backend → Agent', note: 'chu kỳ 10 phút / khi khởi động' },
     ])}
     <form id="blacklist-search" class="filters filters-search admin-filter-bar"><div class="field"><label>Tìm tên miền</label><input class="input" name="search" value="${escapeHtml(search)}" placeholder="example.com"></div><div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-blacklist-filter">Đặt lại</button><button class="btn btn-secondary btn-sm" type="submit">${icons.search} Tìm kiếm</button></div></form>
     <section class="table-card admin-table-card"><div class="table-scroll"><table><thead><tr><th>Tên miền</th><th>Lý do chặn</th><th>Người thêm</th><th>Ngày thêm</th><th><span class="visually-hidden">Thao tác</span></th></tr></thead><tbody>${result.data.map((item) => `<tr><td><div class="admin-domain-cell"><span class="domain-icon">${icons.shieldBan}</span><strong>${escapeHtml(item.domain)}</strong></div></td><td>${escapeHtml(item.reason || '—')}</td><td>${escapeHtml(item.added_by_name || 'Hệ thống')}</td><td>${formatDate(item.created_at)}</td><td><button class="btn btn-danger btn-sm" aria-label="Xóa ${escapeHtml(item.domain)} khỏi danh sách chặn" data-action="delete-blacklist" data-id="${item.blacklist_id}" data-name="${escapeHtml(item.domain)}">${icons.trash} Xóa</button></td></tr>`).join('')}</tbody></table></div>${result.data.length ? `<div class="table-footer">${paginationMarkup('blacklist', result, 'danh sách chặn')}</div>` : emptyState(icons.shieldBan, search ? 'Không tìm thấy tên miền' : 'Danh sách chặn đang trống', search ? 'Không có mục nào phù hợp với từ khóa tìm kiếm.' : 'Thêm tên miền đầu tiên để Agent bắt đầu bảo vệ.', search ? '' : '<button class="btn" data-action="add-blacklist">' + icons.plus + ' Thêm tên miền</button>')}</section>`;
@@ -3824,7 +3826,7 @@ async function renderAudit(content) {
       { label: 'Đang hiển thị', value: state.adminAuditLogs.length, note: 'trang hiện tại' },
       { label: 'Dữ liệu ghi nhận', value: 'IP & JSON' },
     ])}
-    <form id="audit-filter" class="filters filters-audit admin-filter-bar"><div class="field"><label>Hành động</label><input class="input" name="action" list="audit-action-options" value="${escapeHtml(filter.action || '')}" placeholder="Ví dụ: user.update"><datalist id="audit-action-options"><option value="blacklist.add"><option value="blacklist.delete"><option value="user.update"><option value="user.revoke_sessions"><option value="user.delete"><option value="device.delete"><option value="device.rotate_secret"><option value="settings.update"><option value="classification_policy.update"><option value="auth.admin_face_verified"><option value="auth.admin_face_enrolled"><option value="user.face_reset"></datalist></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}" placeholder="Ví dụ: 1"></div><div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-audit-filter">Đặt lại</button><button class="btn btn-sm" type="submit">${icons.search} Áp dụng</button></div></form>
+    <form id="audit-filter" class="filters filters-audit admin-filter-bar"><div class="field"><label>Hành động</label><input class="input" name="action" list="audit-action-options" value="${escapeHtml(filter.action || '')}" placeholder="Ví dụ: user.update"><datalist id="audit-action-options"><option value="blacklist.add"><option value="blacklist.delete"><option value="user.create"><option value="user.update"><option value="user.revoke_sessions"><option value="user.face_reset"><option value="user.delete"><option value="account.change_password"><option value="account.reset_password"><option value="account.delete"><option value="device.delete"><option value="device.rotate_secret"><option value="settings.update"><option value="classification_policy.update"><option value="auth.admin_face_verified"><option value="auth.admin_face_enrolled"></datalist></div><div class="field"><label>Mã người thực hiện</label><input class="input" type="number" min="1" name="actor_user_id" value="${escapeHtml(filter.actor_user_id || '')}" placeholder="Ví dụ: 1"></div><div class="filter-actions"><button class="btn btn-ghost btn-sm" type="button" data-action="clear-audit-filter">Đặt lại</button><button class="btn btn-sm" type="submit">${icons.search} Áp dụng</button></div></form>
     <section class="table-card admin-table-card audit-table-card"><div class="table-scroll"><table><thead><tr><th>Thời gian</th><th>Người thực hiện</th><th>Hành động</th><th>Đối tượng</th><th>IP</th><th>Chi tiết</th></tr></thead><tbody>${state.adminAuditLogs.map((item) => `<tr><td>${formatDate(item.created_at)}</td><td><div class="admin-actor-cell"><span>#${item.actor_user_id ?? '—'}</span><span class="badge neutral">${escapeHtml(item.actor_role || '—')}</span></div></td><td><span class="audit-action-badge ${auditActionTone(item.action)}">${escapeHtml(item.action)}</span></td><td>${escapeHtml(item.target_type || '—')} <strong>#${escapeHtml(item.target_id || '—')}</strong></td><td><code class="audit-ip">${escapeHtml(item.ip_address || '—')}</code></td><td><button class="metadata-preview" aria-label="Xem chi tiết sự kiện ${escapeHtml(item.action)}" data-action="view-audit" data-id="${item.audit_id}"><code>${escapeHtml(auditMetadataPreview(item.metadata))}</code><span>Xem</span></button></td></tr>`).join('')}</tbody></table></div>${state.adminAuditLogs.length ? `<div class="table-footer">${paginationMarkup('audit', result, 'nhật ký kiểm toán')}</div>` : emptyState(icons.audit, 'Không có nhật ký', Object.values(filter).some(Boolean) ? 'Không có sự kiện nào phù hợp với bộ lọc.' : 'Chưa ghi nhận thao tác quản trị nhạy cảm nào.')}</section>`;
 }
 
@@ -3857,7 +3859,7 @@ function renderApiLab(content) {
       <aside class="card endpoint-list"><div class="endpoint-list-head"><p class="eyebrow">Danh mục endpoint</p><strong>${Object.keys(agentEndpoints).length} tình huống thử</strong></div>${Object.entries(agentEndpoints).map(([key, endpoint]) => `<button class="endpoint-button ${state.agentEndpoint === key ? 'active' : ''}" data-action="select-agent-endpoint" data-endpoint="${key}"><span class="method ${endpoint.method.toLowerCase()}">${endpoint.method}</span><span><strong>${escapeHtml(endpoint.label)}</strong><small>/api${escapeHtml(endpoint.path)}</small></span><span class="endpoint-arrow">→</span></button>`).join('')}</aside>
       <article class="card card-pad api-request-card">
         <div class="api-request-heading"><span class="method ${selected.method.toLowerCase()}">${selected.method}</span><div><p class="eyebrow">Trình tạo request</p><h2>${escapeHtml(selected.label)}</h2><p class="muted">/api${escapeHtml(selected.path)}</p></div></div>
-        <form id="agent-request-form"><div class="field"><label>${requestLabel}</label><textarea class="textarea agent-request-data" name="request_data" ${requestData === undefined ? 'disabled' : ''}>${requestData === undefined ? '' : escapeHtml(JSON.stringify(requestData, null, 2))}</textarea>${selected.method === 'GET' && requestData !== undefined ? '<small>Giá trị sẽ được mã hóa an toàn vào query string.</small>' : ''}</div><div class="form-actions">${state.agentSecret ? '' : '<small class="muted">Cần nhập X-Device-Secret ở trên trước khi gửi.</small>'}<button class="btn" type="submit" ${state.agentSecret ? '' : 'disabled'}>Gửi request</button></div></form>
+        <form id="agent-request-form"><div class="field"><label>${requestLabel}</label><textarea class="textarea agent-request-data" name="request_data" ${requestData === undefined ? 'disabled' : ''}>${requestData === undefined ? '' : escapeHtml(JSON.stringify(requestData, null, 2))}</textarea>${selected.method === 'GET' && requestData !== undefined ? '<small>Giá trị sẽ được mã hóa an toàn vào query string.</small>' : '<small>Lưu ý: Request gửi bằng X-Device-Secret thật sẽ ghi nhật ký hoặc tạo cảnh báo trực tiếp trên thiết bị tương ứng.</small>'}</div><div class="form-actions">${state.agentSecret ? '' : '<small class="muted">Cần nhập X-Device-Secret ở trên trước khi gửi.</small>'}<button class="btn" type="submit" ${state.agentSecret ? '' : 'disabled'}>Gửi request</button></div></form>
         <div id="agent-response"></div>
       </article>
     </section>`;
@@ -4087,9 +4089,9 @@ async function handleSubmit(event) {
       state.blacklistOffset = 0;
       await renderBlacklist(document.querySelector('#page-content'));
     } else if (form.id === 'blacklist-form') {
-      await api('/admin/blacklist', { method: 'POST', body: data });
+      const created = await api('/admin/blacklist', { method: 'POST', body: data });
       state.blacklistOffset = 0;
-      closeModal(); toast('Đã thêm tên miền', `${data.domain} sẽ được đồng bộ xuống Agent.`); await navigate('blacklist');
+      closeModal(); toast('Đã thêm tên miền', `${created?.domain || data.domain} sẽ được đồng bộ xuống Agent (chu kỳ tối đa 10 phút).`); await navigate('blacklist');
     } else if (form.id === 'audit-filter') {
       state.auditFilter = data;
       state.auditOffset = 0;
@@ -4562,7 +4564,8 @@ async function handleClick(event) {
     if (action === 'view-user') {
       const detail = await api(`/admin/users/${id}`);
       const u = detail.user;
-      return showModal('Chi tiết tài khoản', `${u.name} · ${u.email}`, `<div class="user-detail-summary"><div><small>Vai trò</small><strong>${u.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</strong></div><div><small>Trạng thái</small><strong>${u.is_active ? 'Đang hoạt động' : 'Đã khóa'}</strong></div><div><small>Email</small><strong>${u.is_verified ? 'Đã xác minh' : 'Chưa xác minh'}</strong></div></div><h3>Hồ sơ trẻ (${detail.children.length})</h3><div class="list">${detail.children.map((child) => `<div class="list-item"><div class="list-icon">${escapeHtml(initials(child.name))}</div><div class="list-copy"><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi · ${child.device_count} thiết bị</small></div></div>`).join('') || '<p class="muted">Chưa có hồ sơ trẻ.</p>'}</div><h3>Thiết bị (${detail.devices.length})</h3><div class="list">${detail.devices.map((device) => `<div class="list-item"><div class="list-icon">PC</div><div class="list-copy"><strong>${escapeHtml(device.device_name)}</strong><small>${escapeHtml(device.device_uid)} · ${device.last_seen_at ? relativeTime(device.last_seen_at) : 'Chưa kết nối'}</small></div></div>`).join('') || '<p class="muted">Chưa có thiết bị.</p>'}</div>`);
+      const faceSummary = u.role === 'admin' ? `<div><small>Khuôn mặt</small><strong>${u.face_enrolled ? 'Đã đăng ký' : 'Chưa đăng ký'}</strong></div>` : '';
+      return showModal('Chi tiết tài khoản', `${u.name} · ${u.email}`, `<div class="user-detail-summary"><div><small>Vai trò</small><strong>${u.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}</strong></div><div><small>Trạng thái</small><strong>${u.is_active ? 'Đang hoạt động' : 'Đã khóa'}</strong></div><div><small>Email</small><strong>${u.is_verified ? 'Đã xác minh' : 'Chưa xác minh'}</strong></div>${faceSummary}</div><h3>Hồ sơ trẻ (${detail.children.length})</h3><div class="list">${detail.children.map((child) => `<div class="list-item"><div class="list-icon">${escapeHtml(initials(child.name))}</div><div class="list-copy"><strong>${escapeHtml(child.name)}</strong><small>${child.age ?? '—'} tuổi · ${child.device_count} thiết bị</small></div></div>`).join('') || '<p class="muted">Chưa có hồ sơ trẻ.</p>'}</div><h3>Thiết bị (${detail.devices.length})</h3><div class="list">${detail.devices.map((device) => `<div class="list-item"><div class="list-icon">PC</div><div class="list-copy"><strong>${escapeHtml(device.device_name)}</strong><small>${escapeHtml(device.device_uid)} · ${device.last_seen_at ? relativeTime(device.last_seen_at) : 'Chưa kết nối'}</small></div></div>`).join('') || '<p class="muted">Chưa có thiết bị.</p>'}</div>`);
     }
     if (action === 'view-audit') {
       const entry = state.adminAuditLogs.find((item) => String(item.audit_id) === String(id));
@@ -4602,7 +4605,7 @@ async function handleClick(event) {
       const isSelf = String(u.user_id) === String(state.userId);
       const roleControl = `<input class="input" value="${u.role === 'admin' ? 'Quản trị viên' : 'Phụ huynh'}" disabled><small>Vai trò cố định. Để dùng vai trò khác, hãy tạo tài khoản riêng.</small>`;
       const enrollmentWarning = '';
-      showModal('Chỉnh sửa tài khoản', `${u.name} · ${u.email}`, `<form id="admin-user-form" data-id="${u.user_id}" data-original-role="${u.role}" class="form-grid"><div class="field full"><label>Vai trò</label>${roleControl}</div>${enrollmentWarning}<div class="field full">${switchRow('is_active', 'Tài khoản đang hoạt động', isSelf ? 'Không thể tự khóa tài khoản quản trị.' : 'Tắt để chặn đăng nhập và thu hồi toàn bộ phiên.', u.is_active).replace('name="is_active"', `name="is_active" ${isSelf ? 'disabled' : ''}`)}${switchRow('is_verified', 'Email đã xác minh', 'Cho phép quản trị viên xác nhận email thủ công.', u.is_verified)}</div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu thay đổi</button></div></form>`);
+      showModal('Chỉnh sửa tài khoản', `${u.name} · ${u.email}`, `<form id="admin-user-form" data-id="${u.user_id}" data-original-role="${u.role}" class="form-grid"><div class="field full"><label>Vai trò</label>${roleControl}</div>${enrollmentWarning}<div class="field full">${switchRow('is_active', 'Tài khoản đang hoạt động', isSelf ? 'Không thể tự khóa tài khoản quản trị.' : 'Tắt để chặn đăng nhập và thu hồi toàn bộ phiên web/mobile (Agent trên máy trẻ vẫn duy trì bảo vệ theo cấu hình đã lưu).', u.is_active).replace('name="is_active"', `name="is_active" ${isSelf ? 'disabled' : ''}`)}${switchRow('is_verified', 'Email đã xác minh', 'Cho phép quản trị viên xác nhận email thủ công.', u.is_verified)}</div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Lưu thay đổi</button></div></form>`);
       if (isSelf) {
         const verifiedInput = document.querySelector('#admin-user-form [name="is_verified"]');
         verifiedInput.disabled = true;
@@ -4619,11 +4622,12 @@ async function handleClick(event) {
     if (action === 'delete-user') {
       const targetUser = state.adminUsers.find((item) => String(item.user_id) === String(id));
       const userLabel = targetUser ? `${targetUser.name} (${targetUser.email})` : `tài khoản #${id}`;
-      return confirmModal(`Xóa vĩnh viễn ${targetUser ? targetUser.name : '#' + id}?`, `Toàn bộ hồ sơ trẻ, thiết bị, nhật ký và dữ liệu liên quan của ${userLabel} sẽ bị xóa. Không thể hoàn tác.`, 'confirm-delete-user', id);
+      const dataScope = targetUser ? ` (${Number(targetUser.child_count) || 0} hồ sơ trẻ, ${Number(targetUser.device_count) || 0} thiết bị)` : '';
+      return confirmModal(`Xóa vĩnh viễn ${targetUser ? targetUser.name : '#' + id}?`, `Toàn bộ hồ sơ trẻ, thiết bị, nhật ký và dữ liệu liên quan của ${userLabel}${dataScope} sẽ bị xóa. Không thể hoàn tác.`, 'confirm-delete-user', id);
     }
     if (action === 'confirm-delete-user') { await api(`/admin/users/${id}`, { method: 'DELETE' }); closeModal(); toast('Đã xóa tài khoản và dữ liệu liên quan'); return renderUsers(document.querySelector('#page-content')); }
     if (action === 'delete-account') return showModal('Xóa vĩnh viễn tài khoản?', 'Nhập mật khẩu để xác nhận. Thao tác này không thể hoàn tác.', `<form id="delete-account-form"><div class="field"><label>Mật khẩu</label><input class="input" type="password" name="password" required></div><div class="form-actions"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn btn-danger" type="submit">Xóa vĩnh viễn</button></div></form>`);
-    if (action === 'add-blacklist') return showModal('Thêm tên miền vào danh sách chặn', 'Backend sẽ chuẩn hóa và kiểm tra tên miền trước khi lưu.', `<form id="blacklist-form" class="form-grid"><div class="field full"><label>Tên miền</label><input class="input" name="domain" required placeholder="example.com"></div><div class="field full"><label>Lý do</label><textarea class="textarea" name="reason" maxlength="500"></textarea></div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Thêm tên miền</button></div></form>`);
+    if (action === 'add-blacklist') return showModal('Thêm tên miền vào danh sách chặn', 'Backend sẽ chuẩn hóa tên miền (bỏ http/https, www, đường dẫn) và chặn toàn bộ tên miền đó trên Agent ở chu kỳ đồng bộ tiếp theo (tối đa 10 phút).', `<form id="blacklist-form" class="form-grid"><div class="field full"><label>Tên miền</label><input class="input" name="domain" required placeholder="example.com"></div><div class="field full"><label>Lý do</label><textarea class="textarea" name="reason" maxlength="500"></textarea></div><div class="form-actions field full"><button class="btn btn-secondary" type="button" data-action="close-modal">Hủy</button><button class="btn" type="submit">Thêm tên miền</button></div></form>`);
     if (action === 'delete-blacklist') return confirmModal(`Xóa ${button.dataset.name}?`, 'Tên miền sẽ không còn được gửi xuống Agent ở lần đồng bộ tiếp theo.', 'confirm-delete-blacklist', id);
     if (action === 'confirm-delete-blacklist') { await api(`/admin/blacklist/${id}`, { method: 'DELETE' }); closeModal(); toast('Đã xóa tên miền'); return navigate('blacklist'); }
     if (action === 'set-agent-secret') return showModal('Nhập khóa bí mật của thiết bị', 'Khóa chỉ được giữ trong bộ nhớ của tab và không được lưu lâu dài.', `<form id="agent-secret-form"><div class="field"><label>X-Device-Secret</label><input class="input" name="secret" required autocomplete="off"></div><div class="form-actions"><button class="btn" type="submit">Sử dụng khóa</button></div></form>`);
@@ -4658,11 +4662,20 @@ async function handleClick(event) {
 document.addEventListener('submit', async (event) => {
   if (event.target.id === 'delete-account-form') {
     event.preventDefault();
+    if (event.target.dataset.pending === 'true') return;
+    event.target.dataset.pending = 'true';
+    const submit = event.target.querySelector('[type="submit"]');
+    if (submit) submit.disabled = true;
     const data = Object.fromEntries(new FormData(event.target));
     try {
       await api('/auth/account', { method: 'DELETE', body: data });
       closeModal(); clearSession(); renderAuth('login'); toast('Tài khoản đã được xóa');
-    } catch (error) { toast('Không thể xóa tài khoản', localizeError(error.message), 'error'); }
+    } catch (error) {
+      toast('Không thể xóa tài khoản', localizeError(error.message), 'error');
+    } finally {
+      delete event.target.dataset.pending;
+      if (submit && document.body.contains(submit)) submit.disabled = false;
+    }
     return;
   }
   if (event.target.id === 'agent-secret-form') {

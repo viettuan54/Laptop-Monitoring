@@ -1,0 +1,8 @@
+:root { font-family: "Segoe UI", sans-serif; color: #14345a; background: #f4f7fc; color-scheme: light; }
+body { margin: 0; padding: clamp(24px, 6vw, 80px); }
+main { max-width: 65ch; margin: 12vh auto; border-top: 3px solid #245dc1; padding-top: 28px; }
+h1 { font-size: clamp(1.75rem, 4vw, 2.5rem); line-height: 1.2; margin: 0 0 20px; text-wrap: balance; }
+p { font-size: 1.125rem; line-height: 1.7; margin: 12px 0; overflow-wrap: anywhere; }
+#host { font-weight: 600; color: #a33324; }
+footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid #ccd7e8; color: #465e7c; }
+::selection { background: #dbe8ff; color: #14345a; }

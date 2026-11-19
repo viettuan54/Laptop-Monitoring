@@ -103,6 +103,8 @@ class AiAdvisor(private val api: () -> ParentApi, private val scope: CoroutineSc
             } catch (t: Throwable) {
                 if (rev == revision && !authError(t) && account == session()) state = state.copy(resultError = when {
                     kind == "analysis" && analysisCompleted -> "Phân tích đã hoàn thành nhưng chưa tải được kết quả. Hãy tải lại lịch sử."
+                    kind == "analysis" && t is HttpException && t.code() == 422 -> "Chưa đủ nhật ký hoạt động trong 24 giờ qua để đánh giá rủi ro."
+                    kind == "analysis" && t is HttpException && t.code() == 502 -> "Không nhận được đánh giá AI hợp lệ. Vui lòng thử lại sau."
                     kind == "analysis" -> "Chưa xác nhận được kết quả phân tích. Tải lại lịch sử trước khi chạy lại. ${friendlyError(t)}"
                     kind == "latest" && t is HttpException && t.code() == 404 -> "Chưa có kết quả phân tích cho laptop này."
                     else -> friendlyError(t)

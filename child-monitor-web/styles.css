@@ -7079,6 +7079,10 @@ body.admin-surface .modal-body > h3 {
   color: var(--adm-ink);
 }
 
+body.admin-surface .user-detail-summary {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
 body.admin-surface .user-detail-summary > div {
   background: var(--adm-bg);
   border: 1px solid var(--adm-border);

@@ -1,3 +1,4 @@
+import re
 import os
 import sqlite3
 import uuid
@@ -955,6 +956,30 @@ class OfflineQueue:
         except (sqlite3.Error, ValueError, TypeError, AttributeError):
             logging.exception('Could not sync break reminder events')
 
+    def _apply_usage_ack(self, table, record_ids, response):
+        # 0 = pending, 1 = acknowledged, -1 = explicitly rejected by backend.
+        if response is None or response.status_code not in (201, 400):
+            return False
+        body = response.json()
+        accepted = body.get("accepted_client_record_ids", []) if response.status_code == 201 else []
+        if not isinstance(accepted, list):
+            return False
+        acknowledged = set(record_ids).intersection(accepted)
+        rejected = set()
+        for reason in body.get("skipped_reasons", []):
+            match = re.match(r"^\[(\d+)\] ", reason) if isinstance(reason, str) else None
+            if match and int(match[1]) < len(record_ids):
+                rejected.add(record_ids[int(match[1])])
+        if not acknowledged and not rejected:
+            return False
+        with self.get_connection() as conn:
+            conn.executemany(f"UPDATE {table} SET synced=? WHERE client_record_id=? AND synced=0",
+                             [(1, key) for key in acknowledged] +
+                             [(-1, key) for key in rejected - acknowledged])
+        if rejected:
+            logging.warning("Retained %d rejected records in %s", len(rejected), table)
+        return len(acknowledged | rejected) == len(record_ids)
+
     def _sync_apps(self, api_client):
         """Gửi batch app logs chưa sync."""
         while True:
@@ -986,35 +1011,9 @@ class OfflineQueue:
                     record_ids.append(row["client_record_id"])
 
                 response = api_client.post("/api/logs/app/batch", data={"records": records})
-                if response and response.status_code == 201:
-                    try:
-                        response_data = response.json()
-                        accepted_ids = response_data.get("accepted_client_record_ids", [])
-                    except (ValueError, AttributeError) as e:
-                        logging.error(f"Invalid app batch acknowledgement: {e}")
-                        break
-
-                    # Fail closed nếu backend cũ/không hợp lệ không xác nhận ID cụ thể.
-                    accepted_ids = [record_id for record_id in accepted_ids if record_id in record_ids]
-                    if not accepted_ids:
-                        logging.error("App batch returned no accepted IDs; local queue was left unchanged.")
-                        break
-
-                    with self.get_connection() as conn:
-                        cursor = conn.cursor()
-                        # Chỉ đánh dấu những record backend xác nhận đã lưu/đã tồn tại.
-                        placeholders = ",".join(["?"] * len(accepted_ids))
-                        cursor.execute(f"UPDATE app_logs SET synced = 1 WHERE client_record_id IN ({placeholders})", accepted_ids)
-                        conn.commit()
-                    logging.info(f"Backend accepted {len(accepted_ids)}/{len(records)} app logs.")
-                    if len(accepted_ids) < len(record_ids):
-                        logging.warning("Rejected app logs were retained locally for inspection/retry.")
-                        break
-                else:
-                    logging.error("Failed to sync app logs batch. API error.")
+                if not self._apply_usage_ack("app_logs", record_ids, response):
                     break
 
-                # Delay 200ms để tránh trigger rate limiter của backend
                 time.sleep(0.200)
 
             except Exception as e:
@@ -1051,30 +1050,7 @@ class OfflineQueue:
                     record_ids.append(row["client_record_id"])
 
                 response = api_client.post("/api/logs/web/batch", data={"records": records})
-                if response and response.status_code == 201:
-                    try:
-                        response_data = response.json()
-                        accepted_ids = response_data.get("accepted_client_record_ids", [])
-                    except (ValueError, AttributeError) as e:
-                        logging.error(f"Invalid web batch acknowledgement: {e}")
-                        break
-
-                    accepted_ids = [record_id for record_id in accepted_ids if record_id in record_ids]
-                    if not accepted_ids:
-                        logging.error("Web batch returned no accepted IDs; local queue was left unchanged.")
-                        break
-
-                    with self.get_connection() as conn:
-                        cursor = conn.cursor()
-                        placeholders = ",".join(["?"] * len(accepted_ids))
-                        cursor.execute(f"UPDATE web_logs SET synced = 1 WHERE client_record_id IN ({placeholders})", accepted_ids)
-                        conn.commit()
-                    logging.info(f"Backend accepted {len(accepted_ids)}/{len(records)} web logs.")
-                    if len(accepted_ids) < len(record_ids):
-                        logging.warning("Rejected web logs were retained locally for inspection/retry.")
-                        break
-                else:
-                    logging.error("Failed to sync web logs batch. API error.")
+                if not self._apply_usage_ack("web_logs", record_ids, response):
                     break
 
                 time.sleep(0.200)

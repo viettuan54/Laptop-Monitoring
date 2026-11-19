@@ -5,6 +5,7 @@ import logging
 import threading
 import re
 import time
+import hashlib
 from datetime import datetime
 
 from runtime_paths import agent_root
@@ -40,6 +41,7 @@ class EnforcementCore:
         self.hosts_path = r"C:\Windows\System32\drivers\etc\hosts"
         self.lock = threading.Lock()
         self.cache_lock = threading.RLock()
+        self._applied_web_domains = ()
         self._screenshot_policy = {"enabled": False}
         self._screenshot_policy_deadline = 0
         if hasattr(self.offline_queue, "set_text_policy_provider"):
@@ -183,10 +185,6 @@ class EnforcementCore:
                         if isinstance(config_data, dict):
                             config_data = {**config_data, "enable_text_moderation": False}
                 classifications = self.load_web_classification_cache()
-                previous_domains = self._effective_blocked_domains(
-                    existing,
-                    classifications,
-                )
                 cache_data = existing.copy()
                 if isinstance(config_data, dict):
                     cache_data.update(config_data)
@@ -232,19 +230,13 @@ class EnforcementCore:
                     "request": config_data.get("screenshot_request") if screenshot_enabled else None,
                 }
                 self._screenshot_policy_deadline = time.monotonic() + 180
-                current_domains = self._effective_blocked_domains(
-                    cache_data,
-                    classifications,
-                )
 
             # Outside cache_lock: queue validation reads policy back from cache.
             if hasattr(self.offline_queue, "refresh_text_policy"):
                 self.offline_queue.refresh_text_policy()
 
-            # Heartbeat chứa policy category. Vì vậy chỉ cần policy đổi là hosts
-            # được cập nhật trong chu kỳ 60 giây, không phải chờ config 10 phút.
-            if previous_domains != current_domains:
-                self.update_hosts_file(current_domains)
+            # Reconcile against the last successful write, not just cached intent.
+            self.reconcile_web_policy()
         except Exception as e:
             logging.error(f"Failed to save settings cache: {e}")
 
@@ -290,8 +282,7 @@ class EnforcementCore:
                     classifications,
                 )
 
-            if previous_domains != current_domains:
-                self.update_hosts_file(current_domains)
+            self.reconcile_web_policy()
             blocked = normalized in current_domains
             logging.info(
                 "Website classification policy evaluated: domain=%s category=%s source=%s blocked=%s",
@@ -307,9 +298,27 @@ class EnforcementCore:
 
     def apply_cached_web_policy(self):
         """Áp dụng lại blacklist + policy AI từ cache khi Service khởi động offline."""
-        domains = self._effective_blocked_domains()
-        self.update_hosts_file(domains)
-        return domains
+        return self.reconcile_web_policy(force=True)
+
+    def reconcile_web_policy(self, force=False):
+        # Serialize the snapshot and write: an older heartbeat/classification
+        # worker must never overwrite a newer policy. Retry failed writes even
+        # when the next heartbeat contains the same configuration.
+        with self.cache_lock:
+            domains = self._effective_blocked_domains()
+            if force or tuple(domains) != self._applied_web_domains:
+                if self.update_hosts_file(domains) is not False:
+                    self._applied_web_domains = tuple(domains)
+                else:
+                    self._applied_web_domains = None
+            return domains
+
+    def get_browser_web_policy(self):
+        """Read-only snapshot for the monitored user's native browser bridge."""
+        with self.cache_lock:
+            domains = self._effective_blocked_domains()
+            revision = hashlib.sha256(json.dumps(domains).encode("utf-8")).hexdigest()
+            return {"version": 1, "revision": revision, "blocked_domains": domains}
 
     def get_web_domain_policy(self, domain):
         """Return the canonical domain, cached category, and current block state."""
@@ -339,7 +348,7 @@ class EnforcementCore:
             try:
                 if not os.path.exists(self.hosts_path):
                     logging.error(f"Hosts file not found at {self.hosts_path}")
-                    return
+                    return False
 
                 safe_domains = []
                 seen_domains = set()
@@ -386,8 +395,10 @@ class EnforcementCore:
                 # Làm mới DNS cache của Windows
                 os.system("ipconfig /flushdns > nul")
                 logging.info(f"Updated Windows Hosts file with {len(safe_domains)} valid blacklisted domains.")
+                return True
             except Exception as e:
                 logging.error(f"Failed to update Hosts file (Check admin rights): {e}")
+                return False
 
     @classmethod
     def normalize_domain(cls, domain):

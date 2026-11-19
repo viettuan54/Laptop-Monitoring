@@ -18,10 +18,6 @@ if (apiKey) {
  * @returns {Promise<object>} Kết quả phân tích đã được lưu vào database
  */
 exports.analyzeDeviceActivity = async (deviceId) => {
-  if (!ai) {
-    throw new Error('GEMINI_API_KEY is not configured in .env file');
-  }
-
   // 1. Thu thập dữ liệu logs trong 24 giờ qua bằng adminPool (bypass RLS để chạy tác vụ hệ thống)
   const websiteLogsPromise = adminPool.query(
     `SELECT url, domain, category, visit_time, duration_seconds 
@@ -44,16 +40,10 @@ exports.analyzeDeviceActivity = async (deviceId) => {
   const websiteLogs = webResult.rows;
   const appUsage = appResult.rows;
 
-  // Nếu không có hoạt động nào trong 24h qua, lưu trạng thái mặc định và bỏ qua gọi API để tiết kiệm token
-  if (websiteLogs.length === 0 && appUsage.length === 0) {
-    const defaultSuggestion = 'Thiết bị không hoạt động trong 24 giờ qua. Không phát hiện hành vi bất thường.';
-    const insertResult = await adminPool.query(
-      `INSERT INTO ai_analysis(device_id, behavior_type, risk_level, suggestion) 
-       VALUES($1, 'normal', 'low', $2) 
-       RETURNING *`,
-      [deviceId, defaultSuggestion]
-    );
-    return insertResult.rows[0];
+  if (!websiteLogs.length && !appUsage.length) return null;
+
+  if (!ai) {
+    throw new Error('GEMINI_API_KEY is not configured in .env file');
   }
 
   // 2. Định dạng dữ liệu logs thành cấu trúc JSON sạch để chống Prompt Injection
@@ -114,50 +104,20 @@ Cấu trúc JSON yêu cầu:
     },
   });
 
-  const responseText = aiResponse.text;
-  if (!responseText) {
-    throw new Error('AI response did not contain text');
-  }
   let analysisData;
   try {
-    analysisData = JSON.parse(responseText);
-  } catch (e) {
-    throw new Error('AI response is not valid JSON');
+    analysisData = JSON.parse(aiResponse.text);
+  } catch {
+    analysisData = null;
   }
-
-  // Phòng thủ ở mức Code (Validate Output) & Fallback an toàn
-  const VALID_BEHAVIOR = ['learning', 'entertainment', 'risk', 'normal'];
-  const VALID_RISK = ['low', 'medium', 'high'];
-  const VALID_ALERT_TYPES = ['time_exceeded', 'unsafe_website', 'app_overuse', 'night_usage'];
-
-  if (!analysisData || typeof analysisData !== 'object') {
-    analysisData = {};
-  }
-  if (!VALID_BEHAVIOR.includes(analysisData.behavior_type)) {
-    analysisData.behavior_type = 'normal'; // fallback an toàn thay vì tin tưởng mù quáng
-  }
-  if (!VALID_RISK.includes(analysisData.risk_level)) {
-    analysisData.risk_level = 'low';
-  }
-  if (!analysisData.suggestion || typeof analysisData.suggestion !== 'string') {
-    analysisData.suggestion = 'Đã hoàn thành phân tích hoạt động sử dụng thiết bị của bé.';
-  }
-
-  // Validate alert field
-  if (analysisData.alert) {
-    if (typeof analysisData.alert.needs_alert !== 'boolean') {
-      analysisData.alert.needs_alert = false;
-    }
-    if (analysisData.alert.needs_alert) {
-      if (!VALID_ALERT_TYPES.includes(analysisData.alert.alert_type)) {
-        analysisData.alert.needs_alert = false; // Vô hiệu hóa alert nếu alert_type không nằm trong enum
-      }
-      if (!analysisData.alert.message || typeof analysisData.alert.message !== 'string') {
-        analysisData.alert.message = 'Phát hiện hành vi bất thường trên thiết bị.';
-      }
-    }
-  } else {
-    analysisData.alert = { needs_alert: false };
+  const alert = analysisData?.alert;
+  if (!['learning', 'entertainment', 'risk', 'normal'].includes(analysisData?.behavior_type)
+      || !['low', 'medium', 'high'].includes(analysisData?.risk_level)
+      || typeof analysisData.suggestion !== 'string' || !analysisData.suggestion.trim()
+      || typeof alert?.needs_alert !== 'boolean'
+      || (alert.needs_alert && (!['time_exceeded', 'unsafe_website', 'app_overuse', 'night_usage'].includes(alert.alert_type)
+        || typeof alert.message !== 'string' || !alert.message.trim()))) {
+    throw Object.assign(new Error('Kết quả AI không hợp lệ. Chưa có đánh giá rủi ro.'), { code: 'INVALID_AI_RESULT' });
   }
 
   // 5. Lưu kết quả vào bảng ai_analysis và tạo cảnh báo (nếu có) thông qua một Transaction để đảm bảo tính toàn vẹn
@@ -226,17 +186,9 @@ Cấu trúc JSON yêu cầu:
  * @returns {Promise<string>} Báo cáo tóm tắt
  */
 exports.generateSummaryReport = async (deviceId, period = 'weekly') => {
-  if (!ai) {
-    throw new Error('GEMINI_API_KEY is not configured in .env file');
-  }
-
-  const thresholdDate = new Date();
-  if (period === 'weekly') {
-    thresholdDate.setDate(thresholdDate.getDate() - 7);
-  } else {
-    thresholdDate.setDate(thresholdDate.getDate() - 1); // 24 hours
-  }
-  const periodText = period === 'weekly' ? 'tuần qua' : 'hôm nay';
+  const days = period === 'weekly' ? 7 : 1;
+  const thresholdDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+  const periodText = days === 7 ? '7 ngày qua' : '24 giờ qua';
 
   // 1. Thu thập dữ liệu logs trong khoảng thời gian interval
   const websiteLogsPromise = adminPool.query(
@@ -270,7 +222,13 @@ exports.generateSummaryReport = async (deviceId, period = 'weekly') => {
   const alertsLogs = alertsResult.rows;
 
   if (websiteLogs.length === 0 && appUsage.length === 0) {
-    return `Trong ${periodText}, không ghi nhận hoạt động sử dụng thiết bị nào từ bé.`;
+    const observation = `Trong ${periodText}, chưa ghi nhận nhật ký ứng dụng hoặc website.`;
+    if (!alertsLogs.length) return observation;
+    return `${observation} Thiết bị có ${alertsLogs.length} cảnh báo. Cảnh báo gần nhất: ${alertsLogs[alertsLogs.length - 1].message}`;
+  }
+
+  if (!ai) {
+    throw new Error('GEMINI_API_KEY is not configured in .env file');
   }
 
   // Lọc lấy các web và app dùng nhiều nhất để tránh prompt quá dài

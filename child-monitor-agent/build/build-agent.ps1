@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.27",
+    [string]$Version = "1.0.28",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -126,7 +126,7 @@ foreach ($directory in @(
     New-Item -ItemType Directory -Force -Path $directory | Out-Null
 }
 
-foreach ($spec in @("service.spec", "companion.spec", "provision.spec")) {
+foreach ($spec in @("service.spec", "companion.spec", "provision.spec", "browser-host.spec")) {
     $name = [IO.Path]::GetFileNameWithoutExtension($spec)
     Invoke-Checked $PythonExe "-m" "PyInstaller" "--noconfirm" "--clean" `
         "--distpath" $DistRoot "--workpath" "$WorkRoot\$name" "$BuildRoot\$spec"
@@ -143,6 +143,10 @@ Copy-Item -LiteralPath "$AgentRoot\installer\provision.ps1" `
 Copy-Item -LiteralPath "$AgentRoot\installer\uninstall.ps1" `
     -Destination "$ReleaseRoot\installer\uninstall.ps1" -Force
 Copy-Item -Path "$AgentRoot\models\*" -Destination "$ReleaseRoot\models" -Force
+New-Item -ItemType Directory -Force -Path "$ReleaseRoot\browser-host" | Out-Null
+Copy-Item -LiteralPath "$DistRoot\SafeNestBrowserHost.exe" -Destination "$ReleaseRoot\browser-host\SafeNestBrowserHost.exe" -Force
+Copy-Item -LiteralPath "$AgentRoot\browser-extension" -Destination "$ReleaseRoot\browser-extension" -Recurse -Force
+Copy-Item -LiteralPath "$AgentRoot\docs\agent_1_0_28_web_blocking.md" -Destination "$ReleaseRoot\WEB-BLOCKING.md" -Force
 
 $WorkspaceRoot = Split-Path -Parent $AgentRoot
 if (-not $AppContentModelPath) {
@@ -219,6 +223,7 @@ foreach ($component in @("service/ChildMonitorService", "companion/ChildMonitorC
 }
 Invoke-Checked $PythonExe "$BuildRoot\verify-text-capabilities.py" `
     "--release-root" $ReleaseRoot "--expected-version" $Version
+Invoke-Checked $PythonExe "$BuildRoot\verify-web-policy.py" "--release-root" $ReleaseRoot
 
 if (-not $SkipInstaller) {
     if (-not $InnoSetupCompiler) {
