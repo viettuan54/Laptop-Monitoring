@@ -54,6 +54,14 @@ class EvaluateHybridContentPipelineTest(unittest.TestCase):
         self.assertLess(stats["max_ms"], 1.0)
 
     def test_load_eval_dataset_enforces_cohort_separation(self):
+        required_files = (
+            DEFAULT_ARTIFACTS_DIR / "app_exact_lookup_v1.json",
+            DEFAULT_ARTIFACTS_DIR / "web_exact_lookup_v1.json",
+            DEFAULT_APPS_EVAL_CSV,
+            DEFAULT_WEBSITES_EVAL_CSV,
+        )
+        if not all(path.is_file() for path in required_files):
+            self.skipTest("Independent evaluation artifacts/datasets are not in this checkout")
         app_lookup = json.loads(
             (DEFAULT_ARTIFACTS_DIR / "app_exact_lookup_v1.json").read_text(encoding="utf-8")
         )

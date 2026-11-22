@@ -39,6 +39,7 @@ test('vision migration and settings API preserve legacy consent and independent 
     const migration = fs.readFileSync(path.join(__dirname, '..', 'migration_v30.sql'), 'utf8');
     await client.query(migration);
     await client.query(fs.readFileSync(path.join(__dirname, '..', 'migration_v31.sql'), 'utf8'));
+    await client.query(fs.readFileSync(path.join(__dirname, '..', 'migration_v34.sql'), 'utf8'));
     const request = (body, child_id = 1) => ({ db: client, params: { child_id }, body, user: { user_id: 1, role: 'parent' } });
     const invoke = async (handler, req) => {
       const res = { code: 200, status(code) { this.code = code; return this; }, json(body) { this.body = body; } };

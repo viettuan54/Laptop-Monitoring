@@ -1,0 +1,240 @@
+name: LaptopChildren Multi-Subsystem CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ============================================================================
+  # 1. BACKEND: Unit Tests + Fresh PostgreSQL RLS (34 SQL migrations) + Redis
+  # ============================================================================
+  backend:
+    name: Backend (Unit + Postgres RLS & Redis Integration)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres_ci_password
+          POSTGRES_DB: child_monitor_test
+          TZ: Asia/Ho_Chi_Minh
+          PGTZ: Asia/Ho_Chi_Minh
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d child_monitor_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      TZ: Asia/Ho_Chi_Minh
+      TEST_DB_HOST: 127.0.0.1
+      TEST_DB_PORT: "5432"
+      TEST_DB_NAME: child_monitor_test
+      TEST_DB_MIGRATION_USER: postgres
+      TEST_DB_MIGRATION_PASSWORD: postgres_ci_password
+      TEST_DB_ADMIN_USER: app_admin
+      TEST_DB_ADMIN_PASSWORD: ci_admin_password_strong_123
+      TEST_DB_BACKEND_USER: app_backend
+      TEST_DB_BACKEND_PASSWORD: ci_backend_password_strong_456
+      TEST_JWT_SECRET: ci_test_jwt_secret_at_least_32_random_bytes_long_2026
+      TEST_REDIS_URL: redis://127.0.0.1:6380
+      TEXT_MODERATION_PROVIDER: local
+      LOCAL_MODERATION_URL: http://127.0.0.1:8100
+      LOCAL_MODERATION_API_KEY: local-test-secret-at-least-16
+      LOCAL_MODERATION_TIMEOUT_MS: "15000"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: child-monitor-backend/package-lock.json
+
+      - name: Install Backend dependencies
+        working-directory: child-monitor-backend
+        run: npm ci
+
+      - name: Run Backend Unit & Middleware Tests
+        working-directory: child-monitor-backend
+        run: npm run test:unit
+
+      - name: Bootstrap fresh PostgreSQL schema (Data.sql -> migration_v34.sql)
+        working-directory: child-monitor-backend
+        run: node scripts/setup-fresh-db.js --test
+
+      - name: Run Backend Integration Tests (Real PostgreSQL RLS + Real Redis)
+        working-directory: child-monitor-backend
+        run: npm run test:integration
+
+  # ============================================================================
+  # 2. WEB DASHBOARD: Syntax check + 343+ Automated Tests
+  # ============================================================================
+  web-dashboard:
+    name: Web Dashboard (343+ Automated Tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Syntax check app.js & server.js
+        working-directory: child-monitor-web
+        run: npm run check
+
+      - name: Run Web Dashboard test suite
+        working-directory: child-monitor-web
+        run: npm test
+
+  # ============================================================================
+  # 3. WINDOWS AGENT: Python Unittest Suite + Browser Extension MV3 Tests
+  # ============================================================================
+  windows-agent:
+    name: Windows Agent (Python Service/Companion + MV3 Extension)
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11 (64-bit)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+          cache: pip
+          cache-dependency-path: child-monitor-agent/requirements.txt
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install Windows Agent dependencies
+        working-directory: child-monitor-agent
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run Windows Agent Python Unittests
+        working-directory: child-monitor-agent
+        run: python -m unittest discover -s tests -p "test_*.py" -v
+
+      - name: Run Browser Extension MV3 Policy Tests
+        working-directory: child-monitor-agent
+        run: node --test tests/browser_policy.test.cjs
+
+  # ============================================================================
+  # 4. AI TRAINING & FACE EXTRACTOR: NLP / CV / Hybrid / Face Quality Unittests
+  # ============================================================================
+  ai-and-face:
+    name: AI Service, Training & Face Extractor Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            ai-training/requirements.txt
+            ai-training/text_safety/requirements.txt
+
+      - name: Install Linux system libraries for OpenCV & MediaPipe
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0 libegl1
+
+      - name: Install AI Training & Text Safety dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r ai-training/requirements.txt
+          python -m pip install "fastapi>=0.115,<1" "uvicorn[standard]>=0.30,<1" "python-dotenv>=0.13,<2" "httpx>=0.27,<1" "scikit-learn==1.6.1"
+          python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Run AI Training & Text Safety v13 Unittests
+        working-directory: ai-training
+        run: |
+          python -m unittest discover -s tests -p "test_*.py" -v
+          python -m unittest discover -s tests_finetune -p "test_*.py" -v
+
+      - name: Run Admin Face Embedding Quality Unittests
+        working-directory: child-monitor-backend/AI
+        run: |
+          python -c "
+          import sys, types, unittest, numpy as np
+          # Stub heavy deepface/mtcnn model weight loader for pure unit quality tests
+          mod = types.ModuleType('facenet_runtime')
+          mod.cv2 = __import__('cv2')
+          mod.DeepFace = types.SimpleNamespace(build_model=lambda *_: None)
+          mod.MTCNN = lambda *_: None
+          mod.create_embedding = lambda face, _: np.ones(128, dtype=np.float32) / np.sqrt(128)
+          sys.modules['facenet_runtime'] = mod
+          suite = unittest.defaultTestLoader.discover('.', pattern='test_*.py')
+          result = unittest.TextTestRunner(verbosity=2).run(suite)
+          sys.exit(0 if result.wasSuccessful() else 1)
+          "
+
+  # ============================================================================
+  # 5. ANDROID APP: Kotlin Unit Tests + Android Lint (SDK 35 / JDK 17)
+  # ============================================================================
+  android-app:
+    name: Parent Android App (JUnit + Lint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run Android Debug Unit Tests & Lint
+        working-directory: child-monitor-android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug --no-daemon
