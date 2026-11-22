@@ -59,6 +59,8 @@ jobs:
       TEST_DB_BACKEND_USER: app_backend
       TEST_DB_BACKEND_PASSWORD: ci_backend_password_strong_456
       TEST_JWT_SECRET: ci_test_jwt_secret_at_least_32_random_bytes_long_2026
+      JWT_SECRET: ci_test_jwt_secret_at_least_32_random_bytes_long_2026
+      DB_NAME: child_monitor_prod_unused_in_ci
       TEST_REDIS_URL: redis://127.0.0.1:6380
       TEXT_MODERATION_PROVIDER: local
       LOCAL_MODERATION_URL: http://127.0.0.1:8100

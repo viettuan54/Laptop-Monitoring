@@ -14,6 +14,9 @@ from school_violence import evaluate_query_csv as evaluation
 
 
 class QueryCsvEvaluationTests(unittest.TestCase):
+    def setUp(self):
+        evaluation.ARTIFACT_ROOT.mkdir(parents=True, exist_ok=True)
+
     def test_custom_lock_is_used_and_version_is_checked_before_predictions(self):
         with tempfile.TemporaryDirectory(dir=evaluation.ARTIFACT_ROOT) as directory:
             root = Path(directory)

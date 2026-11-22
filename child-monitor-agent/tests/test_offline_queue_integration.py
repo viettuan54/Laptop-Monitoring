@@ -732,8 +732,9 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
     def test_acl_replaces_permissions_with_only_system_and_admin_on_directory_and_database(self):
         import offline_queue
         import win32security
-        path = os.path.join(self.temp_dir.name, "db", "local.db")
-        with patch.object(offline_queue, "agent_root", return_value=self.temp_dir.name), \
+        real_temp = os.path.realpath(self.temp_dir.name)
+        path = os.path.join(real_temp, "db", "local.db")
+        with patch.object(offline_queue, "agent_root", return_value=real_temp), \
              patch.object(win32security, "SetNamedSecurityInfo") as set_security:
             protected = OfflineQueue(db_path=path)
         self.assertTrue(protected._text_storage_allowed)
