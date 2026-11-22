@@ -3,7 +3,8 @@ const MAX_THUMBNAIL_BYTES = 40 * 1024;
 const RETENTION_DAYS = 7;
 const POLICY_LEASE_SECONDS = 180;
 
-function captureIntervalSeconds() {
+function captureIntervalSeconds(minutes) {
+  if (Number.isInteger(minutes) && minutes >= 1 && minutes <= 60) return minutes * 60;
   const value = Number(process.env.SCREENSHOT_INTERVAL_SECONDS || 300);
   return Number.isInteger(value) && value >= 60 && value <= 3600 ? value : 300;
 }
@@ -70,7 +71,7 @@ async function pendingScreenshotRequest(db, deviceId) {
     `SELECT d.screenshot_request_id AS id,
             d.screenshot_requested_at + INTERVAL '3 minutes' AS expires_at
      FROM devices d JOIN settings s ON s.child_id = d.child_id
-     WHERE d.device_id = $1 AND s.enable_screenshot_review = TRUE
+     WHERE d.device_id = $1
        AND d.screenshot_requested_at >= s.updated_at
        AND d.screenshot_requested_at > NOW() - INTERVAL '3 minutes'
        AND NOT EXISTS (SELECT 1 FROM screenshots i

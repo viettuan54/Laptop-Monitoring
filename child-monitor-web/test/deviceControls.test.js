@@ -7,7 +7,7 @@ const { functionSource } = require('./queryAlertRenderer');
 
 const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const config = {
-  vision_session_minutes: 5, child_id: 7, daily_limit_minutes: 120, allowed_start_time: '07:00', allowed_end_time: '21:00',
+  screenshot_interval_minutes: 5, vision_session_minutes: 5, child_id: 7, daily_limit_minutes: 120, allowed_start_time: '07:00', allowed_end_time: '21:00',
   is_locked: true, enable_webcam_monitoring: false, enable_screenshot_review: true,
   enable_break_reminders: true, break_interval_minutes: 45, break_duration_minutes: 10,
 };
@@ -181,7 +181,7 @@ function saveView(api, remindersEnabled = true, { savedLocked = true, locked = t
       };
       this.fields = {
         daily_limit_minutes: '120', allowed_start_time: '07:00', allowed_end_time: '21:00',
-        break_interval_minutes: '45', break_duration_minutes: '10', vision_session_minutes: '5',
+        break_interval_minutes: '45', break_duration_minutes: '10', vision_session_minutes: '5', screenshot_interval_minutes: '5',
       };
       for (const name of Object.keys(this.fields)) {
         this.elements[name] = new Element();
@@ -581,3 +581,18 @@ test('navigation during post-save refresh does not replace the next child draft 
   assert.equal(view.document.activeElement, next.elements.daily_limit_minutes);
   assert.equal(view.state.selectedChildId, 8);
 });
+
+ test('screenshot cycle validates before save and never requests a manual photo', async () => {
+   for (const value of ['', '0', '61', '1.5']) {
+     const view = saveView(() => Promise.resolve(config));
+     view.form.elements.screenshot_interval_minutes.value = value;
+     await view.submit();
+     assert.equal(view.requests.length, 0);
+   }
+   const view = saveView(() => Promise.resolve(config));
+   view.form.elements.screenshot_interval_minutes.value = '12';
+   await view.submit();
+   assert.equal(view.requests.length, 1);
+   assert.equal(view.requests[0].url, '/settings/7');
+   assert.equal(view.requests[0].body.screenshot_interval_minutes, 12);
+ });

@@ -220,6 +220,7 @@ function localizeError(message = '') {
     'Face verification challenge is invalid or expired': 'Phiên xác thực khuôn mặt đã hết hạn. Vui lòng đăng nhập lại.',
     'Face verification challenge has already been used': 'Phiên xác thực khuôn mặt đã được sử dụng.',
     'Face recognition service is unavailable': 'Dịch vụ nhận diện khuôn mặt chưa sẵn sàng.',
+    'Face recognition runtime is blocked by Windows Application Control': 'Windows trên máy Backend đang chặn thư viện nhận diện khuôn mặt. Cần xử lý chính sách Application Control trên máy Backend; chụp lại ảnh không khắc phục được lỗi này.',
     'Too many face verification attempts, try again later': 'Bạn đã thử xác thực khuôn mặt quá nhiều lần. Vui lòng thử lại sau.',
   };
   return translations[message] || message;
@@ -1823,6 +1824,8 @@ async function renderDeviceControls(content) {
             }).join('')}</ul>
             <p class="muted">Trạng thái cập nhật khi tải lại trang. Phiên đã dừng chỉ chạy lại khi bạn bật thêm chức năng hoặc chọn bắt đầu phiên mới.</p>
             ${switchRow('enable_screenshot_review', 'Bật chụp màn hình định kỳ', 'Chụp màn hình chính theo định kỳ khi Agent đang hoạt động. Xem ảnh tại Hoạt động → Giám sát màn hình; ảnh được lưu 7 ngày.', settings.enable_screenshot_review)}
+            <label class="field"><span>Chu kỳ chụp định kỳ (phút)</span><input class="input" name="screenshot_interval_minutes" type="number" min="1" max="60" step="1" required value="${Number(settings.screenshot_interval_minutes) || 5}" aria-describedby="screenshot-interval-help"></label>
+            <p id="screenshot-interval-help" class="muted">Từ 1–60 phút, áp dụng cho tất cả laptop của hồ sơ trẻ này. Nhấn Lưu điều khiển để áp dụng. Chụp ngay tại trang Hoạt động chỉ lấy một ảnh và không bật lịch định kỳ.</p>
           </section>
           <div class="form-actions control-save-bar"><span><strong>${escapeHtml(controlScope)}</strong><small data-control-save-status role="status" aria-live="polite" aria-atomic="true" tabindex="-1">Chọn một nút lưu để áp dụng thay đổi.</small></span><button class="btn" type="submit">Lưu điều khiển</button><button class="btn btn-secondary" type="submit" data-start-vision-session="true">Lưu và bắt đầu phiên camera mới</button></div>
         </form>
@@ -2678,12 +2681,12 @@ async function renderScreenshotActivity(content, renderVersion, background = fal
   state.screenshotDevices = result.devices || [];
   const monitor = state.screenshotDevices.find((device) => String(device.device_id) === String(filter.device_id))
     || (!filter.device_id && state.screenshotDevices.length === 1 ? state.screenshotDevices[0] : null);
-  const pending = Boolean(monitor?.enabled && monitor.pending_request_id);
+  const pending = Boolean(monitor?.pending_request_id);
   const keepPanelFocus = background && document.activeElement === content.querySelector('#activity-panel-screenshots');
   activitySurface(content).innerHTML = `
     ${pageHead('activity', `<div class="activity-head-actions">${activityTabs()}<button class="btn btn-secondary" data-action="refresh-screenshots">${icons.refresh} Làm mới</button><button class="btn btn-secondary" data-action="clear-screenshots" ${!state.screenshotDevices.length ? 'disabled' : ''}>Xóa tất cả ảnh</button></div>`)}
     ${activityPanelStart()}
-    <section class="screen-monitor-intro"><div><h2>Giám sát màn hình</h2><p>Ảnh chụp màn hình chính từ thiết bị của con, mới nhất ở đầu danh sách.</p></div><p class="screen-monitor-policy">Khi bật: chụp mỗi ${Math.round(Number(result.capture_interval_seconds || 300) / 60)} phút · Lưu ${Number(result.retention_days) || 7} ngày</p></section>
+    <section class="screen-monitor-intro"><div><h2>Giám sát màn hình</h2><p>Ảnh chụp màn hình chính từ thiết bị của con, mới nhất ở đầu danh sách.</p></div><p class="screen-monitor-policy">${monitor ? `Khi bật: chụp mỗi ${Number(monitor.screenshot_interval_minutes) || 5} phút` : 'Chu kỳ theo từng hồ sơ trẻ'} · Lưu ${Number(result.retention_days) || 7} ngày</p></section>
     <form id="activity-filter" class="filters screenshot-filters">
       <div class="field"><label for="screen-device">Thiết bị</label><select id="screen-device" class="select" name="device_id"><option value="">Tất cả thiết bị</option>${state.devices.map((device) => `<option value="${device.device_id}" ${String(filter.device_id) === String(device.device_id) ? 'selected' : ''}>${escapeHtml(device.device_name)}</option>`).join('')}</select></div>
       <div class="field"><label for="screen-start">Từ thời điểm</label><input id="screen-start" class="input" type="datetime-local" name="start" value="${escapeHtml(filter.start || '')}"></div>
@@ -2774,21 +2777,16 @@ function screenshotCaptureTarget() {
 
 function screenshotCaptureControls(monitor) {
   const operation = state.screenshotControlOperation;
-  const pending = Boolean(monitor?.enabled && monitor.pending_request_id);
-  const captureStatus = operation ? (operation.enabled ? 'Đang gửi yêu cầu chụp ảnh…' : 'Đang gửi yêu cầu dừng chụp ảnh…')
-    : !(state.screenshotDevices || []).length ? 'Chưa có thiết bị để chụp ảnh.'
-      : !monitor ? 'Chọn một thiết bị ở bộ lọc để bắt đầu hoặc dừng chụp ảnh.'
-        : !monitor.enabled ? 'Chụp định kỳ đang tắt. Agent dừng khi nhận cấu hình này; ảnh đã lưu vẫn được giữ. Nhấn Bắt đầu chụp ảnh để bật lại.'
-          : pending ? (monitor.online ? 'Đã gửi yêu cầu. Đang chờ Agent chụp và gửi ảnh; trang kiểm tra mỗi 2 giây.'
-            : 'Đã gửi yêu cầu. Thiết bị đang ngoại tuyến; Agent cần kết nối lại trong 3 phút để nhận yêu cầu chụp ngay.')
-            : monitor.request_expired ? 'Chưa nhận được ảnh từ yêu cầu trước. Kiểm tra kết nối Agent hoặc nhấn Dừng chụp ảnh để tắt lịch chụp.'
-              : 'Giám sát đang bật. Agent tự chụp định kỳ; nhấn Dừng chụp ảnh để ngừng chụp và gửi ảnh mới.';
-  const scope = monitor ? `Chụp ngay: ${deviceName(monitor.device_id)}. Bắt đầu cũng bật chụp định kỳ nếu đang tắt. Bật/dừng chụp định kỳ áp dụng cho tất cả thiết bị cùng hồ sơ trẻ khi Agent nhận cấu hình; ảnh đã lưu vẫn được giữ. Gửi yêu cầu thành công sẽ chuyển danh sách sang thiết bị này và bỏ lọc thời gian để xem ảnh mới.`
-    : 'Chọn một thiết bị để gửi yêu cầu chụp ngay và xem phạm vi bật/dừng chụp định kỳ.';
-  return `<div class="form-actions form-actions-start" role="group" aria-label="Bật hoặc dừng chụp ảnh" aria-describedby="screenshot-capture-scope">
-    <button class="btn" data-action="start-screenshot" ${operation || pending || !monitor ? 'disabled' : ''}>${operation?.enabled ? 'Đang gửi yêu cầu…' : pending ? 'Đang chờ ảnh…' : 'Bắt đầu chụp ảnh'}</button>
-    <button class="btn btn-secondary" data-action="stop-screenshot" ${operation || !monitor?.enabled ? 'disabled' : ''}>${operation && !operation.enabled ? 'Đang dừng…' : 'Dừng chụp ảnh'}</button>
-    </div><p id="screenshot-capture-status" role="status">${captureStatus}</p><p id="screenshot-capture-scope">${escapeHtml(scope)}</p>`;
+  const pending = Boolean(monitor?.pending_request_id);
+  const status = operation ? 'Đang gửi yêu cầu…' : !monitor ? 'Chọn một thiết bị để chụp ngay.'
+    : pending ? (monitor.online ? 'Đang chờ Agent gửi ảnh; tự kiểm tra mỗi 2 giây.' : 'Thiết bị ngoại tuyến. Yêu cầu có hiệu lực 3 phút.')
+      : monitor.request_expired ? 'Yêu cầu trước đã hết hạn. Kiểm tra kết nối laptop rồi thử lại.'
+        : `Chụp định kỳ đang ${monitor.enabled ? 'bật' : 'tắt'}. Chụp ngay chỉ lấy một ảnh.`;
+  const scope = monitor ? `Chụp ngay: ${deviceName(monitor.device_id)}. Không thay đổi lịch chụp định kỳ. Sau khi gửi, danh sách sẽ chuyển sang thiết bị này và bỏ lọc thời gian để xem ảnh mới.`
+    : 'Chọn thiết bị ở bộ lọc. Thiết lập chụp định kỳ và chu kỳ tại Điều khiển thiết bị.';
+  return `<div class="form-actions form-actions-start" role="group" aria-label="Chụp ngay" aria-describedby="screenshot-capture-scope">
+    <button class="btn" data-action="start-screenshot" ${operation || pending || !monitor ? 'disabled' : ''}>${operation ? 'Đang gửi yêu cầu…' : pending ? 'Đang chờ ảnh…' : 'Chụp ngay'}</button>
+    </div><p id="screenshot-capture-status" role="status">${status}</p><p id="screenshot-capture-scope">${escapeHtml(scope)}</p>`;
 }
 
 function updateScreenshotCaptureControls() {
@@ -2804,54 +2802,28 @@ function updateScreenshotCaptureControls() {
   }
 }
 
-function updateScreenshotCapturePolicy(childId, enabled) {
-  for (const monitor of state.screenshotDevices || []) {
-    const device = state.devices.find((item) => String(item.device_id) === String(monitor.device_id));
-    if (String(device?.child_id) === String(childId)) {
-      monitor.enabled = enabled;
-      monitor.pending_request_id = null;
-      monitor.request_expired = false;
-    }
-  }
-}
-
 async function startScreenshotCapture(button) {
-  return setScreenshotCapture(button, true);
+  return setScreenshotCapture(button);
 }
 
-async function stopScreenshotCapture(button) {
-  return setScreenshotCapture(button, false);
-}
-
-async function setScreenshotCapture(button, enabled) {
+async function setScreenshotCapture(button) {
   if (state.screenshotControlOperation) return;
   const target = screenshotCaptureTarget();
   if (!target) {
     document.querySelector('#screen-device')?.focus();
-    return toast('Chọn thiết bị', 'Chọn một thiết bị trong bộ lọc để bắt đầu hoặc dừng chụp ảnh.', 'error');
+    return toast('Chọn thiết bị', 'Chọn một thiết bị trong bộ lọc để chụp ngay.', 'error');
   }
   const device = state.devices.find((item) => String(item.device_id) === String(target.device_id));
   if (!device?.child_id) return toast('Chưa xác định được hồ sơ con', 'Hãy tải lại trang rồi thử lại.', 'error');
   const version = ++activityRenderVersion;
-  const operation = { enabled };
+  const operation = {};
   state.screenshotControlOperation = operation;
   stopScreenshotPolling();
   updateScreenshotCaptureControls();
   const ownsOperation = () => state.screenshotControlOperation === operation;
   const onScreenshotPage = () => state.page === 'activity' && state.activityTab === 'screenshots';
-  let resumed = false;
   try {
-    if (!enabled || target.enabled !== true) {
-      await api(`/settings/${encodeURIComponent(device.child_id)}`, { method: 'PUT', body: { enable_screenshot_review: enabled } });
-      if (!ownsOperation()) return;
-      updateScreenshotCapturePolicy(device.child_id, enabled);
-      resumed = enabled;
-    }
     if (!ownsOperation() || !onScreenshotPage()) return;
-    if (!enabled) {
-      toast('Đã tắt chụp định kỳ', 'Agent sẽ dừng khi nhận cấu hình mới. Ảnh đã lưu vẫn được giữ.');
-      return;
-    }
     const result = await api('/logs/screenshots/request', { method: 'POST', body: { device_id: target.device_id } });
     if (!ownsOperation() || !onScreenshotPage()) return;
     const requested = state.screenshotDevices.find((monitor) => String(monitor.device_id) === String(target.device_id));
@@ -2875,8 +2847,8 @@ async function setScreenshotCapture(button, enabled) {
   } catch (error) {
     if (!ownsOperation() || !onScreenshotPage()) return;
     button.disabled = false;
-    button.textContent = enabled ? 'Bắt đầu chụp ảnh' : 'Dừng chụp ảnh';
-    toast(resumed ? 'Đã bật chụp định kỳ, chưa yêu cầu được ảnh ngay' : enabled ? 'Chưa bắt đầu chụp ảnh' : 'Chưa dừng được chụp ảnh', error.message, 'error');
+    button.textContent = 'Chụp ngay';
+    toast('Chưa gửi được yêu cầu chụp ngay', error.message, 'error');
   } finally {
     if (ownsOperation()) {
       state.screenshotControlOperation = null;
@@ -4012,6 +3984,10 @@ async function handleSubmit(event) {
         'enable_break_reminders',
       ];
       controlFields.forEach((name) => { data[name] = form.elements[name].checked; });
+      data.screenshot_interval_minutes = Number(form.elements.screenshot_interval_minutes.value);
+      if (!Number.isInteger(data.screenshot_interval_minutes) || data.screenshot_interval_minutes < 1 || data.screenshot_interval_minutes > 60) {
+        throw new Error('Chu kỳ chụp phải là số nguyên từ 1 đến 60 phút.');
+      }
       data.vision_session_minutes = Number(form.elements.vision_session_minutes.value);
       if (!Number.isInteger(data.vision_session_minutes) || data.vision_session_minutes < 1 || data.vision_session_minutes > 60) {
         throw new Error('Thời lượng phiên camera phải từ 1 đến 60 phút.');
@@ -4540,7 +4516,6 @@ async function handleClick(event) {
     if (action === 'confirm-delete-screenshot') return await deleteScreenshots(button);
     if (action === 'confirm-clear-screenshots') return await deleteScreenshots(button, true);
     if (action === 'start-screenshot') return startScreenshotCapture(button);
-    if (action === 'stop-screenshot') return stopScreenshotCapture(button);
     if (action === 'view-screenshot') return viewScreenshot(id);
     if (action === 'clear-activity-filter') {
       state.activityFilter = {};

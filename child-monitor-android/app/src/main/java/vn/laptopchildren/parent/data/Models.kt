@@ -16,14 +16,45 @@ data class Usage(val today_seconds: Long = 0, val month_total_seconds: Long = 0,
     val daily: List<DayUsage> = emptyList())
 data class ActivityLog(val log_id: Long, val device_id: Long, val app_name: String? = null,
     val product_name: String? = null, val domain: String? = null, val category: String? = null,
-    val start_time: String? = null, val visit_time: String? = null, val duration_seconds: Long? = null)
+    val start_time: String? = null, val visit_time: String? = null, val duration_seconds: Long? = null,
+    val access_status: String? = null)
+data class AppEnforcement(val event_id: Long, val device_id: Long, val app_name: String,
+    val category: String? = null, val occurred_at: String, val requested_at: String? = null,
+    val outcome: String, val reason: String? = null)
+fun enforcementOutcome(value: String) = when (value) {
+    "closed" -> "Đã đóng ứng dụng"
+    "failed" -> "Đóng không thành công"
+    "cancelled" -> "Đã hủy yêu cầu"
+    else -> "Chưa rõ kết quả"
+}
+fun enforcementReason(value: String?) = when (value) {
+    "graceful_exit" -> "Ứng dụng đã thoát"
+    "terminated" -> "Agent đã kết thúc tiến trình"
+    "access_denied" -> "Không đủ quyền đóng ứng dụng"
+    "termination_timeout" -> "Hết thời gian chờ đóng ứng dụng"
+    "policy_changed" -> "Chính sách đã thay đổi"
+    "session_changed" -> "Phiên sử dụng đã thay đổi"
+    "service_stopped" -> "Dịch vụ giám sát đã dừng"
+    else -> "Không có thông tin nguyên nhân"
+}
 data class Alert(val alert_id: Long, val device_id: Long, val alert_type: String,
     val message: String, val is_read: Boolean, val created_at: String)
+
+fun alertTypeLabel(type: String): String = when (type) {
+    "posture_warning" -> "Tư thế ngồi"
+    "eye_distance_warning" -> "Khoảng cách mắt"
+    "text_high_risk" -> "Nội dung · nguy cơ cao"
+    "text_risk", "text_warning" -> "Cảnh báo nội dung"
+    "blocked_website" -> "Website bị chặn"
+    "blocked_app" -> "Ứng dụng bị chặn"
+    else -> if (type.startsWith("text_")) "Phân tích nội dung" else "Cảnh báo khác"
+}
 data class Settings(val child_id: Long = 0, val daily_limit_minutes: Int = 120,
     val allowed_start_time: String = "07:00:00", val allowed_end_time: String = "21:00:00",
     val is_locked: Boolean = false, val enable_app_classification: Boolean = false,
     val enable_web_classification: Boolean = false, val enable_text_moderation: Boolean = false,
     val enable_webcam_monitoring: Boolean = false, val enable_screenshot_review: Boolean = false,
+    val screenshot_interval_minutes: Int = 5,
     val enable_break_reminders: Boolean = false, val break_interval_minutes: Int = 30,
     val break_duration_minutes: Int = 5,
     val enable_posture_monitoring: Boolean? = null,
@@ -53,9 +84,13 @@ data class ChatRequest(val messages: List<ChatMessage>)
 data class ChatReply(val reply: String)
 data class Screenshot(val screenshot_id: Long, val device_id: Long, val captured_at: String,
     val thumbnail_base64: String? = null, val image_base64: String? = null)
-data class CaptureMonitor(val device_id: Long, val enabled: Boolean = false, val online: Boolean = false)
+data class CaptureMonitor(val device_id: Long, val enabled: Boolean = false, val online: Boolean = false,
+    val pending_request_id: String? = null, val request_expired: Boolean = false, val screenshot_interval_minutes: Int = 5)
+data class CaptureRequest(val request_id: String, val online: Boolean, val pending: Boolean)
+data class DeleteScreenshotsRequest(val through_id: String, val confirm_all: Boolean = true)
+data class DeletedScreenshots(val deleted: Int)
 data class ScreenshotPage(val data: List<Screenshot> = emptyList(), val total: Int = 0,
-    val devices: List<CaptureMonitor> = emptyList())
+    val devices: List<CaptureMonitor> = emptyList(), val scope_latest_id: Long? = null)
 
 val VietnamZone: ZoneId = ZoneId.of("Asia/Ho_Chi_Minh")
 fun durationText(seconds: Long): String {

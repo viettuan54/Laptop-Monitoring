@@ -27,7 +27,8 @@ async function main() {
     await client.query(fs.readFileSync(path.join(root, 'migration_v26.sql'), 'utf8'));
     await client.query(fs.readFileSync(path.join(root, 'migration_v27.sql'), 'utf8')
       .replaceAll('TO app_backend;', `TO ${quote(backend)};`));
-    console.log(`Screenshot migrations V25-V27 applied to ${test ? 'test' : 'configured'} database.`);
+    await client.query(fs.readFileSync(path.join(root, 'migration_v34.sql'), 'utf8'));
+    console.log(`Screenshot migrations V25-V27, V34 applied to ${test ? 'test' : 'configured'} database.`);
   } finally { await client.end(); }
 }
 main().catch((error) => { console.error('Screenshot migration failed:', error.message); process.exitCode = 1; });

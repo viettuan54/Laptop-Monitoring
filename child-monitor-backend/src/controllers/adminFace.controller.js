@@ -110,7 +110,12 @@ exports.completeFaceLogin = async (req, res, { issueSession, handleFailedAttempt
     return res.json({ ...session, faceVerified: true, faceEnrolled: true });
   } catch (error) {
     if (client) await client.query('ROLLBACK').catch(() => {});
-    if (error instanceof FaceAuthUnavailableError) return res.status(503).json({ message: 'Face recognition service is unavailable' });
+    if (error instanceof FaceAuthUnavailableError) return res.status(503).json({
+      code: error.code === 'FACE_RUNTIME_BLOCKED' ? 'FACE_RUNTIME_BLOCKED' : 'FACE_AUTH_UNAVAILABLE',
+      message: error.code === 'FACE_RUNTIME_BLOCKED'
+        ? 'Face recognition runtime is blocked by Windows Application Control'
+        : 'Face recognition service is unavailable',
+    });
     console.error('Face login failed:', error.code || error.name);
     return res.status(500).json({ message: 'Internal server error' });
   } finally {

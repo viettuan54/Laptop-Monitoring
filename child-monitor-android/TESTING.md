@@ -1,5 +1,28 @@
 # Xác minh app Android
 
+## Bổ sung Hoạt động — 0.6.0 (20/11/2026)
+
+- Đối chiếu `activityAccessStatus.service.js`, `appEnforcement.controller.js`, `screenshots.controller.js` và Web. Bổ sung trạng thái truy cập, lịch sử kết quả cưỡng chế theo thiết bị/thời gian/phân trang, yêu cầu chụp ngay và xóa ảnh theo thiết bị với mốc `through_id`.
+- Build debug và 32/32 unit tests đạt; Android Lint 0 lỗi / 17 cảnh báo. Test API mới kiểm tra Bearer token, POST chụp trả 202/ngoại tuyến, DELETE có body và query thiết bị, ID lớn không mất chính xác, phân trang và nhãn kết quả cưỡng chế. Log: `.runtime/android-tools/activity-tools-build.log`.
+- Chụp ngay không tự bật chụp màn hình; cần bật trước. App chỉ báo yêu cầu đang chờ, không khẳng định đã chụp khi nhận 202. Tải lại có giới hạn khi màn hình ở foreground; lỗi dừng tự tải, hỗ trợ tải lại thủ công. Xóa hàng loạt giữ dữ liệu hiển thị khi API thất bại; ảnh mới hơn mốc xác nhận được giữ theo hợp đồng backend.
+- Chưa bổ sung các mục tùy chọn: xóa trẻ, đổi tên/xóa thiết bị, kéo để làm mới. Đăng ký thiết bị và xoay secret giữ ở Web.
+- Giới hạn: chưa kiểm chứng đầu cuối với Windows Agent thật gửi ảnh; dữ liệu kiểm thử không thay thế xác minh này. Firebase vẫn chưa cấu hình.
+- Redmi K30: năm luồng hiện có đạt trong `activity-tools-device.log`. Luồng mới đạt riêng `OK (1 test)` trong 14,084 giây tại `.runtime/android-tools/activity-tools-device-final.log`: badge truy cập, kết quả cưỡng chế, đổi trẻ không giữ kết quả cũ, POST chụp và tự nhận ảnh mới, hủy xóa không gửi DELETE, lỗi 500 giữ ảnh rồi thử lại thành công. Sửa dữ liệu tiếng Việt và cách cuộn LazyColumn trong test sau các lượt đầu thất bại; không thay mã production để bỏ qua assertion.
+- Kiểm thử dùng package QA và MockWebServer, không gửi lệnh chụp/xóa tới backend thật. App-op MIUI 10021 của QA đã trả về `default`. Đã xem ảnh xác minh màn hình kết quả chặn, trạng thái chờ ảnh và hộp thoại xóa tại `.runtime/android-tools/activity-tools-captures/`. Chưa kiểm tra lại theme tối/chữ lớn trong đợt này.
+- Đã cài cập nhật tại chỗ app chính trên Redmi K30: versionCode 7/versionName 0.6.0, giữ dữ liệu app. APK debug chính: `.runtime/android-tools/laptopchildren-0.6.0-debug.apk` (tách khỏi output QA).
+
+## Sửa lỗi trước demo — 0.5.1 (19–20/11/2026)
+
+- Sửa state dialog máy chủ độc lập với form xác thực; hủy/mở lại bỏ URL chưa lưu.
+- Công tắc Vision không cho bật khi thời lượng sai, vẫn cho tắt chức năng đang bật. Kiểm tra mật khẩu phía client khớp backend (8–128 ký tự, A–Z, 0–9, tập ký tự đặc biệt); lỗi mật khẩu cũ sai/mật khẩu yếu có thông báo riêng. Đăng ký email trùng vẫn theo phản hồi 201 chung của backend.
+- Tổng quan lấy thêm tháng trước nếu 7 ngày gần đây đi qua ranh giới tháng; tổng tháng không bị cộng lẫn. Cảnh báo có nhãn loại. Notification dùng tag nguyên ID chuỗi, ID thông điệp hoặc UUID dự phòng; PendingIntent có URI riêng theo cùng khóa.
+- `API_BASE_URL` đọc Gradle property, kiểm tra gốc HTTPS, giữ mặc định hiện tại. Release tắt debug, build APK chưa ký; chưa có khóa phát hành. Bản cài thử 0.5.1 dùng debug key.
+- Build `assembleDebug`, `assembleRelease`, `testDebugUnitTest`, `lintDebug` đạt. 30/30 unit tests đạt, gồm 5 test mới cho mật khẩu/lỗi backend, biểu đồ qua năm mới và ID thông báo. Lint: 0 lỗi, 17 cảnh báo (8 dependency, 8 UseKtx, 1 DataExtractionRules). Log: `.runtime/android-tools/mobile-fixes-build.log`.
+- Firebase vẫn chưa có `app/google-services.json`, chưa kiểm thử FCM đầu cuối. App hiển thị trạng thái chưa cấu hình và vẫn đọc cảnh báo qua API.
+- Ngày 20/11: 5/5 instrumentation tests đạt trên Redmi K30 trong 36,93 giây, dùng package QA và MockWebServer. Kiểm tra hủy dialog/khôi phục URL/tách lỗi, điều hướng cảnh báo khi dữ liệu gia đình đang tải, công tắc Vision khi thời lượng sai, validation mật khẩu và luồng đăng nhập/chuyển trẻ/ảnh/cảnh báo/chính sách/đăng xuất. Các nhãn cũ trong test chụp ảnh và đăng xuất được cập nhật theo giao diện hiện tại. Log: `.runtime/android-tools/mobile-fixes-device-final.log`.
+- MIUI chặn QA mở activity từ nền ở lượt đầu; đã cho phép tạm riêng QA và khôi phục app-op 10021 về `default` sau lượt cuối. Không đổi quyền app chính. Ảnh kiểm thử: `.runtime/android-tools/mobile-fixes-final-captures/`; đã xem ảnh dialog, validation camera/mật khẩu, cảnh báo và tổng quan. Chưa kiểm thử lại theme tối/chữ lớn trong lượt này.
+- Đã cập nhật app chính bằng `adb install -r` trên Redmi K30 và mở thành công: package `vn.laptopchildren.parent`, versionCode 6, versionName 0.5.1. APK chính được giữ riêng tại `.runtime/android-tools/laptopchildren-0.5.1-debug.apk` vì build QA dùng chung thư mục output Gradle. Không gỡ app hoặc xóa dữ liệu app chính.
+
 ## Lịch sử nhắc nghỉ — 0.4.0 (10/11/2026)
 
 - Build bản chính và bản QA đạt; 19/19 unit tests đạt (8 AI, 11 API/phiên), Android Lint 0 lỗi và 10 cảnh báo. Logs: `.runtime/android-tools/mobile-current-build.log`, `mobile-qa-ready.log`, `mobile-final-build.log`.
@@ -70,3 +93,11 @@ Test thiết bị dùng MockWebServer loopback và tài khoản `parent@example.
 - Báo cáo máy đọc được: `app/build/test-results/testDebugUnitTest/` và `app/build/reports/lint-results-debug.*`.
 
 Các đường dẫn bắt đầu bằng `.runtime`/`.impeccable` ở trên tính từ root repository; báo cáo trong `app/build` tính từ thư mục Android.
+
+## Chu kỳ chụp và chụp ngay — 20/11/2026
+
+- Bản 0.7.0 (versionCode 8): build debug, unit test và lint thành công.
+- Redmi K30: `activityToolsShowResultsCaptureAndDeleteOnlySelectedDevice` đạt (15,238 giây) với MockWebServer trong package riêng `vn.laptopchildren.parent.qa.cadence`. Kiểm tra chu kỳ 0 không lưu được; lưu 12 phút; chụp ngay trong khi định kỳ tắt không gửi PUT bật lịch; polling ảnh mới và xóa đúng phạm vi. Đã xem ảnh chụp giao diện.
+- Bộ kiểm thử ban đầu trên package `.qa` dừng vì đang có phiên đăng nhập; không xóa phiên đó. `-PisolatedQa=true -PqaInstance=cadence` tạo app thử độc lập. Quyền MIUI 10021 được trả về `default` sau kiểm thử.
+- Backend: 151 unit/middleware đạt; Agent: 19 screenshot tests đạt; Web: 343 tests đạt, sau chỉnh hiển thị chu kỳ chạy lại 74 tests liên quan đều đạt.
+- Chưa chạy tích hợp với DB/Redis và laptop thật: Redis test không hoạt động; tài khoản test không sở hữu schema. Migration V34 và Service/Companion mới chưa triển khai lên hệ thống thật; xem `../child-monitor-backend/SCREENSHOT_CADENCE.md`.

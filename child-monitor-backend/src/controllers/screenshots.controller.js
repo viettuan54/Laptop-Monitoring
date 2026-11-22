@@ -17,7 +17,7 @@ exports.upload = async (req, res) => {
       [req.device.child_id]
     );
     const policy = settings.rows[0];
-    if (policy?.enable_screenshot_review !== true
+    if (!policy
         || new Date(policy.updated_at).toISOString() !== record.policyRevision) {
       await client.query('ROLLBACK');
       return res.status(409).json({ message: 'Screenshot monitoring is disabled or its policy has changed' });
@@ -26,6 +26,13 @@ exports.upload = async (req, res) => {
       `SELECT screenshot_request_id, screenshot_requested_at,
               screenshot_requested_at > NOW() - INTERVAL '3 minutes' AS request_fresh
        FROM devices WHERE device_id = $1 FOR UPDATE`, [req.device.device_id]);
+    const requested = device.rows[0];
+    const isRequested = requested?.screenshot_request_id === record.clientRecordId
+      && requested.request_fresh && new Date(requested.screenshot_requested_at) >= new Date(policy.updated_at);
+    if (policy.enable_screenshot_review !== true && !isRequested) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Screenshot permission has expired or changed' });
+    }
     const existing = await client.query(
       'SELECT screenshot_id, deleted_at FROM screenshots WHERE device_id = $1 AND client_record_id = $2',
       [req.device.device_id, record.clientRecordId]
@@ -39,9 +46,6 @@ exports.upload = async (req, res) => {
       "SELECT 1 FROM screenshots WHERE device_id = $1 AND created_at > NOW() - INTERVAL '55 seconds' LIMIT 1",
       [req.device.device_id]
     );
-    const requested = device.rows[0];
-    const isRequested = requested?.screenshot_request_id === record.clientRecordId
-      && requested.request_fresh && new Date(requested.screenshot_requested_at) >= new Date(policy.updated_at);
     if (recent.rows.length && !isRequested) {
       await client.query('ROLLBACK');
       return res.status(429).json({ message: 'Screenshot capture interval has not elapsed' });
@@ -95,11 +99,12 @@ exports.list = async (req, res) => {
     );
     const monitors = await req.db.query(
       `SELECT d.device_id, COALESCE(s.enable_screenshot_review, FALSE) AS enabled,
+              COALESCE(s.screenshot_interval_minutes, 5) AS screenshot_interval_minutes,
               ${deviceOnlineSql('d')} AS online,
               (d.screenshot_requested_at <= NOW() - INTERVAL '3 minutes'
                 AND NOT EXISTS (SELECT 1 FROM screenshots i WHERE i.device_id = d.device_id
                   AND i.client_record_id = d.screenshot_request_id)) AS request_expired,
-              CASE WHEN s.enable_screenshot_review AND d.screenshot_requested_at >= s.updated_at
+              CASE WHEN d.screenshot_requested_at >= s.updated_at
                 AND d.screenshot_requested_at > NOW() - INTERVAL '3 minutes'
                 AND NOT EXISTS (SELECT 1 FROM screenshots i WHERE i.device_id = d.device_id
                   AND i.client_record_id = d.screenshot_request_id)
@@ -126,9 +131,7 @@ exports.requestCapture = async (req, res) => {
     // Use the same lock order as upload so revoking consent cannot race this request.
     const settings = await req.db.query(
       'SELECT enable_screenshot_review, updated_at FROM settings WHERE child_id = $1 FOR SHARE', [owned.rows[0].child_id]);
-    if (settings.rows[0]?.enable_screenshot_review !== true) {
-      return res.status(409).json({ message: 'Giám sát màn hình chưa bật cho thiết bị này. Hãy bật trong Điều khiển thiết bị.' });
-    }
+    if (!settings.rows[0]) return res.status(409).json({ message: 'Device settings are not available' });
     const device = await req.db.query(
       `SELECT screenshot_request_id, screenshot_requested_at,
         ${deviceOnlineSql()} AS online,

@@ -7,7 +7,15 @@ const {
   evaluateEmbeddings,
   normalizeEmbedding,
   hasDuplicateFace,
+  pythonRuntimeError,
 } = require('../src/services/faceAuth.service');
+
+test('runtime failure identifies Windows policy blocks without exposing diagnostic details', () => {
+  const error = pythonRuntimeError({ stderr: 'private path\nImportError: An Application Control policy has blocked this file.' });
+  assert.equal(error.code, 'FACE_RUNTIME_BLOCKED');
+  assert.equal(error.message, 'Face recognition service is unavailable');
+  assert.equal(pythonRuntimeError({ stderr: 'oneDNN custom operations are on' }).code, 'FACE_AUTH_UNAVAILABLE');
+});
 
 function jpegFrame(marker) {
   const bytes = Buffer.from([0xff, 0xd8, 0xff, marker, 0x00, 0x01, 0xff, 0xd9]);

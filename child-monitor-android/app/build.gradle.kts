@@ -1,21 +1,39 @@
+import java.net.URI
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
 if (file("google-services.json").exists()) { apply(plugin = "com.google.gms.google-services") }
+val apiBaseUrl = providers.gradleProperty("API_BASE_URL").getOrElse("https://api.tuansosad.id.vn/").trim()
+val apiUri = URI(apiBaseUrl)
+val qaInstance = providers.gradleProperty("qaInstance").orNull
+require(qaInstance == null || qaInstance.matches(Regex("[a-z][a-z0-9]*"))) { "Invalid QA instance name" }
+require(apiUri.scheme == "https" && !apiUri.host.isNullOrBlank() && apiUri.rawUserInfo == null &&
+    apiUri.rawQuery == null && apiUri.rawFragment == null && apiUri.path in listOf("", "/")) {
+    "API_BASE_URL must be an HTTPS origin without credentials, path, query or fragment."
+}
 android {
     namespace = "vn.laptopchildren.parent"
     compileSdk = 35
     defaultConfig {
         // Isolate device QA from a parent's installed app, login and stored settings.
-        applicationId = if (providers.gradleProperty("isolatedQa").orNull == "true") "vn.laptopchildren.parent.qa" else "vn.laptopchildren.parent"
+        applicationId = if (providers.gradleProperty("isolatedQa").orNull == "true")
+            "vn.laptopchildren.parent.qa" + (qaInstance?.let { ".$it" } ?: "") else "vn.laptopchildren.parent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 5
-        versionName = "0.5.0"
+        versionCode = 8
+        versionName = "0.7.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "API_BASE_URL", "\"https://api.tuansosad.id.vn/\"")
+        buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.trimEnd('/')}/\"")
+    }
+    buildTypes {
+        getByName("release") {
+            isDebuggable = false
+            isMinifyEnabled = false
+            // Signing is supplied by the release owner; never reuse the debug key.
+        }
     }
     buildFeatures { compose = true; buildConfig = true }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }

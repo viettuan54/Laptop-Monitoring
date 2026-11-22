@@ -21,7 +21,10 @@ class ScreenshotUploader:
         policy = self.policy_provider()
         try:
             captured = datetime.fromisoformat(record["captured_at"].replace("Z", "+00:00"))
-            return (policy.get("enabled") is True
+            request = policy.get("request") or {}
+            requested = (request.get("id") == record.get("client_record_id")
+                         and datetime.fromisoformat(request["expires_at"].replace("Z", "+00:00")).timestamp() > time.time())
+            return ((policy.get("enabled") is True or requested)
                     and policy.get("revision") == record.get("policy_revision")
                     and captured.tzinfo is not None
                     and -30 <= time.time() - captured.timestamp() <= 180)
@@ -55,7 +58,8 @@ class ScreenshotUploader:
                 if not requested and self.last_accepted_at is not None and now - self.last_accepted_at < interval:
                     return False
                 self.pending.put_nowait(payload)
-                self.last_accepted_at = now
+                if not requested:
+                    self.last_accepted_at = now
             return True
         except (ValueError, TypeError, KeyError, queue.Full):
             return False

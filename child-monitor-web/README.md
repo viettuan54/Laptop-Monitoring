@@ -45,15 +45,10 @@ Có thể dùng `npm start` nếu PowerShell cho phép chạy npm script. Chạy
   1.0.23 hiện có; cần khởi động lại backend và Ctrl+F5 Dashboard.
 - Hoạt động: tìm kiếm, lọc theo thiết bị/danh mục/thời gian, phân trang cục bộ,
   mở liên kết website an toàn và xuất CSV UTF-8.
-- Giám sát màn hình: tab bên cạnh Ứng dụng/Website, xem ảnh Agent chụp mỗi
-  5 phút khi được bật, lọc thiết bị/thời gian, phân trang từ API và mở ảnh lớn.
-  Nút **Bắt đầu chụp ảnh** bật lại lịch chụp nếu đang tắt, yêu cầu ảnh mới từ
-  thiết bị đang chọn và hiển thị trạng thái chờ/ngoại tuyến. **Dừng chụp ảnh**
-  tắt lịch chụp cho các thiết bị cùng hồ sơ con, kể cả khi đang chờ ảnh;
-  Agent dừng khi nhận cấu hình mới. Ảnh đã lưu vẫn được giữ. Có thể xóa từng
-  ảnh hoặc xóa toàn bộ theo thiết bị/tài khoản với
-  hộp xác nhận. Khi chờ, kiểm tra ảnh mới mỗi 2 giây qua metadata; chỉ tải lại
-  thumbnail khi dữ liệu thay đổi. Ảnh giữ 7 ngày; xem [hướng dẫn cập nhật Agent 1.0.19](../child-monitor-agent/docs/screenshot_monitoring.md).
+- Giám sát màn hình: **Chụp ngay** tại Hoạt động chỉ yêu cầu một ảnh cho laptop đang chọn, kể cả khi lịch định kỳ tắt. Nút không thay đổi cấu hình định kỳ; yêu cầu có hiệu lực 3 phút.
+  **Bật chụp màn hình định kỳ** và ô **Chu kỳ chụp định kỳ (phút)** nằm tại Điều khiển thiết bị. Chu kỳ 1–60 phút, mặc định 5 phút, dùng chung cho các laptop của hồ sơ trẻ và đồng bộ với app.
+  Khi chờ ảnh, kiểm tra metadata mỗi 2 giây; bình thường mỗi 15 giây. Ảnh lưu 7 ngày; xóa từng ảnh hoặc xóa tất cả vẫn cần xác nhận.
+  Cần backend với migration V34 và Agent cập nhật Service/Companion; xem [hướng dẫn](../child-monitor-backend/SCREENSHOT_CADENCE.md).
 - Admin: thống kê, người dùng, blacklist và audit log.
 - Quản trị tài khoản: tìm/lọc người dùng, xem hồ sơ trẻ và thiết bị,
   khóa/mở tài khoản, xác minh email, đổi vai trò, thu hồi phiên và xóa tài khoản.

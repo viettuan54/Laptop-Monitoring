@@ -203,6 +203,7 @@ import java.time.LocalDate
     var showServer by remember { mutableStateOf(false) }
     var server by remember { mutableStateOf(vm.graph.server) }
     var localError by remember { mutableStateOf<String?>(null) }
+    var serverError by remember { mutableStateOf<String?>(null) }
     val titles = mapOf(
         "login" to "Đăng nhập",
         "register" to "Tạo tài khoản",
@@ -276,7 +277,7 @@ import java.time.LocalDate
                     PasswordField(if (mode == "reset") "Mật khẩu mới" else "Mật khẩu", password, { password = it }, !vm.state.busy, "password")
                 }
                 if (mode == "register" || mode == "reset") {
-                    Text("Ít nhất 8 ký tự, có chữ hoa, số và ký tự đặc biệt.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(PASSWORD_GUIDANCE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 localError?.let {
                     Surface(shape = RoundedCornerShape(8.dp), color = MaterialTheme.colorScheme.errorContainer) {
@@ -290,6 +291,7 @@ import java.time.LocalDate
                             mode in setOf("login", "register", "reset", "resend") && password.isBlank() -> "Nhập mật khẩu của bạn."
                             mode == "register" && name.isBlank() -> "Nhập tên phụ huynh."
                             mode in setOf("verify", "reset") && token.isBlank() -> "Nhập mã trong email."
+                            mode in setOf("register", "reset") -> passwordError(password)
                             else -> null
                         }
                         if (localError == null) {
@@ -332,7 +334,7 @@ import java.time.LocalDate
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                TextButton(onClick = { showServer = true }, modifier = Modifier.testTag("server-settings")) {
+                TextButton(onClick = { server = vm.graph.server; serverError = null; showServer = true }, modifier = Modifier.testTag("server-settings")) {
                     Icon(Icons.Outlined.Settings, null, Modifier.size(16.dp))
                     Spacer(Modifier.width(6.dp))
                     Text("Thiết lập kết nối máy chủ", style = MaterialTheme.typography.labelMedium)
@@ -342,21 +344,21 @@ import java.time.LocalDate
     }
 
     if (showServer) AlertDialog(
-        onDismissRequest = { showServer = false },
+        onDismissRequest = { showServer = false; server = vm.graph.server; serverError = null },
         title = { Text("Máy chủ kết nối", fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Dùng địa chỉ API của hệ thống LaptopChildren.", style = MaterialTheme.typography.bodyMedium)
-                Field("Địa chỉ HTTPS", server, { server = it }, KeyboardType.Uri, tag = "server-url")
-                localError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                Field("Địa chỉ HTTPS", server, { server = it; serverError = null }, KeyboardType.Uri, tag = "server-url")
+                serverError?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
             }
         },
         confirmButton = {
             Button(onClick = {
-                runCatching { vm.graph.setServer(server) }.onSuccess { showServer = false; localError = null }.onFailure { localError = it.message }
+                runCatching { vm.graph.setServer(server) }.onSuccess { showServer = false; serverError = null }.onFailure { serverError = it.message }
             }) { Text("Lưu kết nối") }
         },
-        dismissButton = { TextButton(onClick = { showServer = false }) { Text("Hủy") } }
+        dismissButton = { TextButton(onClick = { showServer = false; server = vm.graph.server; serverError = null }) { Text("Hủy") } }
     )
 }
 
@@ -647,7 +649,7 @@ import java.time.LocalDate
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(18.dp)) {
-                        Text("Những ngày gần đây", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text("7 ngày gần đây", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(Modifier.height(14.dp))
                         val days = usage.daily.filter { it.date <= LocalDate.now(VietnamZone).toString() }.takeLast(7)
                         if (days.isEmpty()) {
@@ -813,6 +815,8 @@ import java.time.LocalDate
                 leadingIcon = { Icon(Icons.Outlined.PhotoCamera, null, Modifier.size(16.dp)) },
                 enabled = !s.busy
             )
+            FilterChip(selected = s.kind == "app-enforcement", onClick = { vm.setActivityFilter(kind = "app-enforcement") },
+                label = { Text("Kết quả chặn") }, enabled = !s.busy, modifier = Modifier.testTag("enforcement-filter"))
             if (s.kind != "screenshots") {
                 VerticalDivider(Modifier.height(28.dp).padding(horizontal = 4.dp))
                 FilterChip(
@@ -828,6 +832,7 @@ import java.time.LocalDate
             }
         }
         if (s.kind == "screenshots") { ScreenshotsScreen(vm); return@Column }
+        if (s.kind == "app-enforcement") { EnforcementScreen(vm); return@Column }
 
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -870,6 +875,16 @@ import java.time.LocalDate
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.SemiBold
                             )
+                            val blocked = row.access_status == "blocked"
+                            Surface(color = if (blocked) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = if (blocked) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                shape = RoundedCornerShape(4.dp)) {
+                                Text(when (row.access_status) {
+                                    "blocked" -> if (s.kind == "app") "Yêu cầu chặn" else "Bị chặn"
+                                    "open" -> "Mở"
+                                    else -> "Chưa rõ trạng thái"
+                                }, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp))
+                            }
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
@@ -967,6 +982,14 @@ import java.time.LocalDate
                                 )
                             }
                             Text(dateText(alert.created_at), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        val alertLabel = alertTypeLabel(alert.alert_type)
+                        Surface(
+                            color = if (alert.alert_type == "text_high_risk") MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = if (alert.alert_type == "text_high_risk") MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSecondaryContainer,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(alertLabel, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp))
                         }
                         Text(
                             alert.message,

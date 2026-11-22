@@ -157,7 +157,7 @@ class ScreenMonitor:
             return
         config = response.get("screenshot_config") if isinstance(response, dict) else None
         with self.lock:
-            if not isinstance(config, dict) or config.get("enabled") is not True:
+            if not isinstance(config, dict):
                 self.policy = {"enabled": False}
                 self.deadline = 0
                 return
@@ -172,9 +172,17 @@ class ScreenMonitor:
             self.policy = dict(config)
             self.deadline = time.monotonic() + lease
 
-    def _allowed(self, revision=None):
+    def _request_allowed(self, request_id):
+        request = self.policy.get("request") or {}
+        try:
+            return (request.get("id") == request_id
+                    and datetime.fromisoformat(request["expires_at"].replace("Z", "+00:00")).timestamp() > time.time())
+        except (KeyError, ValueError, TypeError, AttributeError):
+            return False
+
+    def _allowed(self, revision=None, request_id=None):
         with self.lock:
-            return (not self.stop_event.is_set() and self.policy.get("enabled") is True
+            return (not self.stop_event.is_set() and (self.policy.get("enabled") is True if request_id is None else self._request_allowed(request_id))
                     and time.monotonic() < self.deadline
                     and (revision is None or revision == self.policy.get("revision")))
 
@@ -183,14 +191,14 @@ class ScreenMonitor:
         self.update_config(self.pipe_client.send_ping())
         with self.lock:
             policy = dict(self.policy)
-        if not self._allowed():
+        if not self._allowed() and not self._allowed(request_id=(policy.get("request") or {}).get("id")):
             self.pending_record = None
             return False
         if self.pending_record is not None:
             current_request = policy.get("request") or {}
             same_request = (isinstance(current_request, dict)
                             and current_request.get("id") == self.pending_request_id)
-            if (not self._allowed(self.pending_record["policy_revision"])
+            if (not self._allowed(self.pending_record["policy_revision"], self.pending_request_id)
                     or time.monotonic() >= self.pending_deadline
                     or (self.pending_request_id and not same_request)):
                 self.pending_record = None
@@ -213,13 +221,16 @@ class ScreenMonitor:
         now = time.monotonic()
         if not request_id and self.last_capture is not None and now - self.last_capture < policy["interval_seconds"]:
             return False
-        self.last_capture = now
+        if not request_id:
+            if policy.get("enabled") is not True:
+                return False
+            self.last_capture = now
         if request_id:
             # Repeated heartbeat replies must never recapture the same command.
             self.last_request_expires_at = request_expires_at
         logging.info("Screenshot capture starting (%s).", "requested" if request_id else "periodic")
         self.notice()
-        if not self._allowed(policy["revision"]):
+        if not self._allowed(policy["revision"], request_id):
             logging.info("Screenshot skipped: permission changed or expired during the notice.")
             return False
         captured_at = datetime.now(timezone.utc).isoformat()
@@ -227,7 +238,7 @@ class ScreenMonitor:
         if not image:
             logging.warning("Screenshot skipped: interactive desktop is unavailable.")
             return False
-        if not self._allowed(policy["revision"]):
+        if not self._allowed(policy["revision"], request_id):
             logging.info("Screenshot discarded: permission changed or expired during capture.")
             return False
         record = {**image, "client_record_id": request_id or str(uuid.uuid4()), "captured_at": captured_at,

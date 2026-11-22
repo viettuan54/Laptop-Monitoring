@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.29",
+    [string]$Version = "1.0.30",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -148,6 +148,7 @@ Copy-Item -LiteralPath "$DistRoot\SafeNestBrowserHost.exe" -Destination "$Releas
 Copy-Item -LiteralPath "$AgentRoot\browser-extension" -Destination "$ReleaseRoot\browser-extension" -Recurse -Force
 Copy-Item -LiteralPath "$AgentRoot\docs\agent_1_0_28_web_blocking.md" -Destination "$ReleaseRoot\WEB-BLOCKING.md" -Force
 Copy-Item -LiteralPath "$AgentRoot\docs\agent_1_0_29_admin_blacklist.md" -Destination "$ReleaseRoot\ADMIN-BLACKLIST.md" -Force
+Copy-Item -LiteralPath "$AgentRoot\docs\screenshot_monitoring.md" -Destination "$ReleaseRoot\SCREENSHOT-MONITORING.md" -Force
 
 $WorkspaceRoot = Split-Path -Parent $AgentRoot
 if (-not $AppContentModelPath) {

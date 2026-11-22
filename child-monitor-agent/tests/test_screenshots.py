@@ -33,6 +33,59 @@ def record():
 
 
 class ScreenMonitorTest(unittest.TestCase):
+    def test_manual_capture_flows_through_service_and_uploader_with_periodic_off(self):
+        with tempfile.TemporaryDirectory() as directory:
+            core = EnforcementCore(Mock(), config_dir=directory)
+            core.update_hosts_file = Mock()
+            command = {'id': str(uuid.uuid4()), 'expires_at':
+                       (datetime.now(timezone.utc) + timedelta(minutes=3)).isoformat()}
+            core.save_settings_cache({'enable_screenshot_review': False,
+                                      'updated_at': REVISION, 'screenshot_request': command})
+            api = Mock()
+            api.request.return_value.status_code = 201
+            api.request.return_value.json.return_value = {'accepted_client_record_id': command['id']}
+            uploader = ScreenshotUploader(api, core.get_screenshot_policy)
+            self.pipe.send_ping.side_effect = lambda: {'screenshot_config': core.get_screenshot_policy()}
+            self.pipe.send_screenshot.side_effect = lambda item: {
+                'screenshot_queued': uploader.enqueue(item),
+                'screenshot_config': core.get_screenshot_policy()}
+            self.capture.return_value = {key: value for key, value in record().items()
+                                         if key in ('image_base64', 'thumbnail_base64')}
+            self.assertTrue(self.monitor.step())
+            item = uploader.pending.get_nowait()
+            self.assertEqual(item['client_record_id'], command['id'])
+            self.assertTrue(uploader.upload(item))
+            self.assertTrue(api.request.call_args.kwargs['before_send']())
+            self.assertFalse(core.get_screenshot_policy()['enabled'])
+            self.assertFalse(self.monitor.step())
+            self.capture.assert_called_once()
+            core.save_settings_cache({'enable_screenshot_review': False,
+                                      'updated_at': REVISION, 'screenshot_request': None})
+            self.assertFalse(uploader.allowed(item))
+            self.assertFalse(self.monitor.step())
+
+    def test_one_shot_with_periodic_off_never_starts_a_schedule(self):
+        request = {'id': str(uuid.uuid4()), 'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=3)).isoformat()}
+        config = {**policy(), 'enabled': False, 'request': request}
+        self.pipe.send_ping.return_value = {'screenshot_config': config}
+        self.pipe.send_screenshot.return_value = {'screenshot_queued': True, 'screenshot_config': config}
+        self.assertTrue(self.monitor.step())
+        self.assertFalse(self.monitor.step())
+        with patch('screen_monitor.time.monotonic', return_value=999999999):
+            self.assertFalse(self.monitor.step())
+        self.capture.assert_called_once()
+        self.assertIsNone(self.monitor.last_capture)
+        config['request'] = None
+        self.assertFalse(self.monitor.step())
+
+    def test_custom_periodic_interval_is_honored(self):
+        config = {**policy(), 'interval_seconds': 120}
+        self.pipe.send_ping.return_value = {'screenshot_config': config}
+        self.pipe.send_screenshot.return_value = {'screenshot_queued': True, 'screenshot_config': config}
+        for timestamp, expected in [(1000, True), (1119, False), (1120, True)]:
+            with patch('screen_monitor.time.monotonic', return_value=timestamp):
+                self.assertEqual(self.monitor.step(), expected)
+
     def setUp(self):
         self.pipe = Mock()
         self.pipe.send_ping.return_value = {'screenshot_config': policy()}
@@ -192,6 +245,19 @@ class ScreenMonitorTest(unittest.TestCase):
 
 
 class ScreenshotConsentTest(unittest.TestCase):
+    def test_periodic_off_accepts_only_the_matching_unexpired_command(self):
+        item = record()
+        current = {**policy(), 'enabled': False, 'request': {
+            'id': item['client_record_id'], 'expires_at': (datetime.now(timezone.utc) + timedelta(minutes=3)).isoformat()}}
+        uploader = ScreenshotUploader(Mock(), lambda: current)
+        self.assertFalse(uploader.allowed(record()))
+        self.assertTrue(uploader.enqueue(item))
+        self.assertIsNone(uploader.last_accepted_at)
+        current['request']['expires_at'] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+        self.assertFalse(uploader.allowed(item))
+        current['request'] = None
+        self.assertFalse(uploader.allowed(item))
+
     def test_only_current_requested_image_bypasses_upload_cadence(self):
         current = policy()
         uploader = ScreenshotUploader(Mock(), lambda: current)

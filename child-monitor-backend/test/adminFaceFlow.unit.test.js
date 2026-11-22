@@ -81,6 +81,14 @@ test('duplicate enrollment rolls back, preserves retry and never stores a templa
   assert.ok(f.queries.findIndex(q => /pg_advisory_xact_lock/.test(q.sql)) < f.queries.findIndex(q => /FOR UPDATE/.test(q.sql)));
   assert.ok(f.queries.findIndex(q => /pg_advisory_xact_lock/.test(q.sql)) < f.queries.findIndex(q => /user_id <>/.test(q.sql)));
 });
+test('Windows runtime block returns a specific error, restores the attempt and issues no session', async t => {
+  const f = await flow(t, { modelError: Object.assign(new Unavailable(), { code: 'FACE_RUNTIME_BLOCKED' }) });
+  assert.equal(f.res.statusCode, 503);
+  assert.equal(f.res.body.code, 'FACE_RUNTIME_BLOCKED');
+  assert.equal(f.issued, 0);
+  assert.ok(f.queries.some(q => /attempts=GREATEST/.test(q.sql)));
+});
+
 for (const [name, options, status] of [
   ['wrong face', { enrolled: true, accepted: false }, 401],
   ['mixed enrollment faces', { accepted: false }, 401],

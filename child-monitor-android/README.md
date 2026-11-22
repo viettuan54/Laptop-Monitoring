@@ -63,6 +63,14 @@ Vào **Hoạt động → Ảnh màn hình**, chọn hồ sơ trẻ và laptop. 
 
 Để kiểm thử thiết bị mà không đụng phiên thật, build với `-PisolatedQa=true`; application ID sẽ là `vn.laptopchildren.parent.qa`. Cài APK app và test tương ứng rồi chạy instrumentation trên `vn.laptopchildren.parent.qa.test`. Khi build bản bàn giao phải bỏ cờ này.
 
+## Bổ sung Hoạt động — 0.6.0
+
+- Ứng dụng/website hiển thị `access_status`: Mở, Bị chặn (website), Yêu cầu chặn (ứng dụng). Đây là chính sách hiện tại, không phải bằng chứng Agent đã đóng ứng dụng.
+- Bộ lọc **Kết quả chặn** đọc lịch sử Agent theo laptop và khoảng thời gian, phân biệt đã đóng, thất bại, hủy và nguyên nhân; hỗ trợ tải thêm.
+- **Chụp ngay** yêu cầu một ảnh từ laptop đang chọn, kể cả khi chụp định kỳ đang tắt. API 202 chỉ xác nhận tiếp nhận; app báo đang chờ/ngoại tuyến/hết hạn. Tự tải lại mỗi 5 giây khi có yêu cầu đang chờ và màn hình ảnh đang mở ở foreground, tối đa 40 lần mỗi lượt mở; lỗi mạng dừng tải tự động để phụ huynh thử lại thủ công.
+- **Xóa tất cả ảnh** có xác nhận tên laptop, gửi `device_id`, `confirm_all` và `through_id` dạng chuỗi. Ảnh có ID mới hơn mốc xác nhận được giữ lại. Không xóa ảnh laptop khác.
+- Đăng ký laptop và xoay secret tiếp tục thực hiện trên Web, nơi phụ huynh lấy cấu hình để cài Windows Agent.
+
 ## Build
 
 Mở thư mục này trong Android Studio, dùng JDK 17, Android SDK 35, Build Tools 35.0.0. Gradle wrapper và dependency được cố định phiên bản.
@@ -72,6 +80,16 @@ Mở thư mục này trong Android Studio, dùng JDK 17, Android SDK 35, Build T
 ```
 
 APK: `app/build/outputs/apk/debug/app-debug.apk`. Đây là bản ký bằng debug key dành cho phát triển/cài thử, chưa phải bản phát hành Google Play.
+
+Có thể đặt API khi build bằng Gradle property (hoặc trong `~/.gradle/gradle.properties`):
+
+```powershell
+.\gradlew.bat :app:assembleRelease -PAPI_BASE_URL=https://api.example.com/
+```
+
+URL phải là gốc HTTPS, không kèm `/api`, tài khoản, query hay fragment. Nếu không truyền property, dùng máy chủ mặc định bên dưới. Máy chủ đã lưu trong app vẫn được ưu tiên; đổi cấu hình build không ghi đè lựa chọn của người dùng.
+
+Release tắt debug, hiện chưa bật thu gọn mã. APK `app/build/outputs/apk/release/app-release-unsigned.apk` cần được ký bằng khóa phát hành của chủ dự án trước khi cài/phân phối; không dùng khóa debug thay khóa phát hành.
 
 Trên workspace hiện tại, toolchain được đặt riêng trong `../.runtime/android-tools/`; script sau thiết lập biến môi trường cho tiến trình hiện tại và có thể cài lên thiết bị được chỉ định:
 
@@ -135,3 +153,5 @@ app/src/main/java/vn/laptopchildren/parent/
 ```
 
 Không sửa backend, database hay Windows Agent để phục vụ bản app đầu tiên. Các thay đổi chưa commit sẵn trong website được giữ nguyên.
+
+Bản 0.7.0 bổ sung ô **Chu kỳ chụp định kỳ (phút)** và **Lưu chu kỳ** tại màn hình Ảnh màn hình. Giá trị 1–60 phút, mặc định 5; lưu chu kỳ không tự bật chụp. Nút bật/tắt được ghi rõ là chụp định kỳ. Cần nâng cấp backend V34 và Service/Companion để chụp ngay khi định kỳ tắt.

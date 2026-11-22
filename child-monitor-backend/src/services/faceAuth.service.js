@@ -44,6 +44,14 @@ class FaceAuthUnavailableError extends Error {
   }
 }
 
+function pythonRuntimeError(error) {
+  const failure = new FaceAuthUnavailableError();
+  if (/An Application Control policy has blocked this file/i.test(String(error.stderr || error.message || ''))) {
+    failure.code = 'FACE_RUNTIME_BLOCKED';
+  }
+  return failure;
+}
+
 function hasValidMagic(buffer, mime) {
   if (mime === 'jpeg') {
     return buffer.length >= 3
@@ -200,7 +208,7 @@ async function verifyAdminFace(frames, template = null) {
       });
     } catch (error) {
       await recordPythonFailure(error);
-      throw new FaceAuthUnavailableError();
+      throw pythonRuntimeError(error);
     }
     let extracted;
     try {
@@ -208,6 +216,7 @@ async function verifyAdminFace(frames, template = null) {
     } catch (error) {
       if (error instanceof FaceAuthUnavailableError) {
         await recordPythonFailure({ code: 'MODEL_PROTOCOL_ERROR', stderr: output.stderr, message: error.message });
+        throw pythonRuntimeError({ stderr: output.stderr });
       }
       throw error;
     }
@@ -226,6 +235,7 @@ async function verifyAdminFace(frames, template = null) {
 }
 
 module.exports = {
+  pythonRuntimeError,
   FaceAuthUnavailableError,
   REQUIRED_FRAME_COUNT,
   decodeFaceFrames,

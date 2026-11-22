@@ -244,12 +244,12 @@ import vn.laptopchildren.parent.data.*
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = KeyboardType.Number),
                     singleLine = true, modifier = Modifier.fillMaxWidth()
                 )
-                ToggleRow("Theo dõi tư thế", "Nhắc nhở khi con ngồi sai tư thế.", settings.postureMonitoringEnabled, !s.busy) {
+                ToggleRow("Theo dõi tư thế", "Nhắc nhở khi con ngồi sai tư thế.", settings.postureMonitoringEnabled, !s.busy && (settings.postureMonitoringEnabled || validVisionMinutes != null)) {
                     if (it && validVisionMinutes != null) confirm = "Bắt đầu phiên webcam tối đa $validVisionMinutes phút trên các laptop của con để theo dõi tư thế? Camera dừng khi hết giờ hoặc có cảnh báo đầu tiên. Lựa chọn khoảng cách mắt được giữ nguyên." to mapOf("enable_posture_monitoring" to true, "vision_session_minutes" to validVisionMinutes)
                     else if (!it) vm.saveSettings(mapOf("enable_posture_monitoring" to false))
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                ToggleRow("Cảnh báo khoảng cách mắt", "Nhắc nhở khi mắt con ở quá gần màn hình.", settings.eyeDistanceMonitoringEnabled, !s.busy) {
+                ToggleRow("Cảnh báo khoảng cách mắt", "Nhắc nhở khi mắt con ở quá gần màn hình.", settings.eyeDistanceMonitoringEnabled, !s.busy && (settings.eyeDistanceMonitoringEnabled || validVisionMinutes != null)) {
                     if (it && validVisionMinutes != null) confirm = "Bắt đầu phiên webcam tối đa $validVisionMinutes phút trên các laptop của con để cảnh báo khoảng cách mắt? Camera dừng khi hết giờ hoặc có cảnh báo đầu tiên. Lựa chọn tư thế được giữ nguyên." to mapOf("enable_eye_distance_monitoring" to true, "vision_session_minutes" to validVisionMinutes)
                     else if (!it) vm.saveSettings(mapOf("enable_eye_distance_monitoring" to false))
                 }
@@ -430,10 +430,11 @@ import vn.laptopchildren.parent.data.*
                 if (showPassword) {
                     PasswordField("Mật khẩu hiện tại", old, { old = it }, enabled)
                     PasswordField("Mật khẩu mới", new, { new = it }, enabled)
-                    Text("Ít nhất 8 ký tự, có chữ hoa, số và ký tự đặc biệt.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(PASSWORD_GUIDANCE, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (new.isNotEmpty()) passwordError(new)?.let { PolicyValidationError(it) }
                     Button(
                         onClick = { vm.changePassword(old, new) },
-                        enabled = enabled && old.isNotBlank() && new.length >= 8,
+                        enabled = enabled && old.isNotBlank() && passwordError(new) == null,
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Cập nhật mật khẩu mới", fontWeight = FontWeight.SemiBold) }

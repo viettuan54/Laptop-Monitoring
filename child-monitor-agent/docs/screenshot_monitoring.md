@@ -1,3 +1,28 @@
+# Agent 1.0.30 — chụp ngay khi tắt định kỳ (22/11/2026)
+
+Bộ cài 1.0.29 trở xuống chưa có luồng chụp một ảnh độc lập. Khi Dashboard mới
+gửi yêu cầu trong lúc lịch định kỳ tắt, Agent cũ bỏ qua yêu cầu và giao diện
+chờ đến khi yêu cầu hết hạn. Tải lại Dashboard không cập nhật Agent.
+
+Cài `build/output/ChildMonitorSetup-1.0.30.exe` trên laptop được giám sát để
+cập nhật cả Service và Companion. Sau khi cài, mở khóa Windows, chờ Agent
+kết nối lại, tắt và lưu lịch định kỳ rồi nhấn **Chụp ngay** ở Hoạt động.
+Kết quả mong đợi: nhận đúng một ảnh mới và công tắc định kỳ vẫn tắt.
+Yêu cầu cũ đã hết hạn cần được gửi lại.
+
+Kiểm chứng mã nguồn: 20 kiểm thử Agent về chụp ảnh và 6 kiểm thử backend đạt,
+bao gồm đường đi từ cấu hình Service qua Companion đến hàng đợi/upload khi
+định kỳ tắt. Kiểm thử dùng ảnh fixture và API giả; chưa xác nhận ảnh thật từ
+laptop BimPoP. Bộ kiểm tra bundle yêu cầu có đường cấp quyền chụp ngay độc lập.
+Kiểm tra tĩnh bundle 1.0.30 đạt. Windows Application Control trên máy build
+chặn chạy EXE tự kiểm tra; bộ cài chưa được kiểm chứng bằng cài đặt thực tế.
+
+# Chụp ngay và chu kỳ tùy chỉnh (20/11/2026)
+
+Mã nguồn mới tách **Chụp ngay** (một ảnh, yêu cầu có hiệu lực 3 phút) khỏi **Bật chụp màn hình định kỳ**. Chụp ngay hoạt động khi định kỳ tắt và không khởi động lịch. Chu kỳ do phụ huynh chọn từ 1–60 phút trên Dashboard/app, mặc định 5 phút, dùng chung theo hồ sơ trẻ. Cần cập nhật cả Service và Companion; bộ cài cũ chưa hỗ trợ luồng độc lập này.
+
+Xem [triển khai V34](../../child-monitor-backend/SCREENSHOT_CADENCE.md). Các mục bên dưới là lịch sử của các phiên bản trước, không mô tả giao diện hiện tại.
+
 # Giám sát màn hình — Agent 1.0.19
 
 Khi phụ huynh bật **Xem xét ảnh chụp màn hình** cho hồ sơ trẻ, Companion chụp

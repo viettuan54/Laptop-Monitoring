@@ -16,7 +16,7 @@ Hệ thống giám sát laptop trẻ em (Backend API).
 
 ## Cấu hình production
 
-Chạy các migration còn thiếu theo thứ tự số đến `migration_v33.sql` bằng role sở hữu schema. Bản v33 cấp quyền nhật ký kiểm toán cho `app_admin`. Các lệnh dưới đây minh họa một phần trình tự nâng cấp:
+Chạy các migration còn thiếu theo thứ tự số đến `migration_v34.sql` bằng role sở hữu schema. Bản v33 cấp quyền nhật ký kiểm toán cho `app_admin`. Các lệnh dưới đây minh họa một phần trình tự nâng cấp:
 
 ```powershell
 psql -U postgres -d child_monitor_db -v ON_ERROR_STOP=1 -f migration_v12.sql
@@ -165,3 +165,5 @@ Admin login now uses per-user FaceNet cosine verification, with first-login enro
 See [AI/FACE_VERIFICATION.md](AI/FACE_VERIFICATION.md) for the enrollment/reset protocol, threshold calibration results, environment setup, migration and required live-webcam acceptance checks. The offline threshold is provisional; neither webcam validation nor anti-spoofing is claimed.
 
 Use the existing Python environment (`.venv-face`) with `AI/requirements.txt`, and configure `FACE_PYTHON_BIN`, `FACE_AUTH_TIMEOUT_MS` and `FACE_AUTH_MAX_CONCURRENT`. The old SVM threshold and optional face-auth bypass are no longer used for Admin login.
+
+V34 bổ sung chu kỳ chụp định kỳ theo hồ sơ trẻ; xem [cách cập nhật backend/Agent](SCREENSHOT_CADENCE.md).

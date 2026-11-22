@@ -1023,10 +1023,8 @@ test('parent capture request reaches only its Agent, bypasses periodic delay onc
   const toggle = enabled => request('/api/settings/' + childOne, { method: 'PUT', headers: parentHeaders(0),
     body: JSON.stringify({ enable_screenshot_review: enabled }) });
   await toggle(false);
-  assert.equal((await capture()).status, 409);
   assert.equal((await capture(parentHeaders(1))).status, 404);
   assert.equal((await capture(agent)).status, 401);
-  await toggle(true);
   const initial = await request('/api/agent/config', { headers: agent });
   const revision = initial.body.config.updated_at;
   const upload = id => request('/api/logs/screenshots', { method: 'POST', headers: agent,
@@ -1034,7 +1032,7 @@ test('parent capture request reaches only its Agent, bypasses periodic delay onc
       image_base64: fs.readFileSync(path.join(__dirname, 'fixtures/screenshot.jpg')).toString('base64'),
       thumbnail_base64: fs.readFileSync(path.join(__dirname, 'fixtures/screenshot-thumb.jpg')).toString('base64') }),
   });
-  assert.equal((await upload(crypto.randomUUID())).status, 201);
+  assert.equal((await upload(crypto.randomUUID())).status, 409);
   const starts = await Promise.all([capture(), capture()]);
   for (const start of starts) assert.equal(start.status, 202);
   const id = starts[0].body.request_id;
@@ -1044,7 +1042,7 @@ test('parent capture request reaches only its Agent, bypasses periodic delay onc
   assert.ok(Date.parse(heartbeat.body.config.screenshot_request.expires_at) > Date.now());
   const listed = await request('/api/logs/screenshots', { headers: parentHeaders(0) });
   const monitor = listed.body.devices.find(row => row.device_id === deviceOne);
-  assert.equal(monitor.enabled, true);
+  assert.equal(monitor.enabled, false);
   assert.equal(monitor.pending_request_id, id);
   assert.equal((await upload(id)).status, 201);
   assert.equal((await upload(id)).status, 200);

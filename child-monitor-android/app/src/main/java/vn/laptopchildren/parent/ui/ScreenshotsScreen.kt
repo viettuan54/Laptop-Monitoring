@@ -36,6 +36,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.delay
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import vn.laptopchildren.parent.ParentViewModel
 import vn.laptopchildren.parent.data.*
 
@@ -61,8 +65,19 @@ import vn.laptopchildren.parent.data.*
 
 @Composable internal fun ScreenshotsScreen(vm: ParentViewModel) {
     val s = vm.state
+    var interval by remember(s.childId, s.captureMonitor?.screenshot_interval_minutes) {
+        mutableStateOf((s.captureMonitor?.screenshot_interval_minutes ?: 5).toString())
+    }
+    val validInterval = interval.toIntOrNull()?.takeIf { it in 1..60 }
     var deleting by remember(s.childId, s.deviceId) { mutableStateOf<Screenshot?>(null) }
     var captureChange by remember(s.childId, s.deviceId) { mutableStateOf<Boolean?>(null) }
+    var deleteAllThrough by remember(s.childId, s.deviceId) { mutableStateOf<Long?>(null) }
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(owner, s.deviceId, s.captureMonitor?.pending_request_id) {
+        if (s.captureMonitor?.pending_request_id != null) owner.lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            repeat(40) { delay(5_000); vm.pollScreenshots() }
+        }
+    }
     val child = s.children.find { it.child_id == s.childId }?.name.orEmpty()
     val device = s.devices.find { it.device_id == s.deviceId }?.device_name.orEmpty()
 
@@ -108,7 +123,7 @@ import vn.laptopchildren.parent.data.*
                             Text(
                                 when (monitor?.enabled) {
                                     true -> "Trạng thái: Đang chụp định kỳ"
-                                    false -> "Trạng thái: Đã tắt chụp"
+                                    false -> "Trạng thái: Đã tắt chụp định kỳ"
                                     null -> "Chưa tải được trạng thái chụp"
                                 },
                                 style = MaterialTheme.typography.labelMedium,
@@ -119,7 +134,26 @@ import vn.laptopchildren.parent.data.*
                     }
 
                     Text("Thiết lập áp dụng cho tất cả laptop của $child. Laptop cần kết nối để nhận thay đổi.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(when {
+                        monitor?.pending_request_id != null -> if (monitor.online) "Đang chờ laptop gửi ảnh. Tự tải lại mỗi 5 giây; yêu cầu có hiệu lực 3 phút."
+                            else "Laptop ngoại tuyến. Đang chờ kết nối; yêu cầu có hiệu lực 3 phút."
+                        monitor?.request_expired == true -> "Yêu cầu đã hết hạn. Kiểm tra laptop rồi chụp lại."
+                        else -> "Chụp ngay chỉ lấy một ảnh của laptop đang chọn, kể cả khi chụp định kỳ đang tắt."
+                    }, style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = vm::requestScreenshot,
+                        enabled = !s.busy && !s.loading && monitor != null && monitor.pending_request_id == null,
+                        modifier = Modifier.fillMaxWidth().testTag("capture-now")) { Text("Chụp ngay") }
 
+                    OutlinedTextField(value = interval, onValueChange = { interval = it },
+                        label = { Text("Chu kỳ chụp định kỳ (phút)") },
+                        supportingText = { Text(if (validInterval == null) "Nhập số nguyên từ 1 đến 60." else "Áp dụng cho tất cả laptop của $child.") },
+                        isError = validInterval == null, singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                        enabled = !s.busy && monitor != null,
+                        modifier = Modifier.fillMaxWidth().testTag("screenshot-interval"))
+                    OutlinedButton(onClick = { validInterval?.let(vm::saveScreenshotInterval) },
+                        enabled = !s.busy && !s.loading && monitor != null && validInterval != null && validInterval != monitor.screenshot_interval_minutes,
+                        modifier = Modifier.fillMaxWidth().testTag("save-screenshot-interval")) { Text("Lưu chu kỳ") }
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (monitor != null) {
                             Button(
@@ -128,7 +162,7 @@ import vn.laptopchildren.parent.data.*
                                 shape = RoundedCornerShape(10.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text(if (monitor.enabled) "Tắt chụp" else "Bật chụp", fontWeight = FontWeight.SemiBold)
+                                Text(if (monitor.enabled) "Tắt chụp định kỳ" else "Bật chụp định kỳ", fontWeight = FontWeight.SemiBold)
                             }
                         }
                         OutlinedButton(
@@ -221,12 +255,26 @@ import vn.laptopchildren.parent.data.*
                 modifier = Modifier.fillMaxWidth()
             ) { Text("Tải thêm ảnh", fontWeight = FontWeight.SemiBold) }
         }
+        if (s.screenshotThroughId != null) item {
+            OutlinedButton(onClick = { deleteAllThrough = s.screenshotThroughId }, enabled = !s.busy && !s.loading,
+                modifier = Modifier.fillMaxWidth().testTag("delete-all-screenshots")) { Text("Xóa tất cả ảnh", color = MaterialTheme.colorScheme.error) }
+        }
+    }
+
+    deleteAllThrough?.let { throughId ->
+        AlertDialog(onDismissRequest = { deleteAllThrough = null }, title = { Text("Xóa tất cả ảnh của laptop này?") },
+            text = { Text("Xóa ảnh đã có của $device, kể cả ảnh chưa tải trong danh sách. Ảnh mới đến sau mốc đã chọn được giữ lại. Không thể khôi phục ảnh đã xóa.") },
+            confirmButton = { TextButton(onClick = {
+                deleteAllThrough = null
+                s.deviceId?.let { vm.deleteAllScreenshots(it, throughId) }
+            }, enabled = !s.busy, modifier = Modifier.testTag("confirm-delete-all-screenshots")) { Text("Xóa tất cả ảnh") } },
+            dismissButton = { TextButton(onClick = { deleteAllThrough = null }) { Text("Hủy") } })
     }
 
     captureChange?.let { enabled ->
         AlertDialog(
             onDismissRequest = { captureChange = null },
-            title = { Text(if (enabled) "Bật chụp màn hình?" else "Tắt chụp màn hình?", fontWeight = FontWeight.Bold) },
+            title = { Text(if (enabled) "Bật chụp định kỳ?" else "Tắt chụp định kỳ?", fontWeight = FontWeight.Bold) },
             text = {
                 Text("Áp dụng cho tất cả laptop của $child. " + if (enabled)
                     "Ảnh có thể chứa thông tin riêng tư. Hãy trao đổi với con trước khi bật. Laptop sẽ chụp sau khi nhận cấu hình."

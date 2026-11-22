@@ -32,9 +32,12 @@ class ParentFlowTest {
     private var originalServer = ""
     private var read = false
     private var captureEnabled = false
+    private var screenshotInterval = 5
     private var screenshotDeleted = false
     private var imageRequests = 0
     private var deleteRequests = 0
+    private var manualCaptureRequested = false
+    private var clearRequests = 0
     @Volatile private var breakEnabled = false
     @Volatile private var childrenGate: CountDownLatch? = null
     private val fixtureImage by lazy {
@@ -65,6 +68,16 @@ class ParentFlowTest {
                     val daily = (6 downTo 0).joinToString(",") { i -> """{"date":"${LocalDate.now(VietnamZone).minusDays(i.toLong())}","duration_seconds":${listOf(3600, 2400, 4500, 1800, 3000, 4200, 5400)[6-i]}}""" }
                     val child = request.requestUrl!!.queryParameter("child_id") ?: "1"
                     val response = when {
+                        path == "/api/logs/screenshots/request" -> {
+                            manualCaptureRequested = true
+                            """{"request_id":"fixture-capture","online":true,"pending":true}"""
+                        }
+                        path == "/api/logs/screenshots" && request.method == "DELETE" -> {
+                            if (++clearRequests == 1) return MockResponse().setResponseCode(500).setBody("{}")
+                            screenshotDeleted = true
+                            """{"deleted":1}"""
+                        }
+                        path == "/api/logs/app-enforcement" -> if (request.requestUrl!!.queryParameter("device_id") != "1") """{"data":[],"count":0}""" else """{"data":[{"event_id":"9007199254740993","device_id":$child,"app_name":"Game.exe · kiểm thử","category":"gaming","occurred_at":"$now","outcome":"failed","reason":"access_denied"}],"count":1}"""
                         path == "/api/logs/screenshots/101" && request.method == "DELETE" -> {
                             if (++deleteRequests == 1) return MockResponse().setResponseCode(500).setBody("""{"message":"Fixture delete failure"}""")
                             screenshotDeleted = true; """{"deleted":1}"""
@@ -75,8 +88,13 @@ class ParentFlowTest {
                         }
                         path == "/api/logs/screenshots" -> {
                             val selected = request.requestUrl!!.queryParameter("device_id")
-                            val rows = if (!screenshotDeleted && selected == "1") """{"screenshot_id":101,"device_id":1,"captured_at":"$now","thumbnail_base64":"$fixtureImage"}""" else ""
-                            """{"data":[$rows],"total":${if (rows.isEmpty()) 0 else 1},"devices":[{"device_id":1,"enabled":$captureEnabled,"online":true},{"device_id":2,"enabled":false,"online":true}]}"""
+                            val imageId = if (manualCaptureRequested) 102 else 101
+                            val rows = if (!screenshotDeleted && selected == "1") """{"screenshot_id":$imageId,"device_id":1,"captured_at":"$now","thumbnail_base64":"$fixtureImage"}""" else ""
+                            """{"data":[$rows],"total":${if (rows.isEmpty()) 0 else 1},"devices":[{"device_id":1,"enabled":$captureEnabled,"screenshot_interval_minutes":$screenshotInterval,"online":true},{"device_id":2,"enabled":false,"online":true}]}"""
+                        }
+                        path == "/api/settings/1" && request.method == "PUT" && request.body.clone().readUtf8().contains("screenshot_interval_minutes") -> {
+                            screenshotInterval = org.json.JSONObject(request.body.clone().readUtf8()).getInt("screenshot_interval_minutes")
+                            """{"child_id":1,"enable_screenshot_review":$captureEnabled,"screenshot_interval_minutes":$screenshotInterval}"""
                         }
                         path == "/api/settings/1" && request.method == "PUT" && request.body.clone().readUtf8().contains("enable_screenshot_review") -> {
                             captureEnabled = request.body.clone().readUtf8().contains(":true")
@@ -87,8 +105,8 @@ class ParentFlowTest {
                         path == "/api/children" -> """[{"child_id":1,"name":"Minh An · kiểm thử","age":10},{"child_id":2,"name":"Bảo Anh · kiểm thử","age":8}]"""
                         path == "/api/devices" -> """{"data":[{"device_id":$child,"child_id":$child,"device_name":"Laptop kiểm thử $child","online":true,"last_seen_at":"$now"}],"count":1}"""
                         path == "/api/logs/usage-summary" -> """{"today_seconds":${if (child == "1") 5400 else 1200},"month_total_seconds":25900,"daily":[$daily]}"""
-                        path == "/api/logs/app" -> """{"data":[{"log_id":1,"device_id":1,"app_name":"Study.exe","product_name":"Ứng dụng học tập · kiểm thử","category":"learning","start_time":"$now","duration_seconds":600}],"count":1}"""
-                        path == "/api/logs/web" -> """{"data":[{"log_id":2,"device_id":1,"domain":"example.test","category":"education","visit_time":"$now","duration_seconds":120}],"count":1}"""
+                        path == "/api/logs/app" -> """{"data":[{"log_id":1,"device_id":1,"app_name":"Study.exe","product_name":"Ứng dụng học tập · kiểm thử","category":"learning","access_status":"blocked","start_time":"$now","duration_seconds":600}],"count":1}"""
+                        path == "/api/logs/web" -> """{"data":[{"log_id":2,"device_id":1,"domain":"example.test","access_status":"open","category":"education","visit_time":"$now","duration_seconds":120}],"count":1}"""
                         path.endsWith("/read") -> { read = true; """{"alert_id":11,"device_id":1,"alert_type":"text_risk","message":"Cảnh báo minh họa cho kiểm thử","is_read":true,"created_at":"$now"}""" }
                         path == "/api/alerts" -> """{"data":[{"alert_id":11,"device_id":1,"alert_type":"text_risk","message":"Cảnh báo minh họa cho kiểm thử","is_read":$read,"created_at":"$now"}],"count":1}"""
                         path.endsWith("/policies") -> """{"policies":[{"resource_type":"app","category":"learning","action":"allow"},{"resource_type":"web","category":"unsafe","action":"block"}]}"""
@@ -135,6 +153,62 @@ class ParentFlowTest {
         }
         compose.waitForIdle()
     }
+    @Test fun activityToolsShowResultsCaptureAndDeleteOnlySelectedDevice() {
+        captureEnabled = false
+        compose.onNodeWithTag("email").performTextInput("parent@example.test")
+        compose.onNodeWithTag("password").performTextInput("Fixture123!")
+        compose.onNodeWithTag("sign-in").performScrollTo().performClick()
+        waitFor("1 giờ 30 phút")
+        compose.onNodeWithTag("tab-1").performClick()
+        waitFor("Yêu cầu chặn")
+        compose.onNodeWithText("Website").performClick()
+        waitFor("Mở")
+        compose.onNodeWithTag("enforcement-filter").performScrollTo().performClick()
+        waitFor("Đóng không thành công")
+        compose.onNodeWithText("Không đủ quyền đóng ứng dụng").assertIsDisplayed()
+        capture("phone-enforcement")
+        compose.onNodeWithText("Minh An · kiểm thử").performClick()
+        compose.onNodeWithText("Bảo Anh · kiểm thử").performClick()
+        waitFor("Chưa có kết quả trong khoảng thời gian đã chọn.")
+        compose.onNodeWithText("Game.exe · kiểm thử").assertDoesNotExist()
+        compose.onNodeWithText("Bảo Anh · kiểm thử").performClick()
+        compose.onNodeWithText("Minh An · kiểm thử").performClick()
+        waitFor("Đóng không thành công")
+        compose.onNodeWithText("Ảnh màn hình", substring = false).performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodesWithTag("capture-now").fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("screenshot-interval").performScrollTo().performTextReplacement("0")
+        hideKeyboard()
+        compose.onNodeWithTag("save-screenshot-interval").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("screenshot-interval").performScrollTo().performTextReplacement("12")
+        hideKeyboard()
+        compose.onNodeWithTag("save-screenshot-interval").performScrollTo().performClick()
+        waitFor("Đã lưu chu kỳ 12 phút. Chờ laptop đồng bộ.")
+        Assert.assertEquals(12, screenshotInterval)
+        Assert.assertFalse(captureEnabled)
+        compose.onNodeWithTag("capture-now").performScrollTo().performClick()
+        waitFor("Đang chờ laptop gửi ảnh. Tự tải lại mỗi 5 giây; yêu cầu có hiệu lực 3 phút.")
+        capture("phone-capture-pending")
+        Assert.assertFalse(captureEnabled)
+        Assert.assertFalse(writes.any { it.contains("enable_screenshot_review") })
+        compose.waitUntil(15_000) { ViewModelProvider(compose.activity)[ParentViewModel::class.java].state.screenshots.any { it.screenshot_id == 102L } }
+        Assert.assertTrue(writes.any { it.startsWith("POST /api/logs/screenshots/request") && it.contains("\"device_id\":1") })
+        compose.onNodeWithTag("screenshots-list").performScrollToNode(hasTestTag("delete-all-screenshots"))
+        compose.onNodeWithTag("delete-all-screenshots").performClick()
+        compose.onNodeWithText("Hủy").performClick()
+        Assert.assertEquals(0, clearRequests)
+        compose.onNodeWithTag("screenshots-list").performScrollToNode(hasTestTag("delete-all-screenshots"))
+        compose.onNodeWithTag("delete-all-screenshots").performClick()
+        capture("phone-clear-confirm")
+        compose.onNodeWithTag("confirm-delete-all-screenshots").performClick()
+        waitFor("Máy chủ đang gặp sự cố. Hãy thử lại sau.")
+        compose.onNodeWithTag("screenshot-102").assertExists()
+        compose.onNodeWithTag("screenshots-list").performScrollToNode(hasTestTag("delete-all-screenshots"))
+        compose.onNodeWithTag("delete-all-screenshots").performClick()
+        compose.onNodeWithTag("confirm-delete-all-screenshots").performClick()
+        waitFor("Chưa có ảnh cho laptop này. Khi bật chụp, ảnh sẽ xuất hiện sau khi Agent gửi lên.")
+        Assert.assertTrue(writes.any { it.startsWith("DELETE /api/logs/screenshots ") && it.contains("\"through_id\":\"102\"") && it.contains("\"confirm_all\":true") })
+    }
+
     @Test fun policyValidationAppearsBesideTheEditedSection() {
         breakEnabled = true
         compose.onNodeWithTag("email").performTextInput("parent@example.test")
@@ -160,10 +234,55 @@ class ParentFlowTest {
         compose.onNodeWithText("Thời lượng phiên camera (phút)").performScrollTo().performTextReplacement("61")
         hideKeyboard()
         compose.onNodeWithText("Thời lượng phiên camera phải từ 1 đến 60 phút.").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Theo dõi tư thế").assertIsNotEnabled()
+        compose.onNodeWithContentDescription("Cảnh báo khoảng cách mắt").assertIsNotEnabled()
         capture("policy-camera-validation")
         Assert.assertFalse(writes.any { it.startsWith("PUT /api/settings/") })
         compose.onNodeWithText("Thời lượng phiên camera (phút)").performTextReplacement("10")
         compose.onNodeWithText("Thời lượng phiên camera phải từ 1 đến 60 phút.").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Theo dõi tư thế").assertIsEnabled()
+        compose.onNodeWithContentDescription("Cảnh báo khoảng cách mắt").assertIsEnabled()
+    }
+
+    @Test fun cancellingServerDialogDiscardsDraftAndKeepsErrorsSeparate() {
+        val initialServer = graph.server
+        compose.onNodeWithTag("server-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("server-url").performTextReplacement("invalid-url")
+        compose.onNodeWithText("Lưu kết nối").performClick()
+        compose.onNodeWithText("Địa chỉ máy chủ không hợp lệ.").assertIsDisplayed()
+        capture("server-invalid")
+        compose.onNodeWithText("Hủy").performClick()
+        compose.onNodeWithText("Địa chỉ máy chủ không hợp lệ.").assertDoesNotExist()
+        compose.onNodeWithTag("sign-in").performScrollTo().performClick()
+        compose.onNodeWithText("Nhập địa chỉ email hợp lệ.").assertIsDisplayed()
+        compose.onNodeWithTag("server-settings").performScrollTo().performClick()
+        compose.onNodeWithTag("server-url").assertTextContains(initialServer)
+        // The login error remains in the form, never inside the dialog.
+        compose.onNode(hasText("Nhập địa chỉ email hợp lệ.") and hasAnyAncestor(isDialog())).assertDoesNotExist()
+        compose.onNodeWithText("Hủy").performClick()
+        Assert.assertEquals(initialServer, graph.server)
+    }
+
+    @Test fun weakPasswordShowsRuleBeforeSendingChange() {
+        compose.onNodeWithTag("email").performTextInput("parent@example.test")
+        compose.onNodeWithTag("password").performTextInput("Fixture123!")
+        compose.onNodeWithTag("sign-in").performScrollTo().performClick()
+        waitFor("1 giờ 30 phút")
+        compose.onNodeWithTag("tab-3").performClick()
+        waitFor("Chính sách sử dụng")
+        compose.onNodeWithTag("family-list").performScrollToNode(hasText("Tài khoản phụ huynh"))
+        compose.onNodeWithText("Tài khoản phụ huynh").performClick()
+        compose.onNodeWithText("Đổi mật khẩu tài khoản").performScrollTo().performClick()
+        compose.onNodeWithText("Mật khẩu hiện tại").performScrollTo().performTextInput("Fixture123!")
+        compose.onNodeWithText("Mật khẩu mới", substring = false).performScrollTo().performTextInput("abcdefgh")
+        hideKeyboard()
+        compose.onNodeWithText("Cập nhật mật khẩu mới").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithText("Mật khẩu cần ít nhất một chữ hoa (A–Z).").assertIsDisplayed()
+        capture("password-validation")
+        compose.onNodeWithText("Mật khẩu mới", substring = false).performScrollTo().performTextReplacement("Abcdef12!")
+        hideKeyboard()
+        compose.onNodeWithText("Cập nhật mật khẩu mới").performScrollTo().assertIsEnabled()
+        Assert.assertFalse(writes.any { it.contains("change-password") })
     }
 
     @Test fun notificationWaitsForFamilyLoadingAndThenOpensAlerts() {
@@ -238,16 +357,16 @@ class ParentFlowTest {
         capture("phone-screenshot-zoom")
         compose.onNodeWithText("Đặt lại").performClick()
         compose.onNodeWithText("Đóng ảnh").performClick()
-        compose.onNodeWithText("Bật chụp").performScrollTo().performClick()
+        compose.onNodeWithText("Bật chụp định kỳ").performScrollTo().performClick()
         compose.onNodeWithText("Hủy").performClick()
         Assert.assertFalse(captureEnabled)
-        compose.onNodeWithText("Bật chụp").performClick()
+        compose.onNodeWithText("Bật chụp định kỳ").performClick()
         compose.onNodeWithText("Xác nhận").performClick()
-        waitFor("Chụp định kỳ: đã bật")
+        waitFor("Trạng thái: Đang chụp định kỳ")
         Assert.assertTrue(captureEnabled)
-        compose.onNodeWithText("Tắt chụp").performClick()
+        compose.onNodeWithText("Tắt chụp định kỳ").performClick()
         compose.onNodeWithText("Xác nhận").performClick()
-        waitFor("Chụp định kỳ: đã tắt")
+        waitFor("Trạng thái: Đã tắt chụp định kỳ")
         Assert.assertFalse(captureEnabled)
         compose.onNodeWithText("Minh An · kiểm thử").performClick()
         compose.onNodeWithText("Bảo Anh · kiểm thử").performClick()
@@ -274,6 +393,7 @@ class ParentFlowTest {
         compose.waitUntil(15_000) { compose.onAllNodesWithText("Đã xóa ảnh khỏi máy chủ.").fetchSemanticsNodes().isEmpty() }
         compose.onNodeWithTag("tab-2").performClick()
         waitFor("Cảnh báo minh họa cho kiểm thử")
+        compose.onNodeWithText("Cảnh báo nội dung").assertIsDisplayed()
         capture("phone-alerts")
         compose.onNodeWithText("Đánh dấu đã đọc").performClick()
         waitFor("Đã đọc")
@@ -295,7 +415,7 @@ class ParentFlowTest {
         compose.onNodeWithText("Tài khoản phụ huynh").performScrollTo().performClick()
         waitFor("Thông báo trên điện thoại")
         capture("phone-account")
-        compose.onNodeWithText("Đăng xuất").performScrollTo().performClick()
+        compose.onNodeWithText("Đăng xuất tài khoản").performScrollTo().performClick()
         waitFor("Đăng nhập")
         Assert.assertNull(graph.session.tokens)
     }

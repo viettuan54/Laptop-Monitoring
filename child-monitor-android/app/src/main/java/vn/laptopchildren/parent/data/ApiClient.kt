@@ -69,6 +69,13 @@ fun friendlyError(error: Throwable): String {
     if (error is HttpException) {
         val message = runCatching { Gson().fromJson(error.response()?.errorBody()?.string(), Message::class.java)?.message }.getOrNull().orEmpty()
         return when {
+            message.startsWith("Giám sát màn hình chưa bật") -> "Chụp màn hình đang tắt. Hãy bật chụp định kỳ rồi thử lại."
+            message.startsWith("Vui lòng chờ 10 giây") -> "Vui lòng chờ 10 giây trước khi yêu cầu ảnh tiếp theo."
+            message.contains("password must be at least", true) -> PASSWORD_GUIDANCE
+            message.equals("Invalid old password", true) -> "Mật khẩu hiện tại chưa đúng. Hãy nhập lại."
+            message.contains("Invalid or expired verification token", true) -> "Mã xác minh không hợp lệ hoặc đã hết hạn. Hãy yêu cầu gửi lại email xác minh."
+            message.contains("Invalid or expired reset token", true) -> "Mã đặt lại mật khẩu không hợp lệ hoặc đã hết hạn. Hãy yêu cầu mã mới."
+            message.contains("Email is already verified", true) -> "Email đã được xác minh. Bạn có thể đăng nhập."
             message.contains("Email not verified", true) -> "Email chưa được xác minh. Kiểm tra hộp thư hoặc gửi lại email xác minh."
             message.contains("Invalid email or password", true) -> "Email hoặc mật khẩu chưa đúng."
             message.contains("already registered to another", true) -> "Điện thoại còn liên kết thông báo với tài khoản khác. Hãy đăng xuất tài khoản cũ trước."
@@ -76,6 +83,7 @@ fun friendlyError(error: Throwable): String {
             error.code() == 403 -> "Tài khoản không có quyền thực hiện thao tác này."
             error.code() == 404 -> "Dữ liệu không còn tồn tại. Hãy tải lại."
             error.code() == 429 -> "Bạn thao tác quá nhanh. Vui lòng chờ một lúc rồi thử lại."
+            error.code() == 409 -> "Thông tin bị trùng hoặc xung đột với dữ liệu hiện có. Hãy tải lại và kiểm tra."
             error.code() >= 500 -> "Máy chủ đang gặp sự cố. Hãy thử lại sau."
             else -> "Không thể thực hiện yêu cầu. Kiểm tra thông tin và thử lại."
         }

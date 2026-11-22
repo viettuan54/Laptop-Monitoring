@@ -10,6 +10,7 @@ const DEFAULT_AGENT_CONFIG = Object.freeze({
   enable_posture_monitoring: false,
   enable_eye_distance_monitoring: false,
   enable_screenshot_review: false,
+  screenshot_interval_minutes: 5,
   enable_keylog: false, // Retired; old Agents must never receive an enabled value.
   enable_break_reminders: false,
   break_interval_minutes: 30,
@@ -37,7 +38,7 @@ async function getAgentPolicyConfig(db, childId) {
   const [settingsResult, policyResult] = await Promise.all([
     db.query(
       `SELECT daily_limit_minutes, allowed_start_time, allowed_end_time,
-              is_locked, enable_webcam_monitoring, enable_posture_monitoring, enable_eye_distance_monitoring, enable_screenshot_review, enable_break_reminders,
+              is_locked, enable_webcam_monitoring, enable_posture_monitoring, enable_eye_distance_monitoring, enable_screenshot_review, screenshot_interval_minutes, enable_break_reminders,
               break_interval_minutes, break_duration_minutes, vision_session_minutes, vision_session_id,
               enable_app_classification, enable_web_classification, enable_text_moderation, updated_at
        FROM settings
@@ -64,7 +65,7 @@ async function getAgentPolicyConfig(db, childId) {
     // Keep the parent's stored value at 0; hours and manual lock still apply.
     daily_limit_minutes: unlimited ? 1440 : settings.daily_limit_minutes,
     daily_limit_unlimited: unlimited,
-    screenshot_interval_seconds: captureIntervalSeconds(),
+    screenshot_interval_seconds: captureIntervalSeconds(settings.screenshot_interval_minutes),
     blocked_app_categories: blocked.app,
     blocked_web_categories: blocked.web,
   };

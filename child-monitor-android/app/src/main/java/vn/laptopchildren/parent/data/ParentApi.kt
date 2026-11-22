@@ -3,6 +3,12 @@ package vn.laptopchildren.parent.data
 import retrofit2.http.*
 
 interface ParentApi {
+    @GET("api/logs/app-enforcement") suspend fun appEnforcement(@Query("device_id") device: Long,
+        @Query("start") start: String, @Query("end") end: String,
+        @Query("limit") limit: Int = 30, @Query("offset") offset: Int = 0): Page<AppEnforcement>
+    @POST("api/logs/screenshots/request") suspend fun requestScreenshot(@Body body: Map<String, Long>): CaptureRequest
+    @HTTP(method = "DELETE", path = "api/logs/screenshots", hasBody = true)
+    suspend fun deleteScreenshots(@Query("device_id") device: Long, @Body body: DeleteScreenshotsRequest): DeletedScreenshots
     @GET("api/logs/break-reminders") suspend fun breakReminders(@Query("child_id") child: Long): Page<BreakReminderEvent>
     @GET("api/ai-analysis") suspend fun analyses(@Query("device_id") device: Long,
         @Query("limit") limit: Int = 20, @Query("offset") offset: Int = 0): Page<AiAnalysis>
