@@ -857,9 +857,9 @@ function enhanceFormAccessibility(root) {
     }
     table.querySelectorAll('th:not([scope])').forEach((heading) => heading.setAttribute('scope', 'col'));
   });
-  root.querySelectorAll('.tabs').forEach((tabList) => {
+  root.querySelectorAll('.tabs, .auth-tabs').forEach((tabList) => {
     tabList.setAttribute('role', 'tablist');
-    tabList.querySelectorAll('.tab').forEach((tab) => {
+    tabList.querySelectorAll('.tab, .auth-tab').forEach((tab) => {
       const selected = tab.classList.contains('active');
       tab.setAttribute('role', 'tab');
       tab.setAttribute('aria-selected', String(selected));
@@ -948,32 +948,32 @@ function renderAuth(mode = 'login') {
       </form>`,
     register: `
       <form id="register-form" class="form-grid">
-        <div class="field full"><label>Họ và tên</label><input class="input" name="name" maxlength="100" required placeholder="Nguyễn Minh Anh"></div>
-        <div class="field full"><label>Email</label><input class="input" type="email" name="email" required placeholder="parent@example.com"></div>
-        <div class="field full"><label>Mật khẩu</label><input class="input" type="password" name="password" required minlength="8" placeholder="Tối thiểu 8 ký tự"><small>Cần chữ hoa, số và ký tự đặc biệt.</small></div>
+        <div class="field full"><label>Họ và tên</label><input class="input" name="name" maxlength="100" required autocomplete="name" placeholder="Nguyễn Minh Anh"></div>
+        <div class="field full"><label>Email</label><input class="input" type="email" name="email" required autocomplete="email" placeholder="parent@example.com"></div>
+        <div class="field full"><label>Mật khẩu</label><input class="input" type="password" name="password" required minlength="8" autocomplete="new-password" placeholder="Tối thiểu 8 ký tự"><small>Cần chữ hoa, số và ký tự đặc biệt.</small></div>
         <div class="form-actions field full"><button class="btn" type="submit">Tạo tài khoản</button></div>
       </form>`,
     forgot: `
       <form id="forgot-form" class="form-grid">
-        <div class="field full"><label>Email đã đăng ký</label><input class="input" type="email" name="email" required placeholder="parent@example.com"></div>
+        <div class="field full"><label>Email đã đăng ký</label><input class="input" type="email" name="email" required autocomplete="email" placeholder="parent@example.com"></div>
         <div class="form-actions between field full"><button class="link-button" type="button" data-auth-mode="login">Quay lại</button><button class="btn" type="submit">Gửi liên kết đặt lại</button></div>
       </form>`,
     verify: `
       <form id="verify-form" class="form-grid">
         <div class="field full"><label>Mã xác minh</label><textarea class="textarea" name="token" required placeholder="Dán mã nhận được từ email">${escapeHtml(params.get('token') || '')}</textarea></div>
-        <div class="form-actions between field full"><button class="link-button" type="button" data-auth-mode="resend">Gửi lại email</button><button class="btn" type="submit">Xác minh email</button></div>
+        <div class="form-actions between field full"><div class="auth-secondary-links"><button class="link-button" type="button" data-auth-mode="login">Quay lại</button><button class="link-button" type="button" data-auth-mode="resend">Gửi lại email</button></div><button class="btn" type="submit">Xác minh email</button></div>
       </form>`,
     resend: `
       <form id="resend-form" class="form-grid">
-        <div class="field full"><label>Email</label><input class="input" type="email" name="email" required></div>
-        <div class="field full"><label>Mật khẩu</label><input class="input" type="password" name="password" required></div>
+        <div class="field full"><label>Email</label><input class="input" type="email" name="email" required autocomplete="email" placeholder="parent@example.com"></div>
+        <div class="field full"><label>Mật khẩu</label><input class="input" type="password" name="password" required autocomplete="current-password" placeholder="••••••••••"></div>
         <div class="form-actions between field full"><button class="link-button" type="button" data-auth-mode="login">Quay lại</button><button class="btn" type="submit">Gửi lại xác minh</button></div>
       </form>`,
     reset: `
       <form id="reset-form" class="form-grid">
         <input type="hidden" name="token" value="${escapeHtml(params.get('token') || '')}">
-        <div class="field full"><label>Mật khẩu mới</label><input class="input" type="password" name="newPassword" required minlength="8"><small>Cần chữ hoa, số và ký tự đặc biệt.</small></div>
-        <div class="form-actions field full"><button class="btn" type="submit">Đặt lại mật khẩu</button></div>
+        <div class="field full"><label>Mật khẩu mới</label><input class="input" type="password" name="newPassword" required minlength="8" autocomplete="new-password" placeholder="Tối thiểu 8 ký tự"><small>Cần chữ hoa, số và ký tự đặc biệt.</small></div>
+        <div class="form-actions between field full"><button class="link-button" type="button" data-auth-mode="login">Quay lại</button><button class="btn" type="submit">Đặt lại mật khẩu</button></div>
       </form>`,
   };
   const heading = {
@@ -995,7 +995,7 @@ function renderAuth(mode = 'login') {
           <h1>Thấu hiểu để <em>đồng hành.</em></h1>
           <p>SafeNest chuyển hoạt động trên thiết bị thành những tín hiệu rõ ràng, giúp phụ huynh trò chuyện đúng lúc và thiết lập giới hạn có chủ đích.</p>
         </div>
-        <div class="trust-row"><span><i class="trust-dot"></i>RLS theo từng gia đình</span><span><i class="trust-dot"></i>Secret thiết bị một lần</span><span><i class="trust-dot"></i>AI có kiểm soát</span></div>
+        <div class="trust-row"><span><i class="trust-dot" aria-hidden="true"></i>Dữ liệu riêng biệt từng gia đình</span><span><i class="trust-dot" aria-hidden="true"></i>Mã kết nối thiết bị dùng một lần</span><span><i class="trust-dot" aria-hidden="true"></i>Cảnh báo &amp; phân loại minh bạch</span></div>
       </section>
       <section class="auth-panel" id="page-content" tabindex="-1">
         <div class="auth-card">
@@ -1003,11 +1003,11 @@ function renderAuth(mode = 'login') {
           <h2>${heading[0]}</h2><p>${heading[1]}</p>
           ${
             ['login', 'register'].includes(mode)
-              ? `<div class="auth-tabs"><button class="auth-tab ${
+              ? `<div class="auth-tabs" aria-label="Chế độ tài khoản"><button class="auth-tab ${
                   mode === 'login' ? 'active' : ''
-                }" data-auth-mode="login">Đăng nhập</button><button class="auth-tab ${
+                }" type="button" data-auth-mode="login">Đăng nhập</button><button class="auth-tab ${
                   mode === 'register' ? 'active' : ''
-                }" data-auth-mode="register">Đăng ký</button></div>`
+                }" type="button" data-auth-mode="register">Đăng ký</button></div>`
               : ''
           }
           ${forms[mode]}
@@ -1032,10 +1032,11 @@ async function renderAdminFaceVerification(challengeResult) {
           <h1>Mật khẩu đúng.<br><em>${faceTitle}.</em></h1>
           <p>${enrolling ? 'Tài khoản này chưa có dữ liệu khuôn mặt. Hãy tự chụp 5 ảnh để đăng ký cho tài khoản của bạn. Các lần đăng nhập sau sẽ đối chiếu với dữ liệu này.' : 'Hệ thống đối chiếu khuôn mặt với dữ liệu đã đăng ký riêng cho tài khoản đang đăng nhập.'}</p>
         </div>
-        <div class="trust-row"><span><i class="trust-dot"></i>Challenge dùng một lần</span><span><i class="trust-dot"></i>Không lưu ảnh khuôn mặt</span><span><i class="trust-dot"></i>JWT chưa được cấp</span></div>
+        <div class="trust-row"><span><i class="trust-dot" aria-hidden="true"></i>Mã xác thực dùng một lần</span><span><i class="trust-dot" aria-hidden="true"></i>Không lưu ảnh khuôn mặt</span><span><i class="trust-dot" aria-hidden="true"></i>Chỉ cấp phiên khi khớp khuôn mặt</span></div>
       </section>
       <section class="auth-panel" id="page-content" tabindex="-1">
         <div class="auth-card face-auth-card">
+          <p class="eyebrow">Xác thực quản trị viên</p>
           <h2>${faceTitle}</h2>
           <p>Giữ khuôn mặt thẳng, đủ sáng và không có người khác trong ảnh. Hệ thống sẽ chụp ${state.faceRequiredFrames} khung hình liên tiếp.</p>
           <div class="face-camera">
@@ -4684,8 +4685,8 @@ document.addEventListener('change', (event) => {
   }
 });
 document.addEventListener('keydown', (event) => {
-  if (event.target.matches('.tab') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-    const tabs = [...event.target.closest('.tabs').querySelectorAll('.tab')];
+  if (event.target.matches('.tab, .auth-tab') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+    const tabs = [...event.target.closest('.tabs, .auth-tabs').querySelectorAll('.tab, .auth-tab')];
     const current = tabs.indexOf(event.target);
     const next = event.key === 'Home'
       ? tabs[0]
