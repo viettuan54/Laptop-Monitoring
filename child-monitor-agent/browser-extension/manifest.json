@@ -1,13 +1,13 @@
 {
   "manifest_version": 3,
-  "name": "SafeNest — Chặn website",
+  "name": "LaptopChildren — Chặn website",
   "version": "1.0.0",
   "minimum_chrome_version": "105",
-  "description": "Áp dụng chính sách website từ SafeNest Agent, kể cả khi trình duyệt đang mở.",
+  "description": "Áp dụng chính sách website từ LaptopChildren Agent, kể cả khi trình duyệt đang mở.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAygQ9d3go+7nkswQVoLIBsIKmSr3EnqKfWR8gfn1JZpmBXjkrkZc0kwgHisLYdercomXl1JoXhUHNK+fWBOKWQmN1MBmRao5+1/pPCfYeVl1q3qqtvTrgSfj/FWnJzjGzSX/NlFP79qXoRz94lDp4ymXDSks4CYIJmpJO8UJXFeNUa0piDrz3X6IMf5//4f+ZWHJezBRWCHwIDemMTMVZ5LZM/i2owBFR5AoEhgYdP/cMHWaX2ug6NTe/Fw3yp4lo4BvYXSDrGMiekbi5y2tLDlRRIK8jNfpvT1CbQOq5KdaepFOMdpgTXGURs7YZyyBWzhVilsdNZwbKzWEiX06Q3QIDAQAB",
   "permissions": ["nativeMessaging", "declarativeNetRequest", "tabs", "webNavigation", "alarms", "storage"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "background": {"service_worker": "background.js"},
-  "action": {"default_title": "SafeNest — đang kết nối Agent"},
+  "action": {"default_title": "LaptopChildren — đang kết nối Agent"},
   "incognito": "spanning"
 }

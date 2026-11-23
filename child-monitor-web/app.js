@@ -1,4 +1,4 @@
-/* Bảng điều khiển SafeNest — ứng dụng web không phụ thuộc framework */
+/* Bảng điều khiển LaptopChildren — ứng dụng web không phụ thuộc framework */
 'use strict';
 
 const API = '/api';
@@ -12,7 +12,7 @@ const INITIAL_CHAT = Object.freeze([
   Object.freeze({
     role: 'model',
     content:
-      'Chào bạn, mình là trợ lý SafeNest. Hãy hỏi mình về cách cân bằng thời gian màn hình hoặc đọc hiểu một tín hiệu hành vi.',
+      'Chào bạn, mình là trợ lý LaptopChildren. Hãy hỏi mình về cách cân bằng thời gian màn hình hoặc đọc hiểu một tín hiệu hành vi.',
   }),
 ]);
 
@@ -853,7 +853,7 @@ function enhanceFormAccessibility(root) {
   });
   root.querySelectorAll('table').forEach((table) => {
     if (!table.getAttribute('aria-label')) {
-      table.setAttribute('aria-label', pageTitles[state.page]?.[0] || 'Bảng dữ liệu SafeNest');
+      table.setAttribute('aria-label', pageTitles[state.page]?.[0] || 'Bảng dữ liệu LaptopChildren');
     }
     table.querySelectorAll('th:not([scope])').forEach((heading) => heading.setAttribute('scope', 'col'));
   });
@@ -978,13 +978,13 @@ function renderAuth(mode = 'login') {
   };
   const heading = {
     login: ['Chào mừng bạn trở lại', 'Đăng nhập để theo dõi nhịp sống số của gia đình.'],
-    register: ['Bắt đầu cùng SafeNest', 'Tạo một không gian số lành mạnh hơn cho gia đình.'],
+    register: ['Bắt đầu cùng LaptopChildren', 'Tạo một không gian số lành mạnh hơn cho gia đình.'],
     forgot: ['Khôi phục quyền truy cập', 'Hệ thống sẽ gửi liên kết nếu email tồn tại.'],
     verify: ['Xác minh email', 'Hoàn tất bước cuối để bảo vệ tài khoản.'],
     resend: ['Gửi lại mã xác minh', 'Xác nhận thông tin để nhận email mới.'],
     reset: ['Tạo mật khẩu mới', 'Mọi phiên đăng nhập cũ sẽ được thu hồi.'],
   }[mode];
-  document.title = `${heading[0]} — SafeNest`;
+  document.title = `${heading[0]} — LaptopChildren`;
 
   app.innerHTML = `
     <main class="auth-shell">
@@ -993,7 +993,7 @@ function renderAuth(mode = 'login') {
         <div class="auth-message">
           <p class="eyebrow">Nuôi dưỡng thói quen số lành mạnh</p>
           <h1>Thấu hiểu để <em>đồng hành.</em></h1>
-          <p>SafeNest chuyển hoạt động trên thiết bị thành những tín hiệu rõ ràng, giúp phụ huynh trò chuyện đúng lúc và thiết lập giới hạn có chủ đích.</p>
+          <p>LaptopChildren chuyển hoạt động trên thiết bị thành những tín hiệu rõ ràng, giúp phụ huynh trò chuyện đúng lúc và thiết lập giới hạn có chủ đích.</p>
         </div>
         <div class="trust-row"><span><i class="trust-dot" aria-hidden="true"></i>Dữ liệu riêng biệt từng gia đình</span><span><i class="trust-dot" aria-hidden="true"></i>Mã kết nối thiết bị dùng một lần</span><span><i class="trust-dot" aria-hidden="true"></i>Cảnh báo &amp; phân loại minh bạch</span></div>
       </section>
@@ -1020,7 +1020,7 @@ async function renderAdminFaceVerification(challengeResult) {
   stopFaceCamera();
   const enrolling = challengeResult.faceMode === 'enroll';
   const faceTitle = enrolling ? 'Đăng ký khuôn mặt lần đầu' : 'Xác thực khuôn mặt';
-  document.title = `${faceTitle} — SafeNest`;
+  document.title = `${faceTitle} — LaptopChildren`;
   state.faceChallenge = challengeResult.faceChallenge;
   state.faceRequiredFrames = challengeResult.requiredFrames || 5;
   app.innerHTML = `
@@ -1114,19 +1114,19 @@ async function completeLogin(result) {
   renderShell();
   startAlertPolling();
   await navigate(state.page);
-  toast('Đăng nhập thành công', 'Chào mừng bạn trở lại SafeNest.');
+  toast('Đăng nhập thành công', 'Chào mừng bạn trở lại LaptopChildren.');
 }
 
 function brandMarkup(adminMode = false) {
   if (adminMode) {
     return `<div class="brand admin-brand"><span class="brand-mark">${icons.policy}</span><span class="brand-copy">Laptop Monitor<small>Admin Console</small></span></div>`;
   }
-  return `<div class="brand"><span class="brand-mark">${icons.policy}</span><span class="brand-copy">SafeNest<small>Laptop Monitor</small></span></div>`;
+  return `<div class="brand"><span class="brand-mark">${icons.policy}</span><span class="brand-copy">LaptopChildren<small>Laptop Monitor</small></span></div>`;
 }
 
 function renderStartupError(error) {
-  document.title = 'Không thể kết nối — SafeNest';
-  app.innerHTML = `<main class="startup-error-shell" id="page-content" tabindex="-1"><section class="startup-error-card">${brandMarkup()}<div class="startup-error-icon">!</div><p class="eyebrow">Kết nối tạm thời gián đoạn</p><h1>Chưa thể mở Dashboard</h1><p>SafeNest không thể xác định không gian tài khoản lúc này. Quyền của bạn không bị thay đổi; hãy kiểm tra Backend rồi thử lại.</p><div class="startup-error-detail">${escapeHtml(localizeError(error?.message || 'Máy chủ không phản hồi'))}</div><div class="form-actions"><button class="btn btn-secondary" data-action="logout">Đăng xuất</button><button class="btn" data-action="retry-initialize">Thử kết nối lại</button></div></section></main>`;
+  document.title = 'Không thể kết nối — LaptopChildren';
+  app.innerHTML = `<main class="startup-error-shell" id="page-content" tabindex="-1"><section class="startup-error-card">${brandMarkup()}<div class="startup-error-icon">!</div><p class="eyebrow">Kết nối tạm thời gián đoạn</p><h1>Chưa thể mở Dashboard</h1><p>LaptopChildren không thể xác định không gian tài khoản lúc này. Quyền của bạn không bị thay đổi; hãy kiểm tra Backend rồi thử lại.</p><div class="startup-error-detail">${escapeHtml(localizeError(error?.message || 'Máy chủ không phản hồi'))}</div><div class="form-actions"><button class="btn btn-secondary" data-action="logout">Đăng xuất</button><button class="btn" data-action="retry-initialize">Thử kết nối lại</button></div></section></main>`;
 }
 
 async function initialize() {
@@ -1292,7 +1292,7 @@ function renderShell() {
       <div class="main-shell">
         <header class="topbar">
           <button class="btn btn-secondary btn-icon menu-toggle" data-action="toggle-sidebar" aria-label="${state.sidebarOpen ? 'Đóng menu' : 'Mở menu'}" aria-controls="sidebar-navigation" aria-expanded="${state.sidebarOpen}">☰</button>
-          <div class="topbar-context"><p>Không gian gia đình</p><strong id="topbar-title">${escapeHtml(pageTitles[state.page]?.[0] || 'SafeNest')}</strong></div>
+          <div class="topbar-context"><p>Không gian gia đình</p><strong id="topbar-title">${escapeHtml(pageTitles[state.page]?.[0] || 'LaptopChildren')}</strong></div>
           <div class="topbar-actions">
             <button class="topbar-shortcut" data-action="agent-guide">${icons.lab}<span>Cài Agent</span></button>
             <span id="connection-pill" class="connection-pill ${state.connectionStatus}" title="Trạng thái kết nối API"><i></i><span>${connectionLabel}</span></span>
@@ -1338,10 +1338,10 @@ async function navigate(page) {
           ? adminLoadingSkeleton(page)
           : loading();
   content.setAttribute('aria-busy', 'true');
-  document.querySelector('#topbar-title').textContent = pageTitles[page]?.[0] || 'SafeNest';
+  document.querySelector('#topbar-title').textContent = pageTitles[page]?.[0] || 'LaptopChildren';
   document.title = state.role === 'admin'
     ? `${pageTitles[page]?.[0] || 'Quản trị'} — Laptop Monitor Admin`
-    : `${pageTitles[page]?.[0] || 'Dashboard'} — SafeNest`;
+    : `${pageTitles[page]?.[0] || 'Dashboard'} — LaptopChildren`;
   try {
     const renderers = {
       overview: renderOverview,
@@ -1417,7 +1417,7 @@ const sectionVisuals = {
   ai: {
     src: '/assets/section-ai-insights.jpg',
     alt: 'Trợ lý AI biến dữ liệu sức khỏe số thành gợi ý cho gia đình',
-    eyebrow: 'Cố vấn SafeNest',
+    eyebrow: 'Cố vấn LaptopChildren',
     title: 'Biến dữ liệu thành một cuộc trò chuyện tốt hơn.',
     text: 'AI tổng hợp tín hiệu hoạt động và đưa ra gợi ý dễ hiểu, giúp phụ huynh chủ động đồng hành cùng con.',
   },
@@ -4454,7 +4454,7 @@ async function handleClick(event) {
       toast('Đã gửi thông báo thử', `${delivery.sent || 0} thiết bị đã được nhà cung cấp tiếp nhận.`);
       return;
     }
-    if (action === 'delete-push-token') return confirmModal('Gỡ thiết bị nhận thông báo?', 'Thiết bị này sẽ không còn nhận cảnh báo SafeNest.', 'confirm-delete-push-token', id);
+    if (action === 'delete-push-token') return confirmModal('Gỡ thiết bị nhận thông báo?', 'Thiết bị này sẽ không còn nhận cảnh báo LaptopChildren.', 'confirm-delete-push-token', id);
     if (action === 'confirm-delete-push-token') {
       await api(`/notifications/tokens/${id}`, { method: 'DELETE' });
       closeModal();

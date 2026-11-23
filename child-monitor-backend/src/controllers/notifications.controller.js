@@ -123,7 +123,7 @@ exports.sendTest = async (req, res) => {
   try {
     const result = await sendPushNotification(
       req.user.user_id,
-      'Thông báo thử nghiệm SafeNest',
+      'Thông báo thử nghiệm LaptopChildren',
       'Thiết bị của bạn đã kết nối nhận thông báo thành công.',
       { type: 'test', route: 'alerts' }
     );

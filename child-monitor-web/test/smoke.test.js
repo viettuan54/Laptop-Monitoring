@@ -98,7 +98,7 @@ test('static server, SPA fallback and API proxy work together', async (t) => {
 
   const fallback = await fetch(`http://127.0.0.1:${webPort}/verify?token=demo`);
   assert.equal(fallback.status, 200);
-  assert.match(await fallback.text(), /SafeNest/);
+  assert.match(await fallback.text(), /LaptopChildren/);
 
   const missingAsset = await fetch(`http://127.0.0.1:${webPort}/missing.js`);
   assert.equal(missingAsset.status, 404);
@@ -473,7 +473,7 @@ test('admin workspace presents operational context, scannable records and respon
   }
 
   assert.match(source, /brandMarkup\(true\)[\s\S]*?Laptop Monitor/);
-  assert.doesNotMatch(source, /LaptopChi/);
+  assert.match(source, /brandMarkup\(false\)|LaptopChildren/);
   assert.match(source, /adminLoadingSkeleton\(/);
   assert.match(source, /u\.role === 'admin' \? 'blue' : 'neutral'/);
   assert.match(styles, /\.app-shell\.is-admin\s*\{\s*--sidebar:\s*252px;/);

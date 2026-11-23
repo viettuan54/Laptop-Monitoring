@@ -6,8 +6,8 @@ function status(connected) {
   chrome.action.setBadgeText({text: connected ? '' : '!'});
   chrome.action.setBadgeBackgroundColor({color: '#a33324'});
   chrome.action.setTitle({title: connected
-    ? 'SafeNest — chính sách đã áp dụng'
-    : 'SafeNest — chưa kết nối Agent; giữ chính sách gần nhất'});
+    ? 'LaptopChildren — chính sách đã áp dụng'
+    : 'LaptopChildren — chưa kết nối Agent; giữ chính sách gần nhất'});
 }
 function apply(policy) {
   serial = serial.then(() => controller.apply(policy)).then(() => status(true)).catch(error => {
