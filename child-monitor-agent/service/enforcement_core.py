@@ -93,7 +93,7 @@ class EnforcementCore:
     def get_screenshot_policy(self):
         """Screenshot consent is memory-only and must be renewed by the backend."""
         with self.cache_lock:
-            remaining = self._screenshot_policy_deadline - time.monotonic()
+            remaining = min(180, self._screenshot_policy_deadline - time.monotonic())
             if remaining <= 0:
                 return {"enabled": False}
             return {**self._screenshot_policy, "valid_for_seconds": remaining}
