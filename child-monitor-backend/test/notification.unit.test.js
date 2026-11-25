@@ -7,6 +7,25 @@ const {
   _private,
 } = require('../src/services/notification.service');
 
+test('Android FCM uses account-bound data only without private alert content', () => {
+  const payload = _private.fcmMessage({ platform: 'android', token: 'fixture', push_token_id: '9007199254740993' },
+    _private.normalizeNotification('Private title', 'Private body', { alert_id: 7, route: 'alerts', secret: 'private' }));
+  assert.equal(payload.notification, undefined);
+  assert.equal(payload.android.notification, undefined);
+  assert.equal(payload.android.ttl, '300s');
+  assert.equal(payload.data.push_token_id, '9007199254740993');
+  assert.equal(payload.data.alert_id, '7');
+  assert.equal(payload.data.secret, undefined);
+  assert.doesNotMatch(JSON.stringify(payload), /Private|private/);
+});
+
+test('other FCM platforms preserve their existing notification payload', () => {
+  for (const platform of ['ios', 'web']) {
+    const payload = _private.fcmMessage({ platform, token: 'fixture' }, _private.normalizeNotification('Title', 'Body'));
+    assert.deepEqual(payload.notification, { title: 'Title', body: 'Body' });
+  }
+});
+
 test('validates Expo and FCM token formats without accepting control characters', () => {
   assert.equal(validatePushToken('expo', 'ExponentPushToken[abcdefghijklmnopqrstuv]'), true);
   assert.equal(validatePushToken('expo', 'ExpoPushToken[abcdefghijklmnopqrstuv]'), true);

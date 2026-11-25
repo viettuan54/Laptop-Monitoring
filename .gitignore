@@ -21,6 +21,9 @@ __pycache__/
 # 3. Environment Variables & Secrets (Backend)
 # ==========================================
 .env
+**/*firebase-adminsdk*.json
+**/*service-account*.json
+**/secrets/
 .env.*
 !.env.example
 

@@ -313,7 +313,13 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     }
     fun onResume() {
         val now = System.currentTimeMillis()
-        if (now - lastResume > 60_000 && !state.loading) { lastResume = now; refresh() }
+        if (now - lastResume > 60_000 && !state.loading) {
+            lastResume = now; refresh()
+            if (graph.firebaseReady && graph.session.tokens != null && graph.prefs.getLong("push_id", 0) > 0) {
+                val epoch = graph.session.generation
+                graph.scope.launch { runCatching { graph.registerPush(expectedGeneration = epoch) } }
+            }
+        }
     }
     fun refreshRows(more: Boolean = false) {
         if (state.busy) return

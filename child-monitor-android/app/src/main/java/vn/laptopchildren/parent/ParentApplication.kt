@@ -45,13 +45,14 @@ class AppGraph(val context: Context) {
         api = createApi(server, session)
         aiApi = createApi(server, session, ai = true)
     }
-    suspend fun registerPush(tokenOverride: String? = null) = authLock.withLock {
+    suspend fun registerPush(tokenOverride: String? = null, expectedGeneration: Long? = null) = authLock.withLock {
         check(firebaseReady) { "Bản cài này chưa có cấu hình Firebase. Danh sách cảnh báo vẫn hoạt động khi mở app." }
         if (session.tokens == null) return@withLock
+        if (expectedGeneration != null && expectedGeneration != session.generation) return@withLock
         val epoch = session.generation
         val messaging = FirebaseMessaging.getInstance()
         messaging.isAutoInitEnabled = true
-        val token = tokenOverride ?: messaging.token.await()
+        val token = tokenOverride ?: withTimeout(15_000) { messaging.token.await() }
         val registration = api.registerPush(mapOf("provider" to "fcm", "platform" to "android", "token" to token,
             "device_name" to "${Build.MANUFACTURER} ${Build.MODEL}".take(100)))
         if (session.generation == epoch) prefs.edit().putLong("push_id", registration.token.push_token_id).apply()
@@ -67,7 +68,7 @@ class AppGraph(val context: Context) {
         if (pushId > 0 && session.tokens != null) api.removePush(pushId)
         if (firebaseReady) {
             FirebaseMessaging.getInstance().isAutoInitEnabled = false
-            runCatching { FirebaseMessaging.getInstance().deleteToken().await() }
+            runCatching { withTimeout(15_000) { FirebaseMessaging.getInstance().deleteToken().await() } }
         }
         session.tokens?.let { pair -> runCatching { api.logout(mapOf("refreshToken" to pair.refreshToken)) } }
         session.clear()

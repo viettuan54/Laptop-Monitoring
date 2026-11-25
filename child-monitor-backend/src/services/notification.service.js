@@ -248,6 +248,24 @@ async function sendExpoNotifications(tokens, notification, fetchImpl = fetch) {
   return { sent, failed };
 }
 
+function fcmMessage(item, notification) {
+  if (item.platform === 'android') {
+    // No notification payload: the app checks its session before displaying.
+    // Do not send private alert text to the lock screen or a stale account.
+    const data = { push_token_id: String(item.push_token_id) };
+    for (const key of ['alert_id', 'device_id', 'type', 'route']) {
+      if (notification.data[key] !== undefined) data[key] = notification.data[key];
+    }
+    return { token: item.token, data, android: { priority: 'HIGH', ttl: '300s' } };
+  }
+  return { token: item.token,
+    notification: { title: notification.title, body: notification.message },
+    data: notification.data,
+    apns: { payload: { aps: { sound: 'default' } } },
+    webpush: { fcm_options: { link: process.env.FRONTEND_URL || 'http://localhost:5173' } },
+  };
+}
+
 async function sendFcmNotifications(tokens, notification) {
   let sent = 0;
   let failed = 0;
@@ -273,24 +291,7 @@ async function sendFcmNotifications(tokens, notification) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            message: {
-              token: item.token,
-              notification: {
-                title: notification.title,
-                body: notification.message,
-              },
-              data: notification.data,
-              android: {
-                priority: 'HIGH',
-                notification: { channel_id: 'alerts', sound: 'default' },
-              },
-              apns: {
-                payload: { aps: { sound: 'default' } },
-              },
-              webpush: {
-                fcm_options: { link: process.env.FRONTEND_URL || 'http://localhost:5173' },
-              },
-            },
+            message: fcmMessage(item, notification),
           }),
         });
         return { item, success: true };
@@ -336,7 +337,7 @@ async function sendPushNotification(userId, title, message, data = {}) {
   const notification = normalizeNotification(title, message, data);
   const providers = getEnabledProviders();
   const result = await adminPool.query(
-    `SELECT push_token_id, provider, token
+    `SELECT push_token_id, provider, platform, token
      FROM push_tokens
      WHERE user_id = $1 AND is_active = TRUE
      ORDER BY push_token_id ASC`,
@@ -506,6 +507,7 @@ module.exports = {
   sendPushNotification,
   validatePushToken,
   _private: {
+    fcmMessage,
     chunk,
     getEnabledProviders,
     isPushEnabled,

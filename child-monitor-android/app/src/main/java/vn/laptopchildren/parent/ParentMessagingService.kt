@@ -16,10 +16,13 @@ import kotlinx.coroutines.launch
 class ParentMessagingService : FirebaseMessagingService() {
     private val graph get() = (application as ParentApplication).graph
     override fun onNewToken(token: String) {
-        graph.scope.launch { runCatching { graph.registerPush(token) } }
+        if (graph.prefs.getLong("push_id", 0) > 0) {
+            val epoch = graph.session.generation
+            graph.scope.launch { runCatching { graph.registerPush(token, epoch) } }
+        }
     }
     override fun onMessageReceived(message: RemoteMessage) {
-        if (graph.session.tokens == null) return
+        if (!acceptPush(graph.session.tokens != null, graph.prefs.getLong("push_id", 0), message.data["push_token_id"])) return
         if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) return
         // IDs are navigation hints only. Screen data is fetched through authenticated API.
         // String tags retain the complete ID. Missing IDs get a distinct notification.
@@ -41,3 +44,6 @@ internal fun notificationKey(alertId: String?, messageId: String?): String =
     alertId?.takeIf { it.isNotBlank() }?.let { "alert:$it" }
         ?: messageId?.takeIf { it.isNotBlank() }?.let { "message:$it" }
         ?: "local:${UUID.randomUUID()}"
+
+internal fun acceptPush(signedIn: Boolean, registeredId: Long, incomingId: String?): Boolean =
+    signedIn && registeredId > 0 && incomingId == registeredId.toString()
