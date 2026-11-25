@@ -1,608 +1,243 @@
-# 💻 Laptop Monitoring
+# 💻 LaptopChildren
 
-> **Hệ thống giám sát và quản lý thời gian sử dụng laptop cho trẻ em tích hợp trí tuệ nhân tạo**
+[![LaptopChildren Multi-Subsystem CI](https://github.com/viettuan54/Laptop-Monitoring/actions/workflows/ci.yml/badge.svg)](https://github.com/viettuan54/Laptop-Monitoring/actions/workflows/ci.yml)
 
-**Laptop Monitoring** là hệ thống hỗ trợ phụ huynh theo dõi, quản lý và bảo vệ trẻ em trong quá trình sử dụng laptop. Hệ thống thu thập hoạt động sử dụng thiết bị, ứng dụng và website; áp dụng các chính sách kiểm soát; đồng thời tích hợp **AI/Edge AI** để phân loại nội dung, phát hiện rủi ro và hỗ trợ phụ huynh đánh giá thói quen sử dụng máy tính của trẻ.
+> **Hệ thống giám sát và quản lý thời gian sử dụng laptop cho trẻ em tích hợp trí tuệ nhân tạo (AI / Edge AI)**
 
-Dự án được xây dựng theo kiến trúc gồm **Windows Agent – Backend Server – Parent Dashboard – AI Training Workspace**.
-
----
-
-## 🎯 Mục tiêu dự án
-
-Laptop Monitoring hướng tới xây dựng một hệ thống có khả năng:
-
-* Theo dõi thời gian trẻ sử dụng laptop.
-* Ghi nhận ứng dụng và website được sử dụng.
-* Thống kê thời gian sử dụng theo ngày và tháng.
-* Phân loại ứng dụng và website bằng AI.
-* Thiết lập chính sách cho phép/chặn theo từng nhóm nội dung.
-* Phát hiện và cảnh báo các hoạt động có nguy cơ.
-* Theo dõi khoảng cách và tư thế ngồi bằng webcam và Edge AI.
-* Hỗ trợ phụ huynh quản lý nhiều trẻ và nhiều thiết bị.
-* Phân tích dữ liệu sử dụng và hỗ trợ đưa ra khuyến nghị.
-* Đảm bảo dữ liệu của từng tài khoản phụ huynh được cô lập và bảo vệ.
+**LaptopChildren** là hệ sinh thái hỗ trợ phụ huynh theo dõi, định hướng và bảo vệ trẻ em khi sử dụng máy tính Windows theo hướng **minh bạch và tôn trọng quyền riêng tư (Privacy-by-Design)**. Hệ thống kết hợp đồng bộ **5 phân hệ độc lập**: **Windows Agent (+ Tiện ích trình duyệt MV3)**, **Backend REST API (PostgreSQL RLS + Redis)**, **Parent Web Dashboard & Admin Console**, **Parent Android App (Kotlin/Compose)** và **Dịch vụ AI / Edge AI**.
 
 ---
 
-## 🏗️ Kiến trúc hệ thống
+## 🎯 Tính năng trọng tâm
+
+* **Giám sát & thống kê sử dụng thiết bị:** Ghi nhận thời lượng ứng dụng (foreground) và tên miền website theo ngày/tháng (múi giờ `Asia/Ho_Chi_Minh`), tổng hợp biểu đồ trực quan trên Web và Android.
+* **Thực thi chính sách bền bỉ cả khi mất mạng:** Hạn mức thời gian ngày, khung giờ cho phép, khóa máy khẩn cấp, chặn ứng dụng cấm (ân hạn 8 giây kèm biên nhận), chặn website đa lớp (`hosts` + HTTP/SNI + tiện ích Manifest V3 chặn ngay trên tab đang mở) và nhắc nghỉ giải lao Win32 không cướp tiêu điểm phím.
+* **Chụp màn hình minh bạch theo sự đồng thuận:** Chỉ hoạt động khi phụ huynh bật quyền theo phiên, hiển thị thông báo trước 3 giây trên máy trẻ, xử lý trên RAM và tự dọn ảnh sau 7 ngày.
+* **Phân loại nội dung lai 3 tầng (Hybrid Classification v1.2.0):** Phân loại 4 nhóm ứng dụng (`learning`, `entertainment`, `browsers`, `unknown`) và 5 nhóm website (`education`, `entertainment`, `social`, `unsafe`, `unknown`) tại biên với độ trễ trung bình `< 1 ms`, chỉ gọi Gemini Fallback khi độ tin cậy `< 0,70`.
+* **Kiểm duyệt truy vấn tìm kiếm tiếng Việt (`text_safety` v13):** Quét truy vấn tìm kiếm mỗi 3 giây khi được cấp quyền, lọc thông tin định danh (PII) tại biên, không lưu nguyên văn mà chỉ lưu nhãn rủi ro (`SAFE`, `RISK`, `HIGH_RISK`) kèm `model_sha256`.
+* **Edge AI thị giác trên RAM (`eye_distance_profile_v3` & `posture_baseline_v1`):** Giám sát khoảng cách mắt và tư thế ngồi theo phiên 1–60 phút (bật/tắt độc lập), không lưu hình ảnh webcam xuống ổ cứng.
+* **Trợ lý AI Advisor & Báo cáo tổng hợp:** Phân tích hành vi theo thiết bị (24 giờ qua), tạo báo cáo tóm tắt 1 ngày / 7 ngày và hội thoại tư vấn phụ huynh qua Gemini API có phòng chống Prompt Injection.
+* **Bảo mật đa tầng & Quản trị vận hành:** Cô lập dữ liệu đa gia đình bằng **PostgreSQL Row Level Security (RLS)**, xoay vòng JWT/Refresh Token, Redis Rate Limit, Audit Log bất biến và **xác thực khuôn mặt 1:1 (FaceNet 128D, 5 khung hình)** cho Quản trị viên.
+
+---
+
+## 🏗️ Kiến trúc tổng thể 5 phân hệ
 
 ```text
-┌─────────────────────────────┐
-│      Parent Dashboard       │
-│   HTML / CSS / JavaScript   │
-└──────────────┬──────────────┘
-               │ REST API / JWT
-               ▼
-┌─────────────────────────────┐
-│       Backend Server        │
-│     Node.js / Express       │
-│                             │
-│ Auth • Children • Devices   │
-│ Logs • Policies • Alerts    │
-│ AI Analysis • Admin         │
-└───────┬───────────┬─────────┘
-        │           │
-        │           ├──────────────► Gemini AI
-        │
-        ▼
-┌───────────────────┐
-│    PostgreSQL     │
-│       + RLS       │
-└───────────────────┘
-        ▲
-        │ REST API
-        │ X-Device-Secret
-┌───────┴─────────────────────┐
-│     Child Monitor Agent     │
-│          Windows            │
-│                             │
-│  ┌───────────────────────┐  │
-│  │ ChildMonitorService   │  │
-│  │ Background / Sync     │  │
-│  └───────────┬───────────┘  │
-│              │ Named Pipe   │
-│  ┌───────────▼───────────┐  │
-│  │ ChildMonitorCompanion │  │
-│  │ Apps • Web • Camera   │  │
-│  │       Edge AI         │  │
-│  └───────────────────────┘  │
-└─────────────────────────────┘
+┌──────────────────────────────┐      ┌──────────────────────────────┐
+│     Parent Web Dashboard     │      │     Parent Android App       │
+│  HTML5 / CSS3 / Vanilla JS   │      │  Kotlin / Jetpack Compose    │
+│  (Phụ huynh & Admin Console) │      │  v0.7.0 • AES-GCM Keystore   │
+└──────────────┬───────────────┘      └──────────────┬───────────────┘
+               │ HTTPS / REST API (JWT + Refresh)    │
+               └──────────────────┬──────────────────┘
+                                  ▼
+┌────────────────────────────────────────────────────────────────────┐
+│               Backend Server (child-monitor-backend)               │
+│                     Node.js 20 LTS / Express 5                     │
+│  Auth • FaceNet 1:1 • Children • Devices • Policies • Logs         │
+│  Screenshots • Break Reminders • Alerts • AI Advisor • Admin       │
+└───────┬─────────────────────────┬──────────────────────────┬───────┘
+        │                         │                          │
+        ▼                         ▼                          ▼
+┌───────────────────┐   ┌───────────────────┐    ┌────────────────────────┐
+│   PostgreSQL 16   │   │     Redis 7.x     │    │  AI & External APIs    │
+│ 22 bảng (v34)     │   │ Distributed Rate  │    │ • text_safety (:8100)  │
+│ RLS trên 18 bảng  │   │ Limit             │    │ • FaceNet 128D (1:1)   │
+└───────────────────┘   └───────────────────┘    │ • Gemini API / FCM     │
+                                                 └────────────────────────┘
+                                  ▲
+                                  │ HTTPS / X-Device-Secret (SHA-256)
+                                  │ Batch Idempotent (unnest)
+┌─────────────────────────────────┴──────────────────────────────────┐
+│             Windows Agent v1.0.31 (child-monitor-agent)            │
+│  ┌──────────────────────────────┐  ┌────────────────────────────┐  │
+│  │ ChildMonitorService (System) │  │ ChildMonitorCompanion      │  │
+│  │ SQLite DPAPI (10 bảng)       │◄─┤ Apps • Web • GDI Screen    │  │
+│  │ Hosts/SNI • AppEnforcer      │  │ Edge AI Webcam (RAM)       │  │
+│  │ Watchdog • Offline Sync      │  │ Break Notice Win32         │  │
+│  └──────────────┬───────────────┘  └────────────────────────────┘  │
+│                 │ Named Pipe (DACL)                                │
+│  ┌──────────────▼───────────────────────────────────────────────┐  │
+│  │ SafeNestBrowserHost.exe ↔ Tiện ích Chrome/Edge/Cốc Cốc (MV3) │  │
+│  └──────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 📁 Cấu trúc dự án
+## 📁 Cấu trúc kho mã nguồn
 
 ```text
 Laptop-Monitoring/
-│
-├── ai-training/
-│   ├── content_classification/
-│   ├── data_collection/
-│   ├── datasets/
-│   ├── evaluation/
-│   ├── training/
-│   └── tests/
-│
-├── child-monitor-agent/
-│   ├── companion/
-│   ├── config/
-│   ├── installer/
-│   ├── models/
-│   ├── service/
-│   └── tests/
-│
-├── child-monitor-backend/
-│   ├── AI/
+├── .github/
+│   └── workflows/
+│       └── ci.yml                    # GitHub Actions CI chạy song song 5 phân hệ
+├── child-monitor-backend/            # Phân hệ 1: Backend Node.js/Express + PostgreSQL RLS + Redis
+│   ├── AI/                           # Trích xuất vector FaceNet 128D & kiểm định chất lượng ảnh
+│   ├── scripts/
+│   │   └── setup-fresh-db.js         # Khởi tạo sạch 34 tệp SQL (Data.sql → migration_v34.sql) & RLS
 │   ├── src/
-│   ├── test/
-│   ├── Data.sql
-│   ├── migration.sql
+│   │   ├── config/                   # Cấu hình 2 pool (app_admin / app_backend) & Redis
+│   │   ├── controllers/              # 16 bộ điều khiển nghiệp vụ
+│   │   ├── middlewares/              # 6 middleware (auth, deviceAuth, role, ownership, rateLimit, rls)
+│   │   ├── routes/                   # 10 nhóm REST API routes
+│   │   └── services/                 # 15 dịch vụ nghiệp vụ, AI & Push Notification
+│   ├── test/                         # 153 ca Unit Test + 25 ca Integration Test (PostgreSQL/Redis thật)
+│   ├── Data.sql                      # Lược đồ nền tảng
+│   ├── migration_v*.sql              # Chuỗi di trú lược đồ tới migration_v34.sql (22 bảng)
 │   └── server.js
-│
-├── child-monitor-web/
-│   ├── assets/
-│   ├── test/
+├── child-monitor-web/                # Phân hệ 2: Parent Web Dashboard & Admin Console (SPA thuần)
+│   ├── assets/                       # Tài nguyên minh họa & favicon
+│   ├── test/                         # 343 ca kiểm thử tự động (UI state, security headers, API coverage)
 │   ├── index.html
 │   ├── app.js
 │   ├── styles.css
-│   └── server.js
-│
-├── TESTING.md
+│   └── server.js                     # Static server + reverse proxy /api/* kèm CSP/X-Frame-Options
+├── child-monitor-android/            # Phân hệ 3: Parent Android App (Kotlin + Jetpack Compose, v0.7.0)
+│   └── app/src/
+│       ├── main/java/vn/laptopchildren/parent/  # AppGraph, SessionStore (AES-GCM), ViewModel, UI
+│       ├── test/                     # JUnit 4 + MockWebServer Unit Tests
+│       └── androidTest/              # Compose Instrumentation Tests (kiểm nghiệm trên Redmi K30)
+├── child-monitor-agent/              # Phân hệ 4: Windows Agent v1.0.31 & Browser Extension MV3
+│   ├── browser-extension/            # Tiện ích Manifest V3 (declarativeNetRequest)
+│   ├── build/                        # build-agent.ps1 (PyInstaller + Inno Setup 6)
+│   ├── companion/                    # app_tracker, web_tracker, screen_monitor, edge_vision, break_notice
+│   ├── installer/                    # install.ps1, provision_agent.py
+│   ├── models/                       # Mô hình cục bộ & tệp băm .sha256
+│   ├── service/                      # main_service, pipe_server, offline_queue, enforcement_core, watchdog
+│   └── tests/                        # 235 ca Python unittest + 6 ca MV3 JS test
+├── ai-training/                      # Phân hệ 5: Huấn luyện, đánh giá AI & dịch vụ text_safety (:8100)
+│   ├── content_classification/       # Phân loại App/Web lai 3 tầng v1.2.0
+│   ├── school_violence/              # Kiểm duyệt tìm kiếm tiếng Việt text_safety v13
+│   ├── evaluation/                   # Cổng đánh giá LOSO, khoảng cách mắt v3, hybrid pipeline
+│   ├── text_safety/                  # Dịch vụ FastAPI nội bộ (:8100)
+│   ├── tests/                        # 213 ca Python unittest
+│   └── tests_finetune/               # 5 ca kiểm thử mô hình fine-tune
+├── TESTING.md                        # Hướng dẫn kiểm thử chi tiết
 └── README.md
 ```
 
-### `child-monitor-agent`
+---
 
-Agent được cài trên laptop của trẻ và chịu trách nhiệm:
+## 🤖 Kết quả thực nghiệm các mô hình AI & Edge AI
 
-* Theo dõi thời gian hoạt động.
-* Ghi nhận ứng dụng đang được sử dụng.
-* Theo dõi lịch sử truy cập website trên các trình duyệt được hỗ trợ.
-* Lưu dữ liệu tạm thời khi mất kết nối.
-* Đồng bộ dữ liệu với Backend.
-* Nhận và áp dụng chính sách từ phụ huynh.
-* Chạy các chức năng Edge AI liên quan đến webcam.
-
-Agent được chia thành hai tiến trình:
-
-**ChildMonitorService**
-
-* Chạy nền dưới Windows `LocalSystem`.
-* Quản lý hàng đợi dữ liệu.
-* Đồng bộ dữ liệu với Backend.
-* Nhận và thực thi policy.
-* Lưu `device_secret` an toàn bằng Windows DPAPI.
-
-**ChildMonitorCompanion**
-
-* Chạy trong phiên đăng nhập của người dùng.
-* Theo dõi ứng dụng và trình duyệt.
-* Hiển thị cảnh báo.
-* Truy cập webcam.
-* Chạy các chức năng Edge AI.
-* Gửi dữ liệu về Service thông qua Named Pipe.
+| Mô hình / Phân hệ | Tập dữ liệu & Phương pháp đánh giá | Chỉ số đạt được | Cổng kiểm duyệt |
+|---|---|---|---|
+| **1. Phân loại Ứng dụng Hybrid v1.2.0** *(4 lớp: Lookup + Multinomial NB n-gram + Temperature Scaling + Gemini)* | Tập đại diện (80 mẫu) & Ngoài Lookup (56 mẫu mới, trùng lặp 0%) | Đại diện: **Acc 98,75%**, Macro-F1 **98,75%**<br>Ngoài Lookup: **Acc 98,21%**, Macro-F1 **98,21%**<br>Xử lý cục bộ **73,75%** ở **0,0817 ms** | Đạt (`deployment_approved = true`) |
+| **2. Phân loại Website Hybrid v1.2.0** *(5 lớp: Lookup + Length-Normalized NB n-gram + OOF Calibration + Gemini)* | Tập đại diện (125 mẫu) & Ngoài Lookup (90 mẫu mới) | Đại diện: **Acc 92,80%**, Macro-F1 **92,81%**<br>Ngoài Lookup: **Acc 90,00%**, Macro-F1 **90,02%** (`unsafe` P/R/F1 **100%**)<br>Xử lý cục bộ **50,40%** ở **0,0427 ms** | Đạt (`deployment_approved = true`) |
+| **3. Kiểm duyệt văn bản `text_safety` v13** *(3 lớp: `SAFE` / `RISK` / `HIGH_RISK`)* | Kiểm định chéo 5×5 fold (282 câu D1–D4) & Tập phát triển Dulieu5 (90 câu) | Cross-val (282): **Acc 84,82%**, Macro-F1 **0,85258**, Recall `HIGH_RISK` **99,16%**, `HIGH_RISK → SAFE = 0`<br>Dulieu5 (90): **Acc 94,44%** (85/90), Recall `HIGH_RISK` **100%** | Ứng viên nội bộ (giữ `deployment_eligible = false` chờ tập test mù) |
+| **4. Ước lượng khoảng cách mắt `eye_distance_profile_v3`** | Kiểm thử độc lập 332 mẫu tại 7 mốc (30–40 cm) | **MAE = 0,79 cm**, **RMSE = 0,95 cm**, Bias = -0,08 cm<br>Vùng đệm `33–<37 cm`: bỏ sót **0,0%**, cảnh báo giả **0,0%** | Đạt 5/5 tiêu chí (`passed = true`) |
+| **5. Nhận diện tư thế `posture_baseline_v1`** *(good / bad)* | Kiểm định chéo theo đối tượng LOSO (3 người / 72 cửa sổ) | TB 3 fold LOSO: **Acc 93,33%**, Macro-Recall **95,24%**, Coverage **97,92%**, Conclusive Acc **93,06%** | Đạt cổng LOSO (`passed = true`) |
 
 ---
 
-### `child-monitor-backend`
+## 🛡️ Kiến trúc Bảo mật & Quyền riêng tư (Privacy-by-Design)
 
-Backend cung cấp REST API và xử lý nghiệp vụ trung tâm của hệ thống.
-
-Các chức năng chính:
-
-* Đăng ký, đăng nhập và xác thực tài khoản.
-* Quản lý phụ huynh.
-* Quản lý hồ sơ trẻ em.
-* Quản lý thiết bị.
-* Quản lý cấu hình và policy.
-* Tiếp nhận log ứng dụng và website.
-* Tổng hợp thời gian sử dụng.
-* Quản lý cảnh báo.
-* AI Analysis.
-* AI Summary và Chat Advisor.
-* Quản trị người dùng.
-* Audit Log.
-* Push Notification.
-* Đồng bộ dữ liệu offline từ Agent.
-
-Backend tách riêng hai cơ chế xác thực:
-
-```text
-Parent Dashboard → JWT
-Child Agent      → X-Device-Secret
-```
-
-Dữ liệu giữa các phụ huynh được cô lập bằng **PostgreSQL Row Level Security (RLS)**.
+| Lớp bảo vệ | Cơ chế triển khai thực tế |
+|---|---|
+| **Cô lập dữ liệu đa gia đình** | PostgreSQL **Row Level Security (RLS)** trên 18 bảng với 2 pool tách biệt (`app_admin` và `app_backend` `NOSUPERUSER NOBYPASSRLS`) dùng `SET LOCAL app.current_user_id` theo từng giao dịch. |
+| **Xác thực Phụ huynh** | JWT ngắn hạn + **Refresh Token Rotation** chống tái sử dụng token; Web lưu trong `sessionStorage`, Android mã hóa AES-GCM bằng `AndroidKeyStore`. |
+| **Xác thực Quản trị viên** | Mật khẩu (`bcrypt`) + **Xác thực khuôn mặt 1:1** (FaceNet 128 chiều, 5 khung hình liên tiếp, mã thử thách TTL 2 phút, chỉ lưu vector đặc trưng, không lưu ảnh gốc). |
+| **Xác thực & bảo vệ Windows Agent** | `X-Device-Secret` băm SHA-256 trên máy chủ, mã hóa cục bộ bằng **Windows DPAPI**; giao tiếp nội bộ Service–Companion qua Named Pipe có **DACL** giới hạn SID phiên hiện tại và `LocalSystem`. |
+| **Đồng bộ ngoại tuyến bền bỉ** | Store-and-Forward với SQLite `local.db` (10 bảng) và chèn lô lũy đẳng `unnest() ON CONFLICT (device_id, client_record_id) DO NOTHING` (0 bản ghi trùng lặp). |
+| **Chống lạm dụng & Kiểm toán** | Redis Distributed Rate Limiting, phòng chống Prompt Injection cho Gemini API và bảng `audit_logs` bất biến. |
+| **Minh bạch với trẻ em** | Báo trước 3 giây khi chụp màn hình, ân hạn 8 giây trước khi đóng ứng dụng cấm, hộp thoại nhắc nghỉ `SWP_NOACTIVATE` không cướp tiêu điểm phím, xử lý webcam trên RAM và lọc PII trước khi kiểm duyệt tìm kiếm. |
 
 ---
 
-### `child-monitor-web`
+## 🧪 Kiểm thử tự động & GitHub Actions CI
 
-Parent Dashboard là giao diện dành cho phụ huynh và quản trị viên.
+Hệ thống được tích hợp pipeline CI đa phân hệ tại [.github/workflows/ci.yml](.github/workflows/ci.yml), tự động chạy song song **5 jobs** (`ubuntu-latest` và `windows-latest`) trên mỗi lần đẩy mã:
 
-Dashboard hỗ trợ:
-
-* Quản lý tài khoản.
-* Quản lý hồ sơ trẻ em.
-* Quản lý thiết bị.
-* Theo dõi trạng thái thiết bị.
-* Xem thời gian sử dụng laptop.
-* Theo dõi ứng dụng.
-* Theo dõi website.
-* Tìm kiếm và lọc lịch sử hoạt động.
-* Thiết lập chính sách ứng dụng/website.
-* Xem cảnh báo.
-* Xem kết quả AI Analysis.
-* Sử dụng AI Advisor.
-* Quản lý người dùng và hệ thống đối với Admin.
-* Xem Audit Log.
-* Xuất dữ liệu hoạt động CSV.
+| Job CI / Phân hệ | Phạm vi kiểm thử tự động | Kết quả |
+|---|---|---|
+| **1. Backend (`child-monitor-backend`)** | Unit/Middleware + Dựng PostgreSQL 16 (34 tệp lược đồ `Data.sql → migration_v34.sql`, kiểm chứng RLS 18 bảng) + Redis 7 thật | **153/153 unit + 25/25 integration pass** |
+| **2. Web Dashboard (`child-monitor-web`)** | Syntax check (`app.js`, `server.js`) + 17 bộ test giao diện, biểu đồ, bộ lọc, ảnh màn hình, AI Advisor, Admin Face, bảo mật CSP | **343/343 pass** |
+| **3. Windows Agent (`child-monitor-agent`)** | 23 bộ Python unittest (SQLite DPAPI, Named Pipe, chặn app/web, chụp màn hình, Edge AI) + bộ test MV3 Extension (`browser_policy.test.cjs`) | **235 Python + 6 JS pass** |
+| **4. AI Service & FaceNet (`ai-training` & `Backend/AI`)** | 43 bộ test `ai-training/tests/`, 5 ca `tests_finetune/` và 4 ca kiểm định đầu vào FaceNet | **219 pass / 3 skip có ĐK** *(218 AI + 4 Face)* |
+| **5. Parent Android App (`child-monitor-android`)** | Gradle JUnit 4 + MockWebServer + Android Lint (`compileSdk 35`, JDK 17) & Instrumentation trên Xiaomi Redmi K30 | **Unit & Lint pass; build APK OK** |
 
 ---
 
-### `ai-training`
+## ⚙️ Hướng dẫn cài đặt & chạy cục bộ
 
-Workspace dành riêng cho quá trình:
-
-```text
-Data Collection
-      ↓
-Data Validation
-      ↓
-Feature Processing
-      ↓
-Model Training
-      ↓
-Evaluation
-      ↓
-Deployment Gate
-      ↓
-Edge AI Model
-```
-
-Workspace hiện bao gồm các thành phần liên quan đến:
-
-* Phân loại ứng dụng.
-* Phân loại website.
-* Thu thập landmark tư thế.
-* Hiệu chỉnh khoảng cách webcam.
-* Huấn luyện baseline posture classifier.
-* Đánh giá model.
-* Quản lý dataset và taxonomy.
-
-Dữ liệu huấn luyện được tách khỏi dữ liệu vận hành thực tế của Agent.
-
----
-
-## 🤖 Trí tuệ nhân tạo
-
-### 1. Phân loại ứng dụng
-
-Ứng dụng được phân thành các nhóm:
-
-```text
-learning
-entertainment
-browsers
-unknown
-```
-
-Hệ thống sử dụng cơ chế hybrid:
-
-```text
-Application
-     │
-     ▼
-Exact Lookup
-     │
-     ├── Found ─────────► Category
-     │
-     ▼
-Trained Model
-     │
-     ├── Confidence OK ─► Category
-     │
-     ▼
-Gemini Fallback
-     │
-     ▼
-Final Category
-```
-
-Cách tiếp cận này giúp giảm số lần phải gọi AI bên ngoài trong khi vẫn xử lý được các ứng dụng mới chưa có trong dataset.
-
----
-
-### 2. Phân loại website
-
-Website được phân loại theo domain và được sử dụng để hỗ trợ phụ huynh thiết lập chính sách truy cập.
-
-Luồng xử lý:
-
-```text
-Domain
-   ↓
-Local Classification
-   ↓
-Confidence Check
-   ↓
-Gemini Fallback
-   ↓
-Category
-   ↓
-Allow / Block Policy
-```
-
-Kết quả phân loại có thể được lưu lại để phục vụ quá trình backfill và giảm việc phân loại lại những domain đã biết.
-
----
-
-### 3. Phát hiện khoảng cách
-
-Webcam được sử dụng để ước lượng khoảng cách giữa trẻ và màn hình.
-
-Quy trình:
-
-```text
-Webcam
-   ↓
-Face / Landmark
-   ↓
-Eye Separation Feature
-   ↓
-Personal Calibration Profile
-   ↓
-Distance Estimation
-   ↓
-Safety Policy
-```
-
-Ví dụ chính sách:
-
-```text
-distance < 33 cm        → Warning
-33 cm ≤ distance < 37 cm → Continue sampling
-distance ≥ 37 cm        → Safe
-```
-
----
-
-### 4. Phân tích tư thế
-
-Edge AI sử dụng landmark để phát hiện một số tư thế như:
-
-```text
-good
-forward_head
-trunk_lean
-shoulder_tilt_left
-shoulder_tilt_right
-slouching
-```
-
-Model được đánh giá theo hướng **Leave-One-Subject-Out (LOSO)** nhằm kiểm tra khả năng tổng quát hóa trên người chưa xuất hiện trong tập huấn luyện.
-
-Nếu model không đạt yêu cầu hoặc confidence thấp, Agent có thể quay về **rule-based safety fallback**.
-
----
-### 5. AI Analysis & Advisor
-
-Backend hỗ trợ AI để:
-
-* Phân tích xu hướng sử dụng thiết bị.
-* Tổng hợp hoạt động.
-* Hỗ trợ phụ huynh hiểu dữ liệu.
-* Đưa ra gợi ý quản lý phù hợp.
-* Xử lý các trường hợp phân loại mà model cục bộ chưa đủ độ tin cậy.
-
----
-
-## 🛡️ Bảo mật
-
-Hệ thống áp dụng nhiều lớp bảo vệ:
-
-| Thành phần            | Cơ chế                  |
-| --------------------- | ----------------------- |
-| Parent Authentication | JWT + Refresh Token     |
-| Agent Authentication  | Device Secret           |
-| Device Secret Storage | SHA-256 / Windows DPAPI |
-| Database Isolation    | PostgreSQL RLS          |
-| Password              | bcrypt                  |
-| Rate Limiting         | Redis                   |
-| Sensitive Operations  | Audit Log               |
-| Offline Sync          | Idempotent Batch        |
-| Account deletion      | Cascade deletion        |
-| Agent communication   | REST API + Named Pipe   |
-| AI Dataset            | Không lưu ảnh mặc định  |
-
-Agent chỉ gửi các dữ liệu kỹ thuật cần thiết cho chức năng phân loại và giám sát, hạn chế thu thập dữ liệu không cần thiết.
-
----
-
-## 🛠️ Công nghệ sử dụng
-
-### Backend
-
-* Node.js
-* Express.js
-* PostgreSQL
-* Redis
-* JWT
-* bcrypt
-* Gemini API
-* RESTful API
-
-### Windows Agent
-
-* Python
-* Windows Service
-* SQLite
-* OpenCV
-* MediaPipe
-* Edge AI
-* Windows DPAPI
-* Named Pipe
-
-### Parent Dashboard
-
-* HTML5
-* CSS3
-* JavaScript
-* REST API
-
-### AI / Machine Learning
-
-* Python
-* Scikit-learn
-* MediaPipe
-* OpenCV
-* Custom dataset
-* Hybrid classification
-* Gemini fallback
-
----
-
-## ⚙️ Cài đặt
-
-### 1. Clone repository
+### 1. Clone mã nguồn
 
 ```bash
 git clone https://github.com/viettuan54/Laptop-Monitoring.git
 cd Laptop-Monitoring
 ```
 
----
-
-### 2. Backend
+### 2. Backend (Node.js 20 LTS + PostgreSQL 16 + Redis 7)
 
 ```bash
 cd child-monitor-backend
 npm install
+# Tạo tệp .env từ .env.example và cấu hình kết nối PostgreSQL / Redis / Gemini API
+node scripts/setup-fresh-db.js   # Khởi tạo sạch 34 tệp lược đồ (Data.sql → migration_v34.sql) & RLS
+npm run dev                      # Chạy tại http://localhost:3000
 ```
 
-Tạo file `.env` dựa trên:
-
-```text
-.env.example
-```
-
-Khởi tạo PostgreSQL database và chạy các migration theo thứ tự.
-
-Sau đó chạy:
+Chạy kiểm thử Backend:
 
 ```bash
-npm run dev
+npm run test:unit                # 153 ca unit test
+npm run test:integration         # 25 ca tích hợp PostgreSQL RLS + Redis thật
 ```
 
-Backend mặc định:
+### 3. Dịch vụ AI kiểm duyệt văn bản (`text_safety` FastAPI)
 
-```text
-http://localhost:3000
+```powershell
+$env:TEXT_SAFETY_ENV = "development"
+$env:TEXT_SAFETY_API_KEY = "<shared-local-moderation-secret>"
+.\.runtime\text-safety-venv\Scripts\python.exe -m uvicorn text_safety.main:app --app-dir .\ai-training --host 127.0.0.1 --port 8100 --no-access-log
 ```
 
----
-
-### 3. Parent Dashboard
-
-Mở terminal mới:
+### 4. Parent Web Dashboard & Admin Console
 
 ```bash
 cd child-monitor-web
-node server.js
+node server.js                   # Truy cập http://localhost:5173 (tự proxy /api/* tới :3000)
+npm test                         # Chạy 343 ca kiểm thử tự động
 ```
 
-Truy cập:
+### 5. Parent Android App (`vn.laptopchildren.parent` v0.7.0)
 
-```text
-http://localhost:5173
+```powershell
+cd child-monitor-android
+.\gradlew.bat testDebugUnitTest lintDebug assembleDebug
 ```
 
-Dashboard tự proxy các request `/api/*` tới Backend ở cổng `3000`.
+Hỗ trợ cài bản QA cô lập trên thiết bị thật: `.\gradlew.bat assembleDebug -PisolatedQa=true` và `adb install -r ...`.
 
----
+### 6. Windows Agent (`ChildMonitorSetup-1.0.31.exe`)
 
-### 4. Child Monitor Agent
-
-Cách khuyến nghị là sử dụng bộ cài:
-
-```text
-ChildMonitorSetup-<version>.exe
-```
-
-Trước khi cài Agent:
-
-1. Đăng nhập Parent Dashboard.
-2. Tạo hồ sơ trẻ em.
-3. Đăng ký thiết bị.
-4. Lấy `device_secret`.
-5. Chạy bộ cài Agent bằng quyền Administrator.
-6. Nhập Backend URL và Device Secret.
-7. Hoàn tất cài đặt.
-
-Máy được giám sát không cần cài Python nếu sử dụng bản Agent đã build.
-
----
-
-## 🧪 Testing
-
-### Backend
-
-Backend integration test sử dụng PostgreSQL và Redis test riêng.
-
-```bash
-cd child-monitor-backend
-npm test
-```
-
-Các bài test bao gồm:
-
-* Authentication.
-* Refresh token rotation.
-* PostgreSQL RLS isolation.
-* Classification policies.
-* Batch synchronization.
-* Idempotency.
-* Redis distributed rate limiting.
-
-### Agent
+Đóng gói bộ cài từ mã nguồn (yêu cầu Python 3.11 64-bit, PyInstaller và Inno Setup 6):
 
 ```powershell
 cd child-monitor-agent
-.\run_tests.ps1
+.\build\build-agent.ps1
 ```
 
-Xem hướng dẫn chi tiết tại:
+Quy trình cài đặt trên máy tính của trẻ:
+1. Đăng nhập **Web Dashboard** hoặc **Android App** → tạo hồ sơ trẻ → đăng ký thiết bị để nhận mã `Device Secret` (hiển thị 1 lần).
+2. Chạy `ChildMonitorSetup-1.0.31.exe` bằng quyền Administrator trên laptop Windows của trẻ.
+3. Nhập địa chỉ Backend URL và `Device Secret` để hoàn tất ghép nối và kích hoạt `ChildMonitorService` + `ChildMonitorCompanion` + tiện ích trình duyệt Manifest V3.
 
-```text
-TESTING.md
-```
+Xem thêm hướng dẫn kiểm thử chi tiết tại [TESTING.md](TESTING.md).
 
 ---
 
-## 🔄 Luồng hoạt động tổng quát
+## 🚀 Hướng phát triển tiếp theo
 
-```text
-              ┌─────────────────┐
-              │      Parent     │
-              └────────┬────────┘
-                       │
-                       ▼
-              ┌─────────────────┐
-              │    Dashboard    │
-              └────────┬────────┘
-                       │ JWT
-                       ▼
-              ┌─────────────────┐
-              │     Backend     │
-              └───┬─────────┬───┘
-                  │         │
-          PostgreSQL       AI Services
-                  │
-                  │
-                  ▲
-                  │ X-Device-Secret
-                  │
-              ┌───┴─────────────┐
-              │      Agent      │
-              └───┬─────────┬───┘
-                  │         │
-             Activity     Edge AI
-                  │         │
-                  ▼         ▼
-              Apps/Web   Webcam
-```
-
----
-
-## 🚀 Hướng phát triển
-
-Một số hướng mở rộng của dự án:
-
-* Hoàn thiện và mở rộng dataset AI.
-* Nâng cao độ chính xác của posture detection.
-* Mở rộng số lượng người tham gia đánh giá LOSO.
-* Cải thiện khả năng phân loại website và ứng dụng mới.
-* Xây dựng dashboard bằng framework frontend hiện đại.
-* Phát triển ứng dụng mobile dành cho phụ huynh.
-* Bổ sung báo cáo tuần/tháng trực quan hơn.
-* Cải thiện hệ thống cảnh báo thời gian thực.
-* Mở rộng Edge AI nhằm giảm dữ liệu phải gửi lên server.
-* Đóng gói và triển khai hệ thống trong môi trường production.
+* Thu thập tập kiểm thử mù độc lập quy mô lớn cho `text_safety` v13 và mở rộng số lượng đối tượng thu thập dữ liệu để nâng cấp mô hình tư thế LOSO & khoảng cách mắt.
+* Bổ sung chống giả mạo ảnh sống (liveness detection) và duy trì worker suy luận nền cho xác thực khuôn mặt Quản trị viên 1:1.
+* Tích hợp mô hình Edge AI siêu nhẹ phát hiện/làm mờ nội dung màn hình nhạy cảm (18+) và cảnh báo người lạ sử dụng máy.
+* Ký số Authenticode cho bộ cài Windows Agent, nghiệm thu đầu-cuối FCM trên dự án Firebase thương mại và mở rộng sang macOS/iOS.
 
 ---
 
 ## ⚠️ Phạm vi sử dụng
 
-Dự án được xây dựng phục vụ mục đích **nghiên cứu và đồ án tốt nghiệp**.
-
-Hệ thống hướng tới việc hỗ trợ phụ huynh quản lý việc sử dụng laptop của trẻ một cách minh bạch và có trách nhiệm. Các chức năng giám sát cần được triển khai phù hợp với quy định về quyền riêng tư và bảo vệ dữ liệu cá nhân.
-
----
-
-## 📌 Project
-
-**Laptop Monitoring — AI-powered Child Laptop Monitoring System**
-
-> Xây dựng hệ thống giám sát và quản lý thời gian sử dụng laptop cho trẻ em tích hợp trí tuệ nhân tạo.
+Dự án được xây dựng phục vụ mục đích **nghiên cứu và Đồ án tốt nghiệp đại học ngành Công nghệ thông tin**. Hệ thống hướng tới việc hỗ trợ phụ huynh đồng hành cùng trẻ sử dụng máy tính an toàn, minh bạch và tuân thủ các nguyên tắc bảo vệ quyền riêng tư cá nhân.

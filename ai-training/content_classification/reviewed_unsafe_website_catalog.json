@@ -1,0 +1,495 @@
+{
+  "catalog_version": "1.0.0",
+  "reviewed_at": "2026-11-24",
+  "review_scope": "Adult (18+) and online gambling/betting websites inappropriate for minors under the parental-control unsafe taxonomy, audited with public encyclopedia/Wikidata references and strictly disjoint from independent evaluation benchmarks",
+  "records": [
+    {
+      "resource_type": "websites",
+      "domain": "adulttime.com",
+      "title": "Adult Time",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q107304457",
+      "label_basis": "Subscription adult pornographic streaming platform restricted to 18+ viewers"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "redtube.com",
+      "title": "RedTube",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1264588",
+      "label_basis": "Adult pornographic video sharing website restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "youporn.com",
+      "title": "YouPorn",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q846993",
+      "label_basis": "Adult pornographic video streaming website inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "spankbang.com",
+      "title": "SpankBang",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q109535867",
+      "label_basis": "Adult pornographic video website restricted to 18+ audiences"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "eporner.com",
+      "title": "Eporner",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q192832",
+      "label_basis": "Adult pornographic video hosting platform restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "tube8.com",
+      "title": "Tube8",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q2458962",
+      "label_basis": "Adult pornographic video sharing website inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "xhamster.com",
+      "title": "xHamster",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1975322",
+      "label_basis": "Adult pornographic media and webcam website restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "brazzers.com",
+      "title": "Brazzers",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q897797",
+      "label_basis": "Commercial adult pornographic production website restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "bangbros.com",
+      "title": "BangBros",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q806466",
+      "label_basis": "Adult pornographic subscription website inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "naughtyamerica.com",
+      "title": "Naughty America",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1638800",
+      "label_basis": "Adult pornographic entertainment portal restricted to 18+ audiences"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "realitykings.com",
+      "title": "Reality Kings",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1139543",
+      "label_basis": "Adult pornographic subscription website restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "digitalplayground.com",
+      "title": "Digital Playground",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1224812",
+      "label_basis": "Adult pornographic studio website inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "porntrex.com",
+      "title": "PornTrex",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q192832",
+      "label_basis": "Adult pornographic video website restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "hqporner.com",
+      "title": "HQPorner",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q192832",
+      "label_basis": "Adult pornographic video streaming portal restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "pornone.com",
+      "title": "PornOne",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q192832",
+      "label_basis": "Adult pornographic video portal inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "sunporno.com",
+      "title": "SunPorno",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q192832",
+      "label_basis": "Adult pornographic video website restricted to 18+ audiences"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "stripchat.com",
+      "title": "Stripchat",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q105725216",
+      "label_basis": "Adult live webcam streaming platform restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "bongacams.com",
+      "title": "BongaCams",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q28404590",
+      "label_basis": "Adult webcam website inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "livejasmin.com",
+      "title": "LiveJasmin",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q16572606",
+      "label_basis": "Adult webcam streaming service restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "cam4.com",
+      "title": "CAM4",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1027908",
+      "label_basis": "Adult live webcam community restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "myfreecams.com",
+      "title": "MyFreeCams",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q6944854",
+      "label_basis": "Adult webcam streaming platform inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "camsoda.com",
+      "title": "CamSoda",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q96374302",
+      "label_basis": "Adult webcam website restricted to 18+ audiences"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "fansly.com",
+      "title": "Fansly",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q111082459",
+      "label_basis": "Adult 18+ creator subscription platform inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "manyvids.com",
+      "title": "ManyVids",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q65066674",
+      "label_basis": "Adult 18+ video marketplace restricted to adult audiences"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "loyalfans.com",
+      "title": "LoyalFans",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q192832",
+      "label_basis": "Adult 18+ creator subscription website inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "justfor.fans",
+      "title": "JustForFans",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q85772377",
+      "label_basis": "Adult 18+ subscription content platform restricted to adults"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "clips4sale.com",
+      "title": "Clips4Sale",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q96375145",
+      "label_basis": "Adult 18+ video store restricted to adult users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "nhentai.net",
+      "title": "nhentai",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q105452815",
+      "label_basis": "Explicit adult comics and doujinshi website inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "rule34.xxx",
+      "title": "Rule34",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q3268737",
+      "label_basis": "Explicit adult imageboard restricted to 18+ audiences"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "e-hentai.org",
+      "title": "E-Hentai",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q17226498",
+      "label_basis": "Explicit adult comics archive inappropriate for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "tnaflix.com",
+      "title": "TNAFlix",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q23013881",
+      "label_basis": "Adult pornographic video sharing website restricted to 18+ users"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "bet365.com",
+      "title": "bet365",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q830948",
+      "label_basis": "Online sports betting and gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "1xbet.com",
+      "title": "1xBet",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q28669411",
+      "label_basis": "Online gambling and sportsbook website prohibited for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "dafabet.com",
+      "title": "Dafabet",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q5208328",
+      "label_basis": "Online betting and casino portal restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "fun88.com",
+      "title": "Fun88",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q5508670",
+      "label_basis": "Online gambling and sports betting platform restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "w88.com",
+      "title": "W88",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q56275567",
+      "label_basis": "Online casino and sports betting website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "m88.com",
+      "title": "M88",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q6751822",
+      "label_basis": "Online casino and sportsbook platform restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "stake.com",
+      "title": "Stake",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q109582370",
+      "label_basis": "Online cryptocurrency casino and sports betting site restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "pokerstars.com",
+      "title": "PokerStars",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q507461",
+      "label_basis": "Real-money online poker gambling platform restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "888casino.com",
+      "title": "888casino",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q4644991",
+      "label_basis": "Online casino gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "888poker.com",
+      "title": "888poker",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q4644995",
+      "label_basis": "Real-money online poker gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "betway.com",
+      "title": "Betway",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q4898996",
+      "label_basis": "Online gambling and sportsbook portal restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "unibet.com",
+      "title": "Unibet",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1756803",
+      "label_basis": "Online sports betting and casino website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "sbobet.com",
+      "title": "SBOBET",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1061108",
+      "label_basis": "Online bookmaker and casino gambling platform restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "bwin.com",
+      "title": "bwin",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q310481",
+      "label_basis": "Online sports betting and gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "williamhill.com",
+      "title": "William Hill",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1426227",
+      "label_basis": "Online bookmaker and gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "ladbrokes.com",
+      "title": "Ladbrokes",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1799875",
+      "label_basis": "Online betting and gaming website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "coral.co.uk",
+      "title": "Coral Sportsbook",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q5169442",
+      "label_basis": "Online sports betting and casino website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "paddypower.com",
+      "title": "Paddy Power",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1931325",
+      "label_basis": "Online bookmaker and gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "betfair.com",
+      "title": "Betfair",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q831144",
+      "label_basis": "Online betting exchange and casino platform restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "draftkings.com",
+      "title": "DraftKings",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q17011229",
+      "label_basis": "Online sportsbook and real-money wagering website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "fanduel.com",
+      "title": "FanDuel",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q5433663",
+      "label_basis": "Online sportsbook and real-money betting platform restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "betmgm.com",
+      "title": "BetMGM",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q96373467",
+      "label_basis": "Online sports betting and casino website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "22bet.com",
+      "title": "22Bet",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1368295",
+      "label_basis": "Online sports betting and casino portal restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "melbet.com",
+      "title": "MelBet",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1368295",
+      "label_basis": "Online bookmaker and casino gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "parimatch.com",
+      "title": "Parimatch",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q12138859",
+      "label_basis": "Online sports betting and gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "pinnacle.com",
+      "title": "Pinnacle Sportsbook",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q2095932",
+      "label_basis": "Online sportsbook and betting website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "betvictor.com",
+      "title": "BetVictor",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q4897321",
+      "label_basis": "Online gambling and bookmaker website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "partycasino.com",
+      "title": "PartyCasino",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q7140892",
+      "label_basis": "Online casino gambling website restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "partypoker.com",
+      "title": "PartyPoker",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q1414999",
+      "label_basis": "Online poker gambling platform restricted for minors"
+    },
+    {
+      "resource_type": "websites",
+      "domain": "leovegas.com",
+      "title": "LeoVegas Casino",
+      "label": "unsafe",
+      "evidence_url": "https://www.wikidata.org/wiki/Q18345388",
+      "label_basis": "Online casino and sports betting website restricted for minors"
+    }
+  ]
+}

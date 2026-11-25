@@ -10,6 +10,7 @@ if str(TRAINING_ROOT) not in sys.path:
     sys.path.insert(0, str(TRAINING_ROOT))
 
 from content_classification.content_model import (
+    calibrate_oof_temperature,
     calibrate_temperature,
     evaluate_model,
     fit_model,
@@ -357,6 +358,48 @@ class ContentModelTrainingTest(unittest.TestCase):
                 [],
                 [],
             )
+
+    def test_website_length_normalization_prevents_long_phishing_denominator_bias(self):
+        classes = ["education", "entertainment", "social", "unsafe", "unknown"]
+        rows = [
+            {"domain": f"short{i}.social-{i}.test", "title": "Social", "label": "social"}
+            for i in range(10)
+        ] + [
+            {
+                "domain": f"very-long-phishing-credential-verify-portal-{i}.unsafe-{i}.test",
+                "title": "Unsafe",
+                "label": "unsafe",
+            }
+            for i in range(10)
+        ] + [
+            {"domain": f"uni{i}.edu-{i}.test", "title": "Edu", "label": "education"}
+            for i in range(10)
+        ] + [
+            {"domain": f"stream{i}.ent-{i}.test", "title": "Ent", "label": "entertainment"}
+            for i in range(10)
+        ] + [
+            {"domain": f"portal{i}.unk-{i}.test", "title": "Unk", "label": "unknown"}
+            for i in range(10)
+        ]
+        model = fit_model(
+            rows,
+            "websites",
+            classes,
+            {"minimum_n": 2, "maximum_n": 4},
+            alpha=0.2,
+        )
+        defaults = model["default_log_likelihood"]
+        self.assertAlmostEqual(defaults["unsafe"], defaults["social"], places=9)
+        oof_temp, oof_meta = calibrate_oof_temperature(
+            rows,
+            "websites",
+            classes,
+            {"minimum_n": 2, "maximum_n": 4},
+            alpha=0.2,
+            folds=5,
+        )
+        self.assertGreater(oof_temp, 0.0)
+        self.assertEqual(oof_meta["sample_count"], len(rows))
 
 
 if __name__ == "__main__":

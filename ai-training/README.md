@@ -53,7 +53,10 @@ HTTPS và căn cứ gán nhãn trước khi collector chấp nhận.
 
 Catalog bổ sung cho Việt Nam có 15 executable đã đối chiếu; catalog website
 Việt Nam có 120 domain, cân bằng 30 mẫu cho mỗi nhãn `education`,
-`entertainment`, `social` và `unknown`.
+`entertainment`, `social` và `unknown`. Nhóm `unsafe` ngoài feed phishing còn có
+`reviewed_unsafe_website_catalog.json` (domain người lớn 18+ và cờ bạc trực tuyến
+đối chiếu nguồn Wikidata, tách biệt hoàn toàn khỏi tập benchmark độc lập và dùng
+để cách ly tự động các bản ghi xung đột nhãn từ nguồn mở).
 
 Train và đánh giá hai model phân loại bằng
 `training/train_content_models.py`. Artifact là JSON thuần có thể kiểm tra trước

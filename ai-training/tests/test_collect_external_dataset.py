@@ -330,6 +330,40 @@ class ExternalDatasetCollectionTest(unittest.TestCase):
         gamevui = next(record for record in records if record["domain"] == "gamevui.vn")
         self.assertEqual(gamevui["label"], "entertainment")
 
+    def test_project_unsafe_website_catalog_is_auditable_and_eval_disjoint(self):
+        from content_classification.content_model import leakage_group
+        from content_classification.validate_dataset import normalize_domain
+
+        catalog_path = (
+            TRAINING_ROOT
+            / "content_classification"
+            / "reviewed_unsafe_website_catalog.json"
+        )
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        records = catalog["records"]
+        self.assertGreaterEqual(len(records), 60)
+        domains = [normalize_domain(record["domain"]) for record in records]
+        self.assertEqual(len(set(domains)), len(records))
+        for record in records:
+            self.assertEqual(record["resource_type"], "websites")
+            self.assertEqual(record["label"], "unsafe")
+            self.assertTrue(record["evidence_url"].startswith("https://"))
+            self.assertTrue(record["label_basis"].strip())
+
+        eval_csv = TRAINING_ROOT / "datasets" / "content" / "hybrid_eval_websites.csv"
+        if eval_csv.is_file():
+            with eval_csv.open(encoding="utf-8-sig", newline="") as handle:
+                eval_rows = list(csv.DictReader(handle))
+            eval_domains = {normalize_domain(row["domain"]) for row in eval_rows}
+            out_groups = {
+                leakage_group("websites", row["domain"])
+                for row in eval_rows
+                if row.get("cohort") == "out_of_lookup"
+            }
+            for domain in domains:
+                self.assertNotIn(domain, eval_domains)
+                self.assertNotIn(leakage_group("websites", domain), out_groups)
+
 
 if __name__ == "__main__":
     unittest.main()

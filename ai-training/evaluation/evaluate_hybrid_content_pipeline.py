@@ -161,41 +161,54 @@ const { getGeminiModel } = require('./src/utils/aiConfig');
 async function run() {
   const items = JSON.parse(process.argv[1]);
   const out = {};
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   for (const item of items) {
-    const t0 = process.hrtime.bigint();
-    try {
-      if (item.resource_type === 'websites') {
-        const res = await s.classifyWebDomainWithGemini(item.domain);
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      const t0 = process.hrtime.bigint();
+      try {
+        if (item.resource_type === 'websites') {
+          const res = await s.classifyWebDomainWithGemini(item.domain);
+          const elapsedMs = Number(process.hrtime.bigint() - t0) / 1e6;
+          out[item.cache_key] = {
+            label: res.category,
+            latency_ms: elapsedMs,
+            model_id: getGeminiModel(),
+            status: 'ok'
+          };
+        } else {
+          const res = await s.classifyAppWithGemini({
+            app_name: item.app_name,
+            product_name: item.product_name,
+            file_description: item.file_description
+          });
+          const elapsedMs = Number(process.hrtime.bigint() - t0) / 1e6;
+          out[item.cache_key] = {
+            label: res.category,
+            latency_ms: elapsedMs,
+            model_id: getGeminiModel(),
+            status: 'ok'
+          };
+        }
+        break;
+      } catch (err) {
         const elapsedMs = Number(process.hrtime.bigint() - t0) / 1e6;
+        const msg = String(err && err.message ? err.message : err);
+        const transient = /503|429|UNAVAILABLE|RESOURCE_EXHAUSTED|fetch failed|ETIMEDOUT|ECONNRESET/i.test(msg);
+        if (transient && attempt < 4) {
+          await sleep(1500 * attempt);
+          continue;
+        }
         out[item.cache_key] = {
-          label: res.category,
+          label: 'unknown',
           latency_ms: elapsedMs,
           model_id: getGeminiModel(),
-          status: 'ok'
+          status: 'error',
+          error: msg
         };
-      } else {
-        const res = await s.classifyAppWithGemini({
-          app_name: item.app_name,
-          product_name: item.product_name,
-          file_description: item.file_description
-        });
-        const elapsedMs = Number(process.hrtime.bigint() - t0) / 1e6;
-        out[item.cache_key] = {
-          label: res.category,
-          latency_ms: elapsedMs,
-          model_id: getGeminiModel(),
-          status: 'ok'
-        };
+        break;
       }
-    } catch (err) {
-      const elapsedMs = Number(process.hrtime.bigint() - t0) / 1e6;
-      out[item.cache_key] = {
-        label: 'unknown',
-        latency_ms: elapsedMs,
-        model_id: getGeminiModel(),
-        status: 'error',
-        error: err.message
-      };
     }
   }
   process.stdout.write('__JSON_START__' + JSON.stringify(out) + '__JSON_END__');
@@ -536,8 +549,12 @@ def evaluate_hybrid_pipeline(
             routed_State[resource_type].append(item_state)
 
             if route_res["requires_gemini"]:
+                cached_item = cache_data["entries"].get(cache_key)
+                has_valid_cache = (
+                    isinstance(cached_item, dict) and cached_item.get("status") == "ok"
+                )
                 need_live = gemini_mode == "live" or (
-                    gemini_mode == "auto" and cache_key not in cache_data["entries"]
+                    gemini_mode == "auto" and not has_valid_cache
                 )
                 if need_live:
                     if resource_type == "apps":
@@ -561,6 +578,15 @@ def evaluate_hybrid_pipeline(
 
     if pending_gemini_requests:
         live_results = call_backend_gemini_batch(pending_gemini_requests)
+        failed_keys = [
+            key for key, val in live_results.items() if val.get("status") != "ok"
+        ]
+        if failed_keys:
+            first_err = live_results[failed_keys[0]].get("error", "unknown error")
+            raise RuntimeError(
+                f"Live Gemini fallback failed for {len(failed_keys)} item(s) "
+                f"(first={failed_keys[0]}): {first_err}"
+            )
         cache_data["updated_at"] = _now_iso()
         cache_data["entries"].update(live_results)
         _write_json_atomic(gemini_cache_path, cache_data)

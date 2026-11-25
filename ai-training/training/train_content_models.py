@@ -21,6 +21,7 @@ if str(TRAINING_ROOT) not in sys.path:
 
 from content_classification.content_model import (
     APP_ENSEMBLE_MODEL_TYPE,
+    calibrate_oof_temperature,
     calibrate_temperature,
     evaluate_model,
     fit_app_ensemble_model,
@@ -402,7 +403,7 @@ def select_hyperparameters(
                 training_metadata=training_metadata,
             )
             temperature, calibration = calibrate_temperature(
-                model, validation_records, maximum=12.0
+                model, validation_records, maximum=30.0
             )
             model["temperature"] = temperature
             metrics = evaluate_model(model, validation_records)
@@ -742,6 +743,19 @@ def train_resource_model(
             + model["metadata_model"]["training_summary"]["vocabulary_size"]
         )
     else:
+        oof_temperature, oof_calibration = calibrate_oof_temperature(
+            final_fit_records,
+            resource_type,
+            classes,
+            selection_model["feature_config"],
+            alpha=selection_model["alpha"],
+            seed=f"{config['random_seed']}:{resource_type}:oof",
+            maximum=30.0,
+        )
+        calibration = {
+            **oof_calibration,
+            "validation_selection_calibration": calibration,
+        }
         model = fit_model(
             final_fit_records,
             resource_type,
@@ -749,7 +763,7 @@ def train_resource_model(
             selection_model["feature_config"],
             alpha=selection_model["alpha"],
             confidence_threshold=taxonomy["confidence_threshold"],
-            temperature=selection_model["temperature"],
+            temperature=oof_temperature,
             training_metadata=final_training_metadata,
         )
     test_metrics = evaluate_model(model, splits["test"])
@@ -771,7 +785,7 @@ def train_resource_model(
             "Website evaluation covers domain text only; title is intentionally excluded."
         )
         limitations.append(
-            "Temperature is selected from train-only validation predictions, then reused after the final train-plus-validation refit."
+            "Temperature for the final train-plus-validation refit is calibrated via 5-fold stratified-group out-of-fold NLL without accessing the held-out test split."
         )
     if not acceptance["gates"][0]["passed"]:
         limitations.append(

@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Version = "1.0.30",
+    [string]$Version = "1.0.31",
     [string]$PythonExe,
     [string]$InnoSetupCompiler,
     [string]$EyeDistanceProfilePath,
@@ -11,6 +11,7 @@ param(
     [string]$AppExactLookupPath,
     [string]$WebExactLookupPath,
     [switch]$SkipDependencyInstall,
+    [switch]$SkipExecutableSelfTest,
     [switch]$SkipInstaller
 )
 
@@ -210,22 +211,27 @@ if ($PostureProfilePath) {
     Copy-JsonAssetWithHash $PostureProfilePath "posture_profile_v1.json"
 }
 
-foreach ($component in @("service/ChildMonitorService", "companion/ChildMonitorCompanion")) {
-    # The Companion is a windowed executable: explicitly wait for its exit code.
-    $testName = [IO.Path]::GetFileName($component)
-    $testOut = Join-Path $WorkRoot "$testName-selftest.stdout.log"
-    $testErr = Join-Path $WorkRoot "$testName-selftest.stderr.log"
-    $selfTest = Start-Process -FilePath "$ReleaseRoot/$component.exe" `
-        -ArgumentList "--self-test" -WindowStyle Hidden -PassThru -Wait `
-        -RedirectStandardOutput $testOut -RedirectStandardError $testErr
-    if ($selfTest.ExitCode -ne 0) {
-        throw "$testName self-test failed ($($selfTest.ExitCode)); see $testErr"
+if (-not $SkipExecutableSelfTest) {
+    foreach ($component in @("service/ChildMonitorService", "companion/ChildMonitorCompanion")) {
+        # The Companion is a windowed executable: explicitly wait for its exit code.
+        $testName = [IO.Path]::GetFileName($component)
+        $testOut = Join-Path $WorkRoot "$testName-selftest.stdout.log"
+        $testErr = Join-Path $WorkRoot "$testName-selftest.stderr.log"
+        $selfTest = Start-Process -FilePath "$ReleaseRoot/$component.exe" `
+            -ArgumentList "--self-test" -WindowStyle Hidden -PassThru -Wait `
+            -RedirectStandardOutput $testOut -RedirectStandardError $testErr
+        if ($selfTest.ExitCode -ne 0) {
+            throw "$testName self-test failed ($($selfTest.ExitCode)); see $testErr"
+        }
+        Write-Host "$testName self-test passed."
     }
-    Write-Host "$testName self-test passed."
+} else {
+    Write-Warning "Skipped executable --self-test (-SkipExecutableSelfTest)."
 }
 Invoke-Checked $PythonExe "$BuildRoot\verify-text-capabilities.py" `
     "--release-root" $ReleaseRoot "--expected-version" $Version
 Invoke-Checked $PythonExe "$BuildRoot\verify-web-policy.py" "--release-root" $ReleaseRoot
+Invoke-Checked $PythonExe "$BuildRoot\verify-content-models.py" "--release-root" $ReleaseRoot
 
 if (-not $SkipInstaller) {
     if (-not $InnoSetupCompiler) {

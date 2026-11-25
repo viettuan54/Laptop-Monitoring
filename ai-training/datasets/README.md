@@ -142,7 +142,10 @@ Nguồn và giấy phép được khai báo tại
 - `reviewed_vietnamese_app_catalog.json` cho process của ứng dụng Việt Nam, bao gồm
   bộ gõ, liên lạc, khai thuế, kế toán và giải trí;
 - `reviewed_vietnamese_website_catalog.json` cho các website Việt Nam đã đối chiếu
-  thủ công theo mục đích chính và có URL bằng chứng cho từng bản ghi.
+  thủ công theo mục đích chính và có URL bằng chứng cho từng bản ghi;
+- `reviewed_unsafe_website_catalog.json` cho nhóm domain người lớn (18+) và cờ bạc
+  trực tuyến có đối chiếu thực thể Wikidata (tách biệt 100% khỏi tập benchmark
+  ngoài lookup và giúp cách ly tự động domain xung đột nhãn với nguồn mở).
 
 Catalog Việt Nam hiện có 15 process ứng dụng và 120 website; phần website được
 cân bằng 30 mẫu cho mỗi nhóm `education`, `entertainment`, `social`, `unknown`.
@@ -239,8 +242,10 @@ Pipeline thực hiện các bước sau:
 2. chia `60%/20%/20%` thành train/validation/test bằng seed cố định;
 3. gom các subdomain cùng họ vào đúng một split; loại metadata ngoài trùng với
    product family ở validation/test trước khi fit;
-4. chọn n-gram/alpha và hiệu chỉnh temperature chỉ trên validation;
-5. web model được refit trên `train + validation`; app ensemble giữ train-only
+4. chọn n-gram/alpha trên validation (với chuẩn hóa L1 theo độ dài domain và khối
+   lượng lớp cho website nhằm triệt tiêu thiên lệch độ dài của nhóm domain phishing);
+5. web model được refit trên `train + validation` và hiệu chỉnh lại temperature
+   bằng 5-fold stratified-group out-of-fold NLL; app ensemble giữ train-only
    và dùng validation để calibration vì refit làm mất hiệu lực operating
    temperature; tuyệt đối không đưa test vào bước fit;
 6. mở test sau khi đã chọn cấu hình, tính accuracy, macro-F1, confusion matrix,

@@ -227,6 +227,9 @@ def extract_features(resource_type: str, key: str, config: dict) -> Counter:
     return features
 
 
+WEBSITE_TARGET_DOCUMENT_MASS = 40.0
+
+
 def fit_model(
     records: list[dict],
     resource_type: str,
@@ -244,7 +247,12 @@ def fit_model(
         raise ValueError("training records cannot be empty")
     classes = list(classes)
     key_field = "app_name" if resource_type == "apps" else "domain"
-    feature_counts = {label: Counter() for label in classes}
+    normalize_length = resource_type == "websites"
+    feature_counts = (
+        {label: defaultdict(float) for label in classes}
+        if normalize_length
+        else {label: Counter() for label in classes}
+    )
     class_documents = Counter()
     vocabulary = set()
     for record in records:
@@ -252,7 +260,16 @@ def fit_model(
         if label not in feature_counts:
             raise ValueError(f"label outside model classes: {label}")
         features = extract_features(resource_type, record[key_field], feature_config)
-        feature_counts[label].update(features)
+        if normalize_length:
+            # L1 document-length normalization (Rennie et al., ICML 2003) prevents
+            # long multi-subdomain phishing strings from inflating the unsafe
+            # denominator and biasing short brand domains toward social.
+            doc_total = sum(features.values()) or 1.0
+            scale = WEBSITE_TARGET_DOCUMENT_MASS / doc_total
+            for feature, count in features.items():
+                feature_counts[label][feature] += count * scale
+        else:
+            feature_counts[label].update(features)
         vocabulary.update(features)
         class_documents[label] += 1
     missing = [label for label in classes if class_documents[label] == 0]
@@ -262,11 +279,24 @@ def fit_model(
     vocabulary_size = len(vocabulary)
     default_log_likelihood = {}
     transposed = defaultdict(dict)
-    for label in classes:
-        denominator = sum(feature_counts[label].values()) + alpha * vocabulary_size
-        default_log_likelihood[label] = math.log(alpha / denominator)
-        for feature, count in feature_counts[label].items():
-            transposed[feature][label] = math.log((count + alpha) / denominator)
+    if normalize_length:
+        mean_docs = len(records) / len(classes)
+        target_class_mass = mean_docs * WEBSITE_TARGET_DOCUMENT_MASS
+        for label in classes:
+            raw_mass = sum(feature_counts[label].values()) or 1.0
+            class_scale = target_class_mass / raw_mass
+            denominator = target_class_mass + alpha * vocabulary_size
+            default_log_likelihood[label] = math.log(alpha / denominator)
+            for feature, value in feature_counts[label].items():
+                transposed[feature][label] = math.log(
+                    (value * class_scale + alpha) / denominator
+                )
+    else:
+        for label in classes:
+            denominator = sum(feature_counts[label].values()) + alpha * vocabulary_size
+            default_log_likelihood[label] = math.log(alpha / denominator)
+            for feature, count in feature_counts[label].items():
+                transposed[feature][label] = math.log((count + alpha) / denominator)
 
     model = {
         "model_version": MODEL_VERSION,
@@ -286,6 +316,11 @@ def fit_model(
             "record_count": len(records),
             "class_counts": dict(sorted(class_documents.items())),
             "vocabulary_size": vocabulary_size,
+            "feature_weighting": (
+                "l1_document_and_class_mass_normalized_v1"
+                if normalize_length
+                else "raw_multinomial_counts_v1"
+            ),
             **(training_metadata or {}),
         },
         "deployment_approved": False,
@@ -410,7 +445,7 @@ def calibrate_temperature(
     records: list[dict],
     *,
     minimum: float = 0.5,
-    maximum: float = 8.0,
+    maximum: float = 30.0,
     step: float = 0.05,
 ) -> tuple[float, dict]:
     if not records:
@@ -434,6 +469,111 @@ def calibrate_temperature(
         "validation_nll": validation_nll,
         "uncalibrated_validation_nll": baseline_nll,
         "sample_count": len(records),
+        "search": {"minimum": minimum, "maximum": maximum, "step": step},
+    }
+
+
+def calibrate_oof_temperature(
+    records: list[dict],
+    resource_type: str,
+    classes: list[str] | tuple[str, ...],
+    feature_config: dict,
+    *,
+    alpha: float = 1.0,
+    folds: int = 5,
+    seed: str = "content-model-oof-v1",
+    minimum: float = 0.5,
+    maximum: float = 30.0,
+    step: float = 0.05,
+) -> tuple[float, dict]:
+    """Calibrate softmax temperature via stratified-group out-of-fold NLL."""
+    if folds < 2:
+        raise ValueError("folds must be at least 2")
+    if not records:
+        raise ValueError("calibration records cannot be empty")
+    classes = list(classes)
+    key_field = "app_name" if resource_type == "apps" else "domain"
+    groups = defaultdict(list)
+    for record in records:
+        key = canonical_key(resource_type, record[key_field])
+        groups[leakage_group(resource_type, key)].append(dict(record, **{key_field: key}))
+    ordered_groups = sorted(
+        groups.items(),
+        key=lambda item: (-len(item[1]), stable_digest(item[0], seed)),
+    )
+    fold_records = [[] for _ in range(folds)]
+    fold_label_counts = [Counter() for _ in range(folds)]
+    for _, group_items in ordered_groups:
+        group_labels = Counter(item["label"] for item in group_items)
+        selected_fold = min(
+            range(folds),
+            key=lambda idx: (
+                sum(fold_label_counts[idx][lbl] for lbl in group_labels),
+                len(fold_records[idx]),
+                idx,
+            ),
+        )
+        fold_records[selected_fold].extend(group_items)
+        fold_label_counts[selected_fold].update(group_labels)
+
+    oof_logits = []
+    for fold_idx in range(folds):
+        train_fold = [
+            item
+            for idx, bucket in enumerate(fold_records)
+            if idx != fold_idx
+            for item in bucket
+        ]
+        val_fold = fold_records[fold_idx]
+        if not val_fold:
+            continue
+        present_classes = {item["label"] for item in train_fold}
+        if len(present_classes) < len(classes):
+            continue
+        fold_model = fit_model(
+            train_fold,
+            resource_type,
+            classes,
+            feature_config,
+            alpha=alpha,
+        )
+        for item in val_fold:
+            oof_logits.append((item["label"], predict_logits(fold_model, item[key_field])))
+
+    if not oof_logits:
+        full_model = fit_model(
+            records,
+            resource_type,
+            classes,
+            feature_config,
+            alpha=alpha,
+        )
+        return calibrate_temperature(
+            full_model,
+            records,
+            minimum=minimum,
+            maximum=maximum,
+            step=step,
+        )
+
+    candidates = []
+    count = int(round((maximum - minimum) / step))
+    for index in range(count + 1):
+        temperature = round(minimum + index * step, 10)
+        loss = 0.0
+        for actual, item_logits in oof_logits:
+            probability = _softmax(item_logits, temperature)[actual]
+            loss -= math.log(max(probability, 1e-15))
+        candidates.append((loss / len(oof_logits), temperature))
+    oof_nll, temperature = min(candidates)
+    baseline_nll = next(loss for loss, value in candidates if value == 1.0)
+    return temperature, {
+        "method": "stratified_group_oof_grid_search_negative_log_likelihood",
+        "folds": folds,
+        "temperature": temperature,
+        "oof_nll": oof_nll,
+        "uncalibrated_oof_nll": baseline_nll,
+        "sample_count": len(oof_logits),
         "search": {"minimum": minimum, "maximum": maximum, "step": step},
     }
 
