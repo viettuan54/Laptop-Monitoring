@@ -14,6 +14,7 @@ if SERVICE_ROOT not in sys.path:
     sys.path.insert(0, SERVICE_ROOT)
 
 from offline_queue import OfflineQueue
+from policy_time import POLICY_TIME_ZONE
 
 
 class FakeResponse:
@@ -71,7 +72,7 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
                 "SELECT client_record_id, synced FROM app_logs ORDER BY client_record_id"
             ).fetchall())
 
-    def test_atomic_app_record_splits_duration_at_local_midnight(self):
+    def test_atomic_app_record_splits_duration_at_policy_midnight(self):
         record_id = str(uuid.uuid4())
         persisted_id, inserted = self.queue.record_app_usage(
             "browser.exe",
@@ -150,8 +151,8 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
         self.assertAlmostEqual(row[2], 0.91)
 
     def test_rebuild_recent_usage_removes_overnight_and_lock_screen_corruption(self):
-        local_tz = datetime.now().astimezone().tzinfo
-        today = datetime.now().date()
+        local_tz = POLICY_TIME_ZONE
+        today = datetime.now(POLICY_TIME_ZONE).date()
         valid_start = datetime.combine(
             today,
             datetime.min.time(),
@@ -210,8 +211,8 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
 
     def test_schema_upgrade_repairs_recent_usage_once(self):
         legacy_path = os.path.join(self.temp_dir.name, "legacy-usage.db")
-        local_tz = datetime.now().astimezone().tzinfo
-        today = datetime.now().date()
+        local_tz = POLICY_TIME_ZONE
+        today = datetime.now(POLICY_TIME_ZONE).date()
         start = datetime.combine(today, datetime.min.time(), tzinfo=local_tz)
         connection = sqlite3.connect(legacy_path)
         try:
@@ -273,7 +274,7 @@ class OfflineQueueIntegrationTest(unittest.TestCase):
             logon_synced = connection.execute(
                 "SELECT synced FROM app_logs WHERE app_name = 'LogonUI.exe'"
             ).fetchone()[0]
-        self.assertEqual(version, "2")
+        self.assertEqual(version, "3")
         self.assertEqual(logon_synced, 1)
 
     def test_only_backend_acknowledged_records_are_marked_synced(self):

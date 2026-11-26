@@ -63,17 +63,21 @@ class AppGraph(val context: Context) {
         session.begin(pair)
         prefs.edit().putString("email", email.trim()).apply()
     }
-    suspend fun logout() = authLock.withLock {
+    fun logout() {
+        val pair = session.tokens
+        val logoutServer = server
         val pushId = prefs.getLong("push_id", 0)
-        if (pushId > 0 && session.tokens != null) api.removePush(pushId)
-        if (firebaseReady) {
-            FirebaseMessaging.getInstance().isAutoInitEnabled = false
-            runCatching { withTimeout(15_000) { FirebaseMessaging.getInstance().deleteToken().await() } }
-        }
-        session.tokens?.let { pair -> runCatching { api.logout(mapOf("refreshToken" to pair.refreshToken)) } }
+        // No network call or auth mutex may delay invalidating the local session.
+        // Advancing generation also invalidates in-flight push registrations.
         session.clear()
         prefs.edit().remove("push_id").remove("email").apply()
         context.getSystemService(NotificationManager::class.java).cancelAll()
+        scope.launch {
+            // Serialized with registration/login and skipped if a new login won.
+            runCatching { clearExpiredPush() }
+            if (pair != null) revokeSignedOutSession(
+                createLogoutApi(logoutServer, pair.accessToken), pair.refreshToken, pushId)
+        }
     }
     suspend fun clearExpiredPush() = authLock.withLock {
         // A later successful login wins over cleanup queued by an older request.

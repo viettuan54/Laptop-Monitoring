@@ -9,6 +9,7 @@ import json
 from datetime import datetime, timedelta, time as datetime_time
 
 from runtime_paths import agent_root
+from policy_time import POLICY_TIME_ZONE
 from text_privacy import SUPPORTED_TEXT_SOURCES, clean_text, eligible_timestamp, policy_enabled, safe_web_metadata, protect_text, unprotect_text
 
 # Cấu hình logging
@@ -16,7 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 
 
 MAX_APP_SEGMENT_SECONDS = 120
-USAGE_ACCOUNTING_VERSION = 2
+USAGE_ACCOUNTING_VERSION = 3
 USAGE_REBUILD_DAYS = 2
 NON_USAGE_APPS = frozenset({"lockapp.exe", "logonui.exe"})
 
@@ -297,12 +298,13 @@ class OfflineQueue:
         return parsed
 
     @classmethod
-    def split_usage_by_local_date(cls, start_time, end_time, duration_seconds):
-        """Allocate one short active-use segment to its captured local dates.
+    def split_usage_by_policy_date(cls, start_time, end_time, duration_seconds):
+        """Allocate one short active-use segment to Vietnam policy dates.
 
         The Companion timestamps include the user's real UTC offset.  Using those
-        timestamps, rather than the Service receipt time, prevents delayed records
-        from being charged to a later day.  A segment spanning midnight is divided
+        timestamps converted to POLICY_TIME_ZONE, rather than the Service receipt
+        time, prevents delayed records from being charged to a later day.
+        A segment spanning Vietnam midnight is divided
         proportionally while preserving the exact reported duration.
         """
         if (
@@ -313,25 +315,23 @@ class OfflineQueue:
         ):
             raise ValueError("App usage duration is outside the accepted segment range")
 
-        start = cls._parse_usage_timestamp(start_time)
-        end = cls._parse_usage_timestamp(end_time)
+        start = cls._parse_usage_timestamp(start_time).astimezone(POLICY_TIME_ZONE)
+        end = cls._parse_usage_timestamp(end_time).astimezone(POLICY_TIME_ZONE)
         elapsed_seconds = (end - start).total_seconds()
         if elapsed_seconds <= 0 or elapsed_seconds > MAX_APP_SEGMENT_SECONDS:
             raise ValueError("App usage timestamp interval is invalid")
 
-        # Keep the calendar boundary of the user offset captured at segment start.
-        local_end = end.astimezone(start.tzinfo)
         cursor = start
         wall_parts = []
-        while cursor.date() < local_end.date():
+        while cursor.date() < end.date():
             next_midnight = datetime.combine(
                 cursor.date() + timedelta(days=1),
                 datetime_time.min,
-                tzinfo=start.tzinfo,
+                tzinfo=POLICY_TIME_ZONE,
             )
             wall_parts.append((cursor.date().isoformat(), (next_midnight - cursor).total_seconds()))
             cursor = next_midnight
-        wall_parts.append((cursor.date().isoformat(), (local_end - cursor).total_seconds()))
+        wall_parts.append((cursor.date().isoformat(), (end - cursor).total_seconds()))
 
         positive_parts = [(date_key, seconds) for date_key, seconds in wall_parts if seconds > 0]
         total_wall_seconds = sum(seconds for _, seconds in positive_parts)
@@ -384,7 +384,7 @@ class OfflineQueue:
     ):
         """Persist an app segment and its per-day totals atomically and idempotently."""
         client_record_id = client_record_id or str(uuid.uuid4())
-        allocations = self.split_usage_by_local_date(
+        allocations = self.split_usage_by_policy_date(
             start_time,
             end_time,
             duration_seconds,
@@ -421,10 +421,14 @@ class OfflineQueue:
         return client_record_id, inserted
 
     def _rebuild_recent_daily_usage(self, connection, days=USAGE_REBUILD_DAYS):
-        """Repair recent totals once when upgrading from receipt-date accounting."""
+        """Repair recent totals when upgrading receipt/local-date accounting."""
         safe_days = max(1, min(int(days), 31))
-        today = datetime.now().date()
+        today = datetime.now(POLICY_TIME_ZONE).date()
         cutoff = today - timedelta(days=safe_days - 1)
+        # Version 2 on a Windows zone ahead of Vietnam could already have
+        # charged today's activity to tomorrow. Rebuild that adjacent date too
+        # so its stale counter cannot exhaust the next day's quota.
+        through = today + timedelta(days=1)
         scan_from = cutoff - timedelta(days=1)
         rows = connection.execute(
             """SELECT client_record_id, app_name, start_time, end_time, duration_seconds
@@ -443,7 +447,7 @@ class OfflineQueue:
                 quarantined_record_ids.append(client_record_id)
                 continue
             try:
-                allocations = self.split_usage_by_local_date(
+                allocations = self.split_usage_by_policy_date(
                     start_time,
                     end_time,
                     duration_seconds,
@@ -454,14 +458,14 @@ class OfflineQueue:
                 continue
             repaired_rows += 1
             for date_key, seconds in allocations.items():
-                if cutoff.isoformat() <= date_key <= today.isoformat():
+                if cutoff.isoformat() <= date_key <= through.isoformat():
                     repaired_allocations[date_key] = (
                         repaired_allocations.get(date_key, 0) + seconds
                     )
 
         connection.execute(
             "DELETE FROM daily_usage WHERE date BETWEEN ? AND ?",
-            (cutoff.isoformat(), today.isoformat()),
+            (cutoff.isoformat(), through.isoformat()),
         )
         if quarantined_record_ids:
             # These rows represent lock/sleep rather than active use. Marking them
@@ -813,10 +817,10 @@ class OfflineQueue:
             return None, False
 
     def add_daily_usage(self, seconds, usage_date=None):
-        """Cộng dồn số giây sử dụng máy cho ngày hiện tại (YYYY-MM-DD local)."""
+        """Cộng dồn số giây sử dụng cho ngày chính sách Việt Nam (YYYY-MM-DD)."""
         if isinstance(seconds, bool) or not isinstance(seconds, int) or seconds <= 0:
             raise ValueError("Daily usage increment must be a positive integer")
-        date_key = usage_date or datetime.now().strftime("%Y-%m-%d")
+        date_key = usage_date or datetime.now(POLICY_TIME_ZONE).date().isoformat()
         try:
             datetime.strptime(date_key, "%Y-%m-%d")
         except (TypeError, ValueError):
@@ -834,8 +838,8 @@ class OfflineQueue:
             logging.error(f"Failed to update daily usage: {e}")
 
     def get_daily_usage(self, usage_date=None):
-        """Lấy tổng số giây đã dùng máy hôm nay."""
-        date_key = usage_date or datetime.now().strftime("%Y-%m-%d")
+        """Lấy tổng số giây cho ngày chính sách Việt Nam, mặc định là hôm nay."""
+        date_key = usage_date or datetime.now(POLICY_TIME_ZONE).date().isoformat()
         try:
             with self.get_connection() as conn:
                 cursor = conn.cursor()

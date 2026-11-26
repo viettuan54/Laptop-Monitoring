@@ -149,7 +149,8 @@ class ParentViewModel(application: Application) : AndroidViewModel(application) 
     fun logout() = action {
         advisor.reset()
         loadJob?.cancel(); pageJob?.cancel(); revision++
-        graph.logout(); state = ParentState()
+        state = ParentState()
+        graph.logout()
     }
     fun loadFamily(preferChild: Long? = state.childId) {
         closeScreenshot()

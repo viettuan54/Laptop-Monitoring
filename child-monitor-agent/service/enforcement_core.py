@@ -9,6 +9,7 @@ import hashlib
 from datetime import datetime
 
 from runtime_paths import agent_root
+from policy_time import POLICY_TIME_ZONE
 from text_privacy import POLICY_LEASE_SECONDS, policy_enabled
 
 # Cấu hình logging
@@ -443,7 +444,9 @@ class EnforcementCore:
         if settings.get("is_locked", False):
             return True, "Parent has manually locked the device.", 0
 
-        now = datetime.now()
+        # Capture one policy instant for both the schedule and quota day, even
+        # if midnight passes before the SQLite read below.
+        now = datetime.now(POLICY_TIME_ZONE)
         current_time_str = now.strftime("%H:%M:%S")
 
         start_time_str = settings.get("allowed_start_time", "07:00:00")
@@ -475,7 +478,7 @@ class EnforcementCore:
             return False, "OK", -1
         max_allowed_seconds = daily_limit_minutes * 60
 
-        used_seconds = self.offline_queue.get_daily_usage()
+        used_seconds = self.offline_queue.get_daily_usage(now.date().isoformat())
         remaining_seconds = max_allowed_seconds - used_seconds
 
         if remaining_seconds <= 0:

@@ -14,7 +14,7 @@ from enforcement_core import EnforcementCore
 
 
 class FakeQueue:
-    def get_daily_usage(self):
+    def get_daily_usage(self, usage_date=None):
         return 0
 
 
@@ -91,7 +91,7 @@ class EnforcementCoreTest(unittest.TestCase):
         class FakeDateTime(enforcement_core.datetime):
             @classmethod
             def now(cls, tz=None):
-                return cls(2026, 7, 24, 23, 30, 0)
+                return cls(2026, 7, 24, 23, 30, 0, tzinfo=tz)
 
         with patch.object(enforcement_core, "datetime", FakeDateTime):
             should_lock, _, _ = self.core.check_policy_status()
@@ -104,7 +104,7 @@ class EnforcementCoreTest(unittest.TestCase):
         class FakeDateTime(enforcement_core.datetime):
             @classmethod
             def now(cls, tz=None):
-                return cls(2026, 7, 24, 12, 0, 0)
+                return cls(2026, 7, 24, 12, 0, 0, tzinfo=tz)
 
         with patch.object(enforcement_core, "datetime", FakeDateTime):
             should_lock, _, _ = self.core.check_policy_status()
@@ -115,7 +115,7 @@ class EnforcementCoreTest(unittest.TestCase):
         class FakeDateTime(enforcement_core.datetime):
             @classmethod
             def now(cls, tz=None):
-                return cls(2026, 10, 10, hour, 30, 0)
+                return cls(2026, 10, 10, hour, 30, 0, tzinfo=tz)
 
         with patch.object(enforcement_core, "datetime", FakeDateTime), patch.object(
             self.core.offline_queue, "get_daily_usage", return_value=used_seconds

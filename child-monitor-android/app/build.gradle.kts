@@ -5,7 +5,10 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
 }
-if (file("google-services.json").exists()) { apply(plugin = "com.google.gms.google-services") }
+// Isolated QA uses loopback fixtures and must not register with the real Firebase project.
+if (file("google-services.json").exists() && providers.gradleProperty("isolatedQa").orNull != "true") {
+    apply(plugin = "com.google.gms.google-services")
+}
 val apiBaseUrl = providers.gradleProperty("API_BASE_URL").getOrElse("https://api.tuansosad.id.vn/").trim()
 val apiUri = URI(apiBaseUrl)
 val qaInstance = providers.gradleProperty("qaInstance").orNull
@@ -23,8 +26,8 @@ android {
             "vn.laptopchildren.parent.qa" + (qaInstance?.let { ".$it" } ?: "") else "vn.laptopchildren.parent"
         minSdk = 26
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.7.0"
+        versionCode = 9
+        versionName = "0.7.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.trimEnd('/')}/\"")
     }
