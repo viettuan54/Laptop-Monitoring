@@ -1,4 +1,6 @@
-# Child Monitor Agent
+# Child Monitor Agent (v1.0.31)
+
+Agent **1.0.31** chuẩn hóa chính sách múi giờ `Asia/Ho_Chi_Minh` trên mọi thiết lập múi giờ Windows, đồng bộ chu kỳ chụp màn hình định kỳ theo từng hồ sơ trẻ và củng cố hàng đợi ngoại tuyến.
 
 Agent **1.0.28** bổ sung tiện ích chặn website đang mở khi phụ huynh bật lại chính sách.
 Cần cài tiện ích một lần trong từng trình duyệt của trẻ; xem [hướng dẫn cập nhật và kiểm thử](docs/agent_1_0_28_web_blocking.md).

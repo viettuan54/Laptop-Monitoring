@@ -1,7 +1,7 @@
-# SafeNest Parent Dashboard
+# LaptopChildren Parent Dashboard
 
 Dashboard web thuần HTML/CSS/JavaScript để trình diễn toàn bộ API Parent, Admin và
-các endpoint Agent của dự án Laptop Monitor. Không cần cài thêm dependency.
+các endpoint Agent của dự án LaptopChildren (Laptop Monitor). Không cần cài thêm dependency.
 
 ## Chạy local
 

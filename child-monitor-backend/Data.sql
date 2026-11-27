@@ -2,11 +2,6 @@
 -- FULL SETUP DATABASE
 -- HỆ THỐNG GIÁM SÁT LAPTOP TRẺ EM (PostgreSQL)
 --
--- LƯU Ý QUAN TRỌNG:
--- File này chứa schema đầy đủ cho quá trình cài đặt mới từ đầu (fresh install).
--- Đối với các môi trường đã chạy Data.sql cũ và đã áp dụng migration.sql thành công,
--- KHÔNG cần thiết và KHÔNG chạy lại file này để tránh mất mát dữ liệu.
--- =========================================================
 
 BEGIN;
 

@@ -27,7 +27,7 @@
 ┌──────────────────────────────┐      ┌──────────────────────────────┐
 │     Parent Web Dashboard     │      │     Parent Android App       │
 │  HTML5 / CSS3 / Vanilla JS   │      │  Kotlin / Jetpack Compose    │
-│  (Phụ huynh & Admin Console) │      │  v0.7.0 • AES-GCM Keystore   │
+│  (Phụ huynh & Admin Console) │      │  v0.7.1 • AES-GCM Keystore   │
 └──────────────┬───────────────┘      └──────────────┬───────────────┘
                │ HTTPS / REST API (JWT + Refresh)    │
                └──────────────────┬──────────────────┘
@@ -83,7 +83,7 @@ Laptop-Monitoring/
 │   │   ├── middlewares/              # 6 middleware (auth, deviceAuth, role, ownership, rateLimit, rls)
 │   │   ├── routes/                   # 10 nhóm REST API routes
 │   │   └── services/                 # 15 dịch vụ nghiệp vụ, AI & Push Notification
-│   ├── test/                         # 153 ca Unit Test + 25 ca Integration Test (PostgreSQL/Redis thật)
+│   ├── test/                         # 163 ca Unit Test + 25 ca Integration Test (PostgreSQL/Redis thật)
 │   ├── Data.sql                      # Lược đồ nền tảng
 │   ├── migration_v*.sql              # Chuỗi di trú lược đồ tới migration_v34.sql (22 bảng)
 │   └── server.js
@@ -94,11 +94,12 @@ Laptop-Monitoring/
 │   ├── app.js
 │   ├── styles.css
 │   └── server.js                     # Static server + reverse proxy /api/* kèm CSP/X-Frame-Options
-├── child-monitor-android/            # Phân hệ 3: Parent Android App (Kotlin + Jetpack Compose, v0.7.0)
-│   └── app/src/
-│       ├── main/java/vn/laptopchildren/parent/  # AppGraph, SessionStore (AES-GCM), ViewModel, UI
-│       ├── test/                     # JUnit 4 + MockWebServer Unit Tests
-│       └── androidTest/              # Compose Instrumentation Tests (kiểm nghiệm trên Redmi K30)
+├── child-monitor-android/            # Phân hệ 3: Parent Android App (Kotlin + Jetpack Compose, v0.7.1)
+│   ├── app/src/
+│   │   ├── main/java/vn/laptopchildren/parent/  # AppGraph, SessionStore (AES-GCM), ViewModel, UI
+│   │   ├── test/                     # 35 ca JUnit 4 + MockWebServer Unit Tests
+│   │   └── androidTest/              # Compose Instrumentation Tests (kiểm nghiệm trên Redmi K30)
+│   └── TESTING.md                    # Biên bản xác minh và kiểm thử ứng dụng Android
 ├── child-monitor-agent/              # Phân hệ 4: Windows Agent v1.0.31 & Browser Extension MV3
 │   ├── browser-extension/            # Tiện ích Manifest V3 (declarativeNetRequest)
 │   ├── build/                        # build-agent.ps1 (PyInstaller + Inno Setup 6)
@@ -106,15 +107,14 @@ Laptop-Monitoring/
 │   ├── installer/                    # install.ps1, provision_agent.py
 │   ├── models/                       # Mô hình cục bộ & tệp băm .sha256
 │   ├── service/                      # main_service, pipe_server, offline_queue, enforcement_core, watchdog
-│   └── tests/                        # 235 ca Python unittest + 6 ca MV3 JS test
+│   └── tests/                        # 242 ca Python unittest + 6 ca MV3 JS test
 ├── ai-training/                      # Phân hệ 5: Huấn luyện, đánh giá AI & dịch vụ text_safety (:8100)
 │   ├── content_classification/       # Phân loại App/Web lai 3 tầng v1.2.0
 │   ├── school_violence/              # Kiểm duyệt tìm kiếm tiếng Việt text_safety v13
 │   ├── evaluation/                   # Cổng đánh giá LOSO, khoảng cách mắt v3, hybrid pipeline
 │   ├── text_safety/                  # Dịch vụ FastAPI nội bộ (:8100)
-│   ├── tests/                        # 213 ca Python unittest
+│   ├── tests/                        # 215 ca Python unittest (214 pass / 1 skip có ĐK)
 │   └── tests_finetune/               # 5 ca kiểm thử mô hình fine-tune
-├── TESTING.md                        # Hướng dẫn kiểm thử chi tiết
 └── README.md
 ```
 
@@ -152,11 +152,11 @@ Hệ thống được tích hợp pipeline CI đa phân hệ tại [.github/work
 
 | Job CI / Phân hệ | Phạm vi kiểm thử tự động | Kết quả |
 |---|---|---|
-| **1. Backend (`child-monitor-backend`)** | Unit/Middleware + Dựng PostgreSQL 16 (34 tệp lược đồ `Data.sql → migration_v34.sql`, kiểm chứng RLS 18 bảng) + Redis 7 thật | **153/153 unit + 25/25 integration pass** |
+| **1. Backend (`child-monitor-backend`)** | Unit/Middleware + Dựng PostgreSQL 16 (34 tệp lược đồ `Data.sql → migration_v34.sql`, kiểm chứng RLS 18 bảng) + Redis 7 thật | **163/163 unit + 25/25 integration pass** |
 | **2. Web Dashboard (`child-monitor-web`)** | Syntax check (`app.js`, `server.js`) + 17 bộ test giao diện, biểu đồ, bộ lọc, ảnh màn hình, AI Advisor, Admin Face, bảo mật CSP | **343/343 pass** |
-| **3. Windows Agent (`child-monitor-agent`)** | 23 bộ Python unittest (SQLite DPAPI, Named Pipe, chặn app/web, chụp màn hình, Edge AI) + bộ test MV3 Extension (`browser_policy.test.cjs`) | **235 Python + 6 JS pass** |
-| **4. AI Service & FaceNet (`ai-training` & `Backend/AI`)** | 43 bộ test `ai-training/tests/`, 5 ca `tests_finetune/` và 4 ca kiểm định đầu vào FaceNet | **219 pass / 3 skip có ĐK** *(218 AI + 4 Face)* |
-| **5. Parent Android App (`child-monitor-android`)** | Gradle JUnit 4 + MockWebServer + Android Lint (`compileSdk 35`, JDK 17) & Instrumentation trên Xiaomi Redmi K30 | **Unit & Lint pass; build APK OK** |
+| **3. Windows Agent (`child-monitor-agent`)** | 24 bộ Python unittest (SQLite DPAPI, Named Pipe, chặn app/web, chụp màn hình, múi giờ chính sách, Edge AI) + bộ test MV3 Extension (`browser_policy.test.cjs`) | **242 Python + 6 JS pass** |
+| **4. AI Service & FaceNet (`ai-training` & `Backend/AI`)** | 43 bộ test `ai-training/tests/`, 5 ca `tests_finetune/` và 4 ca kiểm định đầu vào FaceNet | **223 pass / 1 skip có ĐK** *(220 AI + 4 Face)* |
+| **5. Parent Android App (`child-monitor-android`)** | 8 bộ Gradle JUnit 4 + MockWebServer + Android Lint (`compileSdk 35`, JDK 17) & Instrumentation trên Xiaomi Redmi K30 | **35/35 unit & Lint pass; build APK OK** |
 
 ---
 
@@ -182,7 +182,7 @@ npm run dev                      # Chạy tại http://localhost:3000
 Chạy kiểm thử Backend:
 
 ```bash
-npm run test:unit                # 153 ca unit test
+npm run test:unit                # 163 ca unit test
 npm run test:integration         # 25 ca tích hợp PostgreSQL RLS + Redis thật
 ```
 
@@ -202,7 +202,7 @@ node server.js                   # Truy cập http://localhost:5173 (tự proxy 
 npm test                         # Chạy 343 ca kiểm thử tự động
 ```
 
-### 5. Parent Android App (`vn.laptopchildren.parent` v0.7.0)
+### 5. Parent Android App (`vn.laptopchildren.parent` v0.7.1)
 
 ```powershell
 cd child-monitor-android
@@ -225,7 +225,7 @@ Quy trình cài đặt trên máy tính của trẻ:
 2. Chạy `ChildMonitorSetup-1.0.31.exe` bằng quyền Administrator trên laptop Windows của trẻ.
 3. Nhập địa chỉ Backend URL và `Device Secret` để hoàn tất ghép nối và kích hoạt `ChildMonitorService` + `ChildMonitorCompanion` + tiện ích trình duyệt Manifest V3.
 
-Xem thêm hướng dẫn kiểm thử chi tiết tại [TESTING.md](TESTING.md).
+Xem thêm biên bản xác minh thiết bị Android tại [child-monitor-android/TESTING.md](child-monitor-android/TESTING.md) và cấu hình pipeline kiểm thử tự động tại [.github/workflows/ci.yml](.github/workflows/ci.yml).
 
 ---
 
