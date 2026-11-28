@@ -1,10 +1,7 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
 function context(api, settings = {}) {
   const sandbox = vm.createContext({ api: url => url.startsWith('/children') ? Promise.resolve([{ child_id: 7, name: '<Con>' }]) : api(url), state: { page: 'controls', selectedChildId: 7, children: [{ child_id: 7, name: '<Con>' }], devices: [] },

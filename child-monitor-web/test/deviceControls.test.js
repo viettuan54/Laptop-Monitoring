@@ -1,11 +1,8 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const config = {
   screenshot_interval_minutes: 5, vision_session_minutes: 5, child_id: 7, daily_limit_minutes: 120, allowed_start_time: '07:00', allowed_end_time: '21:00',
   is_locked: true, enable_webcam_monitoring: false, enable_screenshot_review: true,
@@ -264,8 +261,7 @@ function saveView(api, remindersEnabled = true, { savedLocked = true, locked = t
   vm.runInContext(['escapeHtml', 'showModal', 'closeModal', 'deviceModalDismissBlocked',
     'isCurrentControlForm', 'showControlLockConfirmation', 'saveDeviceControls', 'handleSubmit']
     .map(name => functionSource(source, name)).join('\n'), sandbox);
-  vm.runInContext(source.slice(source.indexOf('async function handleClick('),
-    source.indexOf("document.addEventListener('submit'")), sandbox);
+  vm.runInContext(functionSource(source, 'handleClick'), sandbox);
   vm.runInContext(source.slice(source.indexOf("document.addEventListener('keydown'"),
     source.indexOf("document.addEventListener('visibilitychange'")), sandbox);
   originalForm.button.focus();

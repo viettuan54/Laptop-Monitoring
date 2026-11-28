@@ -1,11 +1,8 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const code = 'fixture-only-device-code';
 const result = { device_name: 'Máy <An> & Bình', device_secret: code };
 const deferred = () => {
@@ -131,8 +128,7 @@ function dashboard({ api = async () => result, copy = async () => {} } = {}) {
     'deviceModalDismissBlocked', 'protectDeviceModalOnUnload', 'beginDeviceModalRequest',
     'registerDeviceFromModal', 'showDeviceConfirmation', 'confirmDeviceAction', 'showSecret', 'copyDeviceSecret']
     .map(name => functionSource(source, name)).join('\n'), context);
-  vm.runInContext(source.slice(source.indexOf('async function handleClick('),
-    source.indexOf("document.addEventListener('submit'")), context);
+  vm.runInContext(functionSource(source, 'handleClick'), context);
   vm.runInContext(source.slice(source.indexOf("document.addEventListener('keydown'"),
     source.indexOf("document.addEventListener('visibilitychange'")), context);
   const flush = () => { while (frames.length) frames.shift()(); };

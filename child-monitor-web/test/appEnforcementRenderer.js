@@ -1,8 +1,5 @@
-const fs = require('node:fs');
-const path = require('node:path');
+const { source, functionSource } = require('./dashboardSource');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
 const activityHelpers = ['activityRequestCurrent', 'activitySurface', 'activityStatus',
   'activityPanelStart', 'activityFeedback', 'activityFocus'];

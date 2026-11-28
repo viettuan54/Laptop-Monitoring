@@ -1,11 +1,10 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
 const { activityDOM, activityHelpers } = require('./appEnforcementRenderer');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 
 test('screenshot typography keeps readable roles without changing the gallery or capture layout', () => {
@@ -177,8 +176,7 @@ function realScreenshotDialogs(api) {
   context.requestAnimationFrame = callback => frames.push(callback);
   context.document.addEventListener = (type, callback) => { listeners[type] = callback; };
   vm.runInContext(['showModal', 'closeModal'].map(name => functionSource(source, name)).join('\n'), context);
-  vm.runInContext(source.slice(source.indexOf('async function handleClick(event)'),
-    source.indexOf("\ndocument.addEventListener('submit'", source.indexOf('async function handleClick(event)'))), context);
+  vm.runInContext(functionSource(source, 'handleClick'), context);
   vm.runInContext(source.slice(source.indexOf("document.addEventListener('keydown', (event) => {"),
     source.indexOf("document.addEventListener('visibilitychange', refreshAlertIndicatorInBackground)")), context);
   return { ...page, opened,

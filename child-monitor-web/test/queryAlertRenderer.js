@@ -1,22 +1,11 @@
+const { source, functionSource } = require('./dashboardSource');
 // Execute the dashboard's real alert renderer without replacing its row logic.
 // Layout/browser behavior is outside this check. Acceptance supplies a live API.
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
 
-function functionSource(source, name) {
-  const pattern = new RegExp(`^(?:async )?function ${name}\\(`, 'm');
-  const match = pattern.exec(source);
-  assert.ok(match, `Dashboard function ${name} is missing`);
-  const rest = source.slice(match.index);
-  const next = /\n(?:async )?function /g;
-  const boundary = next.exec(rest);
-  return boundary ? rest.slice(0, boundary.index) : rest;
-}
 
 async function renderQueryAlerts({ api, deviceId }) {
-  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   const state = {
     devices: [{ device_id: deviceId, device_name: 'Thiết bị kiểm thử' }],
     alerts: [], alertFilter: { device_id: deviceId }, unreadAlertCount: 0,

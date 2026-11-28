@@ -1,10 +1,7 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
 function setup({ status = 403, error = 'Email not verified. Please verify your email first.', resend } = {}) {
   const requests = [];

@@ -1,10 +1,9 @@
+const { source, functionSource, moduleSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const tick = () => new Promise(setImmediate);
 function deferred() {
   let resolve, reject;
@@ -127,11 +126,9 @@ function fixture() {
     sessionStorage: { removeItem() {} }, emptyUsageSummary: () => ({}),
     stopScreenshotPolling() {}, stopBreakReminderPolling() {}, stopAlertPolling() {}, stopFaceCamera() {},
   });
-  const helpers = [...source.slice(source.indexOf('function aiSession()'), source.indexOf('function pushPlatformOptions')).matchAll(/^(?:async )?function (\w+)\(/gm)].map(m => m[1]);
-  for (const name of [...helpers, 'escapeHtml', 'formatDate', 'deviceName', 'queryString', 'reconcileSelectedId', 'riskLevelLabel', 'emptyState', 'handleClick', 'handleSubmit', 'clearSession']) {
-    let code = functionSource(source, name);
-    if (name === 'handleClick') code = code.split("\ndocument.addEventListener('submit'")[0];
-    vm.runInContext(code, context);
+  const helpers = [...moduleSource('ai').matchAll(/^(?:async )?function (\w+)\(/gm)].map(m => m[1]);
+  for (const name of [...helpers, 'escapeHtml', 'formatDate', 'deviceName', 'queryString', 'reconcileSelectedId', 'riskLevelLabel', 'emptyState', 'handleClick', 'handleSubmit', 'clearSession', 'invalidateActivityRender', 'resetModalFocus']) {
+    vm.runInContext(functionSource(source, name), context);
   }
   const changeStart = source.indexOf("document.addEventListener('change', (event) =>", source.indexOf('async function handleClick'));
   vm.runInContext(source.slice(changeStart, source.indexOf("document.addEventListener('keydown'", changeStart)), context);

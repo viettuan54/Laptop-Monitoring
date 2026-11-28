@@ -1,11 +1,10 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
 const { activityDOM, activityHelpers } = require('./appEnforcementRenderer');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const styles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 
 // Declaration contracts, not browser-computed styles or geometry.
@@ -113,8 +112,7 @@ function dashboard(api = async () => ({ data: [] })) {
     'escapeHtml', 'formatDate', 'queryString', 'deviceName', 'categoryLabel', 'categoryBadge',
     'accessStatusLabel', 'accessStatusBadge', 'duration', 'websiteActivityTitle', 'websiteActivitySubtitle', 'safeExternalUrl'];
   vm.runInContext(functions.map(name => functionSource(source, name)).join('\n'), context);
-  vm.runInContext(source.slice(source.indexOf('async function handleClick(event)'),
-    source.indexOf("\ndocument.addEventListener('submit'", source.indexOf('async function handleClick(event)'))), context);
+  vm.runInContext(functionSource(source, 'handleClick'), context);
   const click = (action, data = {}) => {
     const button = { dataset: { action, ...data } };
     return context.handleClick({ target: { closest: selector => selector === '[data-action]' ? button : null } });

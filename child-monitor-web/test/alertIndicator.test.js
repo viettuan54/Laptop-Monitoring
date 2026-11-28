@@ -1,11 +1,8 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
 
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 const rows = count => ({ data: Array.from({ length: count }, (_, i) => ({ alert_id: i + 1, is_read: false })) });
 
@@ -55,7 +52,7 @@ function dashboard({ count = 0, page = 'devices', role = 'parent', request } = {
   });
   const functions = ['stopScreenshotPolling', 'alertCountLabel', 'updateAlertIndicator', 'refreshUnreadAlertCount',
     'refreshAlertIndicatorInBackground', 'refreshVisibleAlerts', 'stopAlertPolling', 'startAlertPolling',
-    'initialize', 'completeLogin', 'saveSession', 'detectRole', 'clearSession',
+    'initialize', 'completeLogin', 'saveSession', 'detectRole', 'clearSession', 'invalidateActivityRender', 'resetModalFocus',
     'loadParentCore', 'reconcileSelectedId'];
   vm.runInContext(functions.map(name => functionSource(source, name)).join('\n'), context);
   return { context, state, buttons, intervals, calls, navigations,

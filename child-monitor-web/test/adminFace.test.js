@@ -1,10 +1,7 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const vm = require('node:vm');
-const { functionSource } = require('./queryAlertRenderer');
-const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
 
 test('camera captures all five frames with an interval between captures', async () => {
   let captures = 0, intervals = 0;
@@ -38,7 +35,7 @@ for (const attemptsRemaining of [2, 0]) {
       localizeError: () => 'Khuôn mặt đã được đăng kí ở một tài khoản khác',
       toast() {}, stopFaceCamera: () => { stopped = true; }, completeLogin: async () => { completed = true; },
     });
-    vm.runInContext(source.slice(source.indexOf('async function handleClick('), source.indexOf("document.addEventListener('submit'")), context);
+    vm.runInContext(functionSource(source, 'handleClick'), context);
     await context.handleClick({ target: { closest: selector => selector === '[data-action]' ? button : null } });
     assert.equal(completed, false);
     assert.equal(stopped, false);

@@ -1,12 +1,11 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { renderQueryAlerts } = require('./queryAlertRenderer');
 
 test('Distill never calls the alerts banner and preserves the real page heading and description', async () => {
-  const fs = require('node:fs'), path = require('node:path'), vm = require('node:vm');
-  const { functionSource } = require('./queryAlertRenderer');
+  const vm = require('node:vm');
   const { fixture } = require('./alertsState.test');
-  const source = fs.readFileSync(path.join(__dirname, '..', 'app.js'), 'utf8');
   const view = fixture(); const bannerCalls = [];
   view.context.currentDateLabel = () => 'Fixture date';
   vm.runInContext(source.match(/const pageTitles = \{[\s\S]*?\n\};/)[0] + '\n' + functionSource(source, 'pageHead'), view.context);

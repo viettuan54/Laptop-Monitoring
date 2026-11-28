@@ -1,9 +1,11 @@
+const { source, functionSource, moduleSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const { spawn, execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -77,7 +79,11 @@ test('static server, SPA fallback and API proxy work together', async (t) => {
   assert.match(contentSecurityPolicy, /img-src 'self' data:/);
   assert.match(contentSecurityPolicy, /connect-src 'self'/);
   assert.match(contentSecurityPolicy, /frame-ancestors 'none'/);
-  assert.match(await index.text(), /id="app"/);
+  const html = await index.text();
+  assert.match(html, /id="app"/);
+  await promisify(execFile)(process.execPath, [
+    '--experimental-vm-modules', path.join(__dirname, 'moduleEntry.js'), index.url,
+  ]);
 
   const jpegAssets = [
     'family-digital-wellbeing.jpg',
@@ -115,7 +121,6 @@ test('static server, SPA fallback and API proxy work together', async (t) => {
 });
 
 test('dashboard source covers every backend route group', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const routeFragments = [
     '/auth/register',
     '/auth/login',
@@ -159,7 +164,6 @@ test('dashboard source covers every backend route group', () => {
 });
 
 test('dashboard uses Vietnamese locale and Vietnamese primary navigation', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
   assert.match(html, /<html lang="vi">/);
@@ -179,7 +183,6 @@ test('dashboard uses the blue visual theme', () => {
 });
 
 test('session refresh is single-flight and logout clears session-scoped state', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /let refreshPromise = null;/);
   assert.match(source, /if \(refreshPromise\) return refreshPromise;/);
@@ -219,7 +222,6 @@ test('session refresh is single-flight and logout clears session-scoped state', 
 });
 
 test('policy UI exposes and submits all AI analysis toggles', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /Phân loại AI & truy cập/);
   assert.match(source, /switchRow\('enable_app_classification', 'Phân loại và chặn ứng dụng'/);
@@ -231,7 +233,6 @@ test('policy UI exposes and submits all AI analysis toggles', () => {
 });
 
 test('policy UI manages allow and block rules for every app and website category', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /\/settings\/\$\{childId\}\/policies/);
   assert.match(source, /policies\/\$\{resourceType\}\/\$\{category\}/);
@@ -250,15 +251,9 @@ test('policy UI manages allow and block rules for every app and website category
 });
 
 test('device controls live on a dedicated page and save independently from policies', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
-  const controlsStart = source.indexOf('async function renderDeviceControls(');
-  const policiesStart = source.indexOf('async function renderPolicies(', controlsStart);
-  const policiesEnd = source.indexOf('function categoryPolicyGroup(', policiesStart);
-  const controlsSource = source.slice(controlsStart, policiesStart);
-  const policiesSource = source.slice(policiesStart, policiesEnd);
-
-  assert.ok(controlsStart >= 0 && policiesStart > controlsStart && policiesEnd > policiesStart);
+  const controlsSource = functionSource(moduleSource('controls'), 'renderDeviceControls');
+  const policiesSource = functionSource(moduleSource('policy'), 'renderPolicies');
   assert.match(source, /\['controls', 'Điều khiển thiết bị', 'control'\]/);
   assert.match(source, /controls:\s*renderDeviceControls/);
   assert.match(source, /form\.id === 'device-control-form'/);
@@ -293,7 +288,6 @@ test('device controls live on a dedicated page and save independently from polic
 });
 
 test('activity UI displays and exports blocked or open access status', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /const accessStatusLabels = Object\.freeze\(\{[\s\S]*blocked: 'Đã chặn',[\s\S]*open: 'Đang mở'/);
   assert.match(source, /<th>Trạng thái hiện tại<\/th>/);
@@ -306,7 +300,7 @@ test('activity UI displays and exports blocked or open access status', () => {
 });
 
 test('activity and device UI expose operational monitoring controls', () => {
-  const dashboardSource = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const dashboardSource = source;
   const deviceController = fs.readFileSync(
     path.resolve(ROOT, '..', 'child-monitor-backend', 'src', 'controllers', 'devices.controller.js'),
     'utf8'
@@ -321,7 +315,6 @@ test('activity and device UI expose operational monitoring controls', () => {
 });
 
 test('overview metrics and charts use monthly usage summary with Vietnam date keys', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
 
   assert.match(source, /usageSummary:\s*emptyUsageSummary\(\)/);
@@ -362,7 +355,7 @@ test('overview metrics and charts use monthly usage summary with Vietnam date ke
 });
 
 test('modal actions bubble to the delegated handler and activity filters cannot overflow', () => {
-  const dashboardSource = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
+  const dashboardSource = source;
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
 
   assert.doesNotMatch(dashboardSource, /querySelector\('\.modal'\)\.addEventListener\('click',[^\n]*stopPropagation/);
@@ -375,7 +368,6 @@ test('modal actions bubble to the delegated handler and activity filters cannot 
 });
 
 test('redesigned dashboard shell keeps navigation usable on desktop and mobile', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
   const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
 
@@ -404,7 +396,6 @@ test('redesigned dashboard shell keeps navigation usable on desktop and mobile',
 });
 
 test('dashboard sections include optimized and accessible illustration assets', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
   const assets = [
     'section-child-profiles.jpg',
@@ -430,7 +421,6 @@ test('dashboard sections include optimized and accessible illustration assets', 
 });
 
 test('redesigned data pages expose summaries, resettable filters and accessible actions', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
 
   assert.match(source, /class="page-summary-strip"/);
   assert.match(source, /class="section-visual section-visual-/);
@@ -445,7 +435,6 @@ test('redesigned data pages expose summaries, resettable filters and accessible 
 });
 
 test('admin workspace presents operational context, scannable records and responsive tools', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   const styles = fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8');
 
   for (const className of [
@@ -495,10 +484,7 @@ test('admin workspace presents operational context, scannable records and respon
 });
 
 test('dashboard preserves role on startup errors and prevents duplicate sensitive actions', () => {
-  const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
-  const initializeStart = source.indexOf('async function initialize()');
-  const initializeEnd = source.indexOf('async function detectRole()', initializeStart);
-  const initializeSource = source.slice(initializeStart, initializeEnd);
+  const initializeSource = functionSource(source, 'initialize');
 
   assert.match(initializeSource, /renderStartupError\(error\)/);
   assert.doesNotMatch(initializeSource, /state\.role\s*=\s*'parent'/);

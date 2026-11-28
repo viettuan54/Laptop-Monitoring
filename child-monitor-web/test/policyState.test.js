@@ -1,20 +1,11 @@
+const { source, functionSource } = require('./dashboardSource');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
 
-const APP_PATH = path.join(__dirname, '..', 'app.js');
 
-function functionSource(source, name) {
-  const pattern = new RegExp(`^(?:async )?function ${name}\\(`, 'm');
-  const match = pattern.exec(source);
-  assert.ok(match, `Dashboard function ${name} is missing`);
-  const rest = source.slice(match.index);
-  const next = /\n(?:async )?function /g;
-  const boundary = next.exec(rest);
-  return boundary ? rest.slice(0, boundary.index) : rest;
-}
 
 function deferred() {
   let resolve;
@@ -134,7 +125,6 @@ function fixture({ api = async () => ({}), children = [
       ? current : rows[0]?.child_id ?? null,
     toast: (...args) => toasts.push(args),
   });
-  const source = fs.readFileSync(APP_PATH, 'utf8');
   const declarations = [
     "const policyClassificationFields = ['enable_app_classification', 'enable_web_classification', 'enable_text_moderation'];",
     ...['policySnapshotFromForm', 'policySnapshotsEqual', 'updatePolicyDraftStatus', 'capturePolicyDraft',
@@ -234,7 +224,6 @@ test('policy controls reference unique descriptions, save statuses and notes in 
 
 test('accessibility enhancement preserves policy descriptions and retains non-policy behavior', () => {
   const app = fixture();
-  const source = fs.readFileSync(APP_PATH, 'utf8');
   vm.runInContext('let accessibleControlSequence = 0;\n'
     + functionSource(source, 'ensureControlId') + '\n'
     + functionSource(source, 'enhanceFormAccessibility'), app.context);
@@ -290,7 +279,7 @@ test('policy rendering preserves long names, many profiles, long descriptions an
   }));
   const app = fixture({ children, api: async route => route.startsWith('/children')
     ? children : route.endsWith('/policies') ? savedPolicies() : savedSettings() });
-  vm.runInContext(functionSource(fs.readFileSync(APP_PATH, 'utf8'), 'escapeHtml'), app.context);
+  vm.runInContext(functionSource(source, 'escapeHtml'), app.context);
   const longDescription = 'Hướng dẫn chính sách cần được giữ nguyên đầy đủ. '.repeat(80);
   app.context.policyCategoryGroups.app = [['learning', 'Học tập', longDescription]];
   const content = { innerHTML: '' };
@@ -742,7 +731,6 @@ test('edits made after submit remain as a draft when that same child save comple
 
 test('policy text token meets AA contrast and inactive groups keep readable active controls', () => {
   const styles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
-  const source = fs.readFileSync(APP_PATH, 'utf8');
   const pageHead = functionSource(source, 'pageHead');
   const renderer = functionSource(source, 'renderPolicies');
   const ink = styles.match(/--ink:\s*(#[\da-f]{6})/i)?.[1];
@@ -869,7 +857,6 @@ test('policy child metadata uses readable scoped type and the existing text toke
 });
 
 test('policy initial loading has text, remains busy, and uses existing reduced-motion support', () => {
-  const source = fs.readFileSync(APP_PATH, 'utf8');
   const styles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   assert.match(source, /page === 'policies'[\s\S]{0,260}role="status" aria-live="polite" aria-atomic="true"[\s\S]{0,150}Đang tải chính sách\.\.\./);
   assert.match(source, /content\.setAttribute\('aria-busy', 'true'\)/);
@@ -878,7 +865,6 @@ test('policy initial loading has text, remains busy, and uses existing reduced-m
 });
 
 test('policy typography improves reading size and keeps sync guidance visible on mobile', () => {
-  const source = fs.readFileSync(APP_PATH, 'utf8');
   const styles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   const policyTypesetting = styles.slice(styles.indexOf('.page-head-policies h1 {'));
 
@@ -891,7 +877,6 @@ test('policy typography improves reading size and keeps sync guidance visible on
 });
 
 test('policy layout wraps long content and keeps mobile controls and statuses available', () => {
-  const source = fs.readFileSync(APP_PATH, 'utf8');
   const styles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
 
   assert.match(styles, /\.policy-settings-layout \.child-pick > span:last-child,[\s\S]*?\.policy-save-bar > span\s*\{\s*min-width:\s*0;\s*overflow-wrap:\s*anywhere;/);
@@ -927,7 +912,6 @@ test('policy workspace stacks at 1024px and narrower while keeping desktop colum
 });
 
 test('policy page removes repeated banners and outer card layers but keeps the task flow', () => {
-  const source = fs.readFileSync(APP_PATH, 'utf8');
   const styles = fs.readFileSync(path.join(__dirname, '..', 'styles.css'), 'utf8');
   const renderer = functionSource(source, 'renderPolicies');
   const groups = functionSource(source, 'categoryPolicyGroup');
