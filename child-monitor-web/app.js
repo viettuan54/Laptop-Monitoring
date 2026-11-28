@@ -36,6 +36,9 @@ document.addEventListener('submit', async (event) => {
   }
   if (event.target.id === 'agent-secret-form') {
     event.preventDefault();
+    if (state.role !== 'admin') {
+      return toast('Không có quyền truy cập', 'Trang này chỉ dành cho quản trị viên.', 'error');
+    }
     state.agentSecret = new FormData(event.target).get('secret').trim();
     closeModal(); toast('Đã nạp secret tạm thời'); renderApiLab(document.querySelector('#page-content'));
     return;

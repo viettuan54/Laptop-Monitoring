@@ -4,6 +4,7 @@ const os = require('os');
 const path = require('path');
 const { execFile } = require('child_process');
 const { promisify } = require('util');
+const { setTimeout: delay } = require('timers/promises');
 
 const execFileAsync = promisify(execFile);
 const FACE_SCRIPT = path.resolve(__dirname, '../../AI/face_embedding_extractor.py');
@@ -12,6 +13,9 @@ const RESULT_PREFIX = 'SAFENEST_FACE_RESULT:';
 const REQUIRED_FRAME_COUNT = 5;
 const MAX_FRAME_BYTES = 500 * 1024;
 const MAX_TOTAL_BYTES = REQUIRED_FRAME_COUNT * MAX_FRAME_BYTES;
+const WINDOWS_POLICY_BLOCK = /An Application Control policy has blocked this file/i;
+const PYTHON_MAX_RETRIES = 3;
+const PYTHON_RETRY_DELAY_MS = 1500;
 let activeVerifications = 0;
 const DIAGNOSTIC_PATH = path.resolve(__dirname, '../../../.runtime/face-auth-last-error.json');
 
@@ -46,10 +50,48 @@ class FaceAuthUnavailableError extends Error {
 
 function pythonRuntimeError(error) {
   const failure = new FaceAuthUnavailableError();
-  if (/An Application Control policy has blocked this file/i.test(String(error.stderr || error.message || ''))) {
+  if (WINDOWS_POLICY_BLOCK.test(String(error.stderr || error.message || ''))) {
     failure.code = 'FACE_RUNTIME_BLOCKED';
   }
   return failure;
+}
+
+async function runFacePython(args) {
+  const pythonBinary = String(process.env.FACE_PYTHON_BIN || 'python').trim();
+  const timeout = Math.max(10000, Math.min(120000, Number(process.env.FACE_AUTH_TIMEOUT_MS) || 120000));
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const output = await execFileAsync(pythonBinary, args, {
+        cwd: path.dirname(FACE_SCRIPT),
+        env: { ...process.env, PYTHONUNBUFFERED: '1' },
+        timeout,
+        windowsHide: true,
+        maxBuffer: 2 * 1024 * 1024,
+      });
+      // The extractor can catch a model exception and exit with code 0.
+      if (WINDOWS_POLICY_BLOCK.test(String(output.stderr || ''))) {
+        throw Object.assign(new Error('Face runtime blocked by Windows policy'), { stderr: output.stderr });
+      }
+      return output;
+    } catch (error) {
+      if (!WINDOWS_POLICY_BLOCK.test(String(error.stderr || '')) || attempt >= PYTHON_MAX_RETRIES) throw error;
+      console.warn(`[FaceAuth] Windows Application Control blocked Python; retry ${attempt + 1}/${PYTHON_MAX_RETRIES} in ${PYTHON_RETRY_DELAY_MS}ms.`);
+      await delay(PYTHON_RETRY_DELAY_MS);
+    }
+  }
+}
+
+async function warmUpFaceRuntime() {
+  console.log('[FaceAuth] Warming up Python face runtime in the background...');
+  try {
+    await runFacePython(['-c', 'from facenet_runtime import DeepFace, MTCNN; MTCNN(); DeepFace.build_model("Facenet")']);
+    console.log('[FaceAuth] Python face runtime warm-up completed.');
+    return true;
+  } catch (error) {
+    await recordPythonFailure(error);
+    console.warn('[FaceAuth] Runtime warm-up failed; face requests will retry transient Windows policy blocks.');
+    return false;
+  }
 }
 
 function hasValidMagic(buffer, mime) {
@@ -192,20 +234,9 @@ async function verifyAdminFace(frames, template = null) {
       imagePaths.push(imagePath);
     }
 
-    const pythonBinary = String(process.env.FACE_PYTHON_BIN || 'python').trim();
-    const timeout = Math.max(10000, Math.min(120000, Number(process.env.FACE_AUTH_TIMEOUT_MS) || 120000));
     let output;
     try {
-      output = await execFileAsync(pythonBinary, [FACE_SCRIPT, ...imagePaths], {
-        cwd: path.dirname(FACE_SCRIPT),
-        env: {
-          ...process.env,
-          PYTHONUNBUFFERED: '1',
-        },
-        timeout,
-        windowsHide: true,
-        maxBuffer: 2 * 1024 * 1024,
-      });
+      output = await runFacePython([FACE_SCRIPT, ...imagePaths]);
     } catch (error) {
       await recordPythonFailure(error);
       throw pythonRuntimeError(error);
@@ -235,6 +266,7 @@ async function verifyAdminFace(frames, template = null) {
 }
 
 module.exports = {
+  warmUpFaceRuntime,
   pythonRuntimeError,
   FaceAuthUnavailableError,
   REQUIRED_FRAME_COUNT,

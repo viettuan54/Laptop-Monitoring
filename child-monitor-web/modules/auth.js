@@ -41,6 +41,7 @@ function clearSession() {
     refreshToken: '',
     role: '',
     userId: null,
+    userName: '',
     children: [],
     devices: [],
     alerts: [],
@@ -294,6 +295,7 @@ async function completeLogin(result) {
 }
 
 async function detectRole() {
+  const profile = await api('/auth/me');
   try {
     state.adminStats = await api('/admin/stats');
     state.role = 'admin';
@@ -301,6 +303,7 @@ async function detectRole() {
     if (error.status !== 403) throw error;
     state.role = 'parent';
   }
+  state.userName = profile.name || '';
   sessionStorage.setItem('lm_role', state.role);
 }
 

@@ -107,7 +107,8 @@ function serveStatic(req, res) {
       }
       res.writeHead(200, {
         'Content-Type': contentTypes[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
-        'Cache-Control': path.basename(filePath) === 'index.html' ? 'no-store' : 'public, max-age=300',
+        'Cache-Control': path.basename(filePath) === 'index.html' ? 'no-store'
+          : ['.js', '.css'].includes(path.extname(filePath).toLowerCase()) ? 'no-cache' : 'public, max-age=300',
         'X-Content-Type-Options': 'nosniff',
         'Referrer-Policy': 'same-origin',
         ...staticSecurityHeaders,

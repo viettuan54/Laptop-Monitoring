@@ -19,6 +19,8 @@ function syncPushPlatforms(form) {
 }
 
 async function renderAccount(content) {
+  const profile = await api('/auth/me');
+  const displayName = escapeHtml(profile.name || 'Chưa cập nhật họ tên');
   if (state.role === 'parent') {
     const result = await api('/notifications/tokens');
     state.pushTokens = result.data || [];
@@ -36,7 +38,7 @@ async function renderAccount(content) {
               <div class="profile-avatar admin-profile-avatar">AD</div>
               <div class="admin-profile-copy">
                 <h2>Tài khoản quản trị viên</h2>
-                <p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · Quyền Admin Console (JWT + Face Verification).</p>
+                <p class="muted">Họ tên: ${displayName} · Quyền Admin Console (JWT + Face Verification).</p>
               </div>
               <span class="badge blue">Quản trị viên</span>
             </div>
@@ -75,7 +77,7 @@ async function renderAccount(content) {
     ${pageHead('account')}
     <section class="account-grid">
       <div class="stack">
-        <article class="card profile-card"><figure class="profile-cover"><img src="/assets/section-account-security.jpg" alt="Tài khoản gia đình được bảo vệ bằng mật khẩu và thiết bị tin cậy" width="1200" height="800" loading="lazy" decoding="async"></figure><div class="profile-body"><div class="profile-avatar">PH</div><div class="profile-copy"><p class="eyebrow">Hồ sơ gia đình</p><h2>Tài khoản phụ huynh</h2><p class="muted">Mã người dùng #${escapeHtml(state.userId || '—')} · Phiên đăng nhập được bảo vệ bằng cơ chế làm mới định kỳ.</p></div></div></article>
+        <article class="card profile-card"><figure class="profile-cover"><img src="/assets/section-account-security.jpg" alt="Tài khoản gia đình được bảo vệ bằng mật khẩu và thiết bị tin cậy" width="1200" height="800" loading="lazy" decoding="async"></figure><div class="profile-body"><div class="profile-avatar">PH</div><div class="profile-copy"><p class="eyebrow">Hồ sơ gia đình</p><h2>Tài khoản phụ huynh</h2><p class="muted">Họ tên: ${displayName} · Phiên đăng nhập được bảo vệ bằng cơ chế làm mới định kỳ.</p></div></div></article>
         <article class="card card-pad account-password-card">
           <div class="card-head card-head-flush"><div><h2>Đổi mật khẩu</h2><p>Thao tác này thu hồi toàn bộ phiên đăng nhập cũ và đăng xuất tab hiện tại để bảo vệ tài khoản.</p></div></div>
           <form id="change-password-form" class="form-grid">

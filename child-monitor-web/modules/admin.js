@@ -236,6 +236,7 @@ const agentEndpoints = {
 };
 
 function renderApiLab(content) {
+  if (state.role !== 'admin') throw new Error('Trang này chỉ dành cho quản trị viên.');
   const selected = agentEndpoints[state.agentEndpoint];
   const requestData = selected.method === 'GET' ? selected.query : selected.body;
   const requestLabel = selected.method === 'GET' ? 'Tham số query JSON' : 'Nội dung JSON';

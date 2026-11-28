@@ -12,6 +12,7 @@ const state = {
   accessToken: sessionStorage.getItem('lm_access_token') || '',
   refreshToken: sessionStorage.getItem('lm_refresh_token') || '',
   userId: null,
+  userName: '',
   role: sessionStorage.getItem('lm_role') || '',
   page: location.hash.slice(1) || 'overview',
   children: [],

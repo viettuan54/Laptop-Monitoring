@@ -36,6 +36,10 @@ const initTransporter = () => {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASSWORD,
       },
+      dnsTimeout: 10000,
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
     console.log('📬 Nodemailer SMTP Transporter đã được cấu hình thành công.');
   } else {
@@ -63,20 +67,22 @@ async function sendMail({ to, subject, html, textFallback }) {
 
   if (transporter) {
     try {
-      await transporter.sendMail({
+      const result = await transporter.sendMail({
         from,
         to,
         subject,
         text: textFallback,
         html,
       });
+      if (!result.accepted?.length || result.rejected?.length) {
+        throw new Error('SMTP server did not accept the recipient');
+      }
       console.log(`[Email Sent] Email đã gửi thành công tới: ${to}`);
+      return { sent: true };
     } catch (err) {
       console.error(`[Email Error] Lỗi khi gửi email tới ${to}:`, err.message);
-      // Ở production, ném lỗi để caller quyết định xử lý
-      if (process.env.NODE_ENV === 'production') {
-        throw err;
-      }
+      // Callers must see delivery failures in development as well as production.
+      throw err;
     }
   } else {
     // Dev fallback: ghi ra console thay vì gửi thật
@@ -86,6 +92,7 @@ async function sendMail({ to, subject, html, textFallback }) {
     console.log(`SUBJECT: ${subject}`);
     console.log(`TEXT FALLBACK:\n${textFallback}`);
     console.log('==========================================================\n');
+    return { sent: false };
   }
 }
 

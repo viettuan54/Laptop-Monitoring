@@ -87,6 +87,11 @@ const handleFailedAttempt = async (email) => {
   }
 };
 
+exports.getProfile = (req, res) => {
+  const { user_id, name, role } = req.currentUser;
+  res.json({ user_id, name, role });
+};
+
 exports.register = async (req, res) => {
   const { name, email, password } = req.body;
 
@@ -108,13 +113,11 @@ exports.register = async (req, res) => {
 
   // ── DATABASE ─────────────────────────────────────────────────────
   try {
-    // Check if email already exists to prevent account enumeration
+    // Return a conflict so the registration form can ask for a different email.
     const existingUser = await adminPool.query('SELECT user_id FROM users WHERE LOWER(email) = LOWER($1)', [normalizedEmail]);
     if (existingUser.rows.length > 0) {
-      // Simulate password hashing to prevent timing attacks
-      await bcrypt.hash(password, 12);
-      console.log(`[Email Registration Attempt for ${normalizedEmail}]: Email already exists. Sent security notification.`);
-      return res.status(201).json({ message: 'Registration successful. Please check your email to verify your account.' });
+      console.log(`[Email Registration Attempt for ${normalizedEmail}]: Email already exists.`);
+      return res.status(409).json({ code: 'EMAIL_ALREADY_EXISTS', message: 'Email is already registered to another account' });
     }
 
     const hashed = await bcrypt.hash(password, 12);
@@ -132,9 +135,8 @@ exports.register = async (req, res) => {
     const verificationLink = `${frontendBase}/verify?token=${verificationTokenRaw}`;
     console.log(`[Email Verification Link for ${normalizedEmail}]: ${verificationLink}`);
 
-    // Fire-and-forget: không await để tránh lỗi SMTP khiến user nhận 500
-    // dù tài khoản đã được tạo thành công trong DB.
-    sendMail({
+    // Account creation succeeded; report SMTP delivery separately so it can be retried.
+    const verificationEmailSent = await sendMail({
       to: normalizedEmail,
       subject: 'Xác minh tài khoản - Laptop Monitor',
       textFallback: `Vui lòng nhấp vào đường dẫn sau để xác minh tài khoản của bạn: ${verificationLink}`,
@@ -146,13 +148,18 @@ exports.register = async (req, res) => {
         <p>Đường dẫn này có hiệu lực trong vòng 24 giờ.</p>
         <p>Trân trọng,<br>Đội ngũ Laptop Monitor</p>
       `
-    }).catch(err => console.error(`[Email Error] Gửi email xác minh tới ${normalizedEmail} thất bại:`, err.message));
+    }).then(result => result?.sent !== false).catch(err => {
+      console.error(`[Email Error] Gửi email xác minh tới ${normalizedEmail} thất bại:`, err.message);
+      return false;
+    });
 
-    res.status(201).json({ message: 'Registration successful. Please check your email to verify your account.' });
+    res.status(201).json({ verificationEmailSent, message: verificationEmailSent
+      ? 'Registration successful. Please check your email to verify your account.'
+      : 'Account created, but verification email could not be sent. Please try resending it.' });
   } catch (error) {
     if (error.code === '23505') {
-      console.log(`[Email Registration Race Condition for ${email}]: Email already exists (Unique constraint). Sent security notification.`);
-      return res.status(201).json({ message: 'Registration successful. Please check your email to verify your account.' });
+      console.log(`[Email Registration Race Condition for ${normalizedEmail}]: Email already exists (Unique constraint).`);
+      return res.status(409).json({ code: 'EMAIL_ALREADY_EXISTS', message: 'Email is already registered to another account' });
     }
     console.error('Register error:', error);
     res.status(500).json({ message: 'Internal server error' });
@@ -352,8 +359,7 @@ exports.resendVerification = async (req, res) => {
     const verificationLink = `${frontendBase}/verify?token=${verificationTokenRaw}`;
     console.log(`[Resent Email Verification Link for ${normalizedEmail}]: ${verificationLink}`);
 
-    // Fire-and-forget
-    sendMail({
+    const verificationEmailSent = await sendMail({
       to: normalizedEmail,
       subject: 'Gửi lại mã xác minh tài khoản - Laptop Monitor',
       textFallback: `Vui lòng nhấp vào đường dẫn sau để xác minh tài khoản của bạn: ${verificationLink}`,
@@ -365,7 +371,14 @@ exports.resendVerification = async (req, res) => {
         <p>Đường dẫn này có hiệu lực trong vòng 24 giờ.</p>
         <p>Trân trọng,<br>Đội ngũ Laptop Monitor</p>
       `
-    }).catch(err => console.error(`[Email Error] Gửi email xác minh tới ${normalizedEmail} thất bại:`, err.message));
+    }).then(result => result?.sent !== false).catch(err => {
+      console.error(`[Email Error] Gửi email xác minh tới ${normalizedEmail} thất bại:`, err.message);
+      return false;
+    });
+
+    if (!verificationEmailSent) {
+      return res.status(503).json({ code: 'EMAIL_DELIVERY_FAILED', message: 'Verification email could not be sent. Please try again later.' });
+    }
 
     res.json({ message: 'Verification email resent successfully' });
   } catch (error) {

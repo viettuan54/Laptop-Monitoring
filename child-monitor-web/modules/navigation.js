@@ -91,7 +91,7 @@ function renderShell() {
       const item = parentNav.find(([itemPage]) => itemPage === page);
       return page === 'controls' ? [item[0], 'Điều khiển', item[2]] : item;
     });
-  const systemPages = ['account', 'api-lab'];
+  const systemPages = isAdmin ? ['account', 'api-lab'] : ['account'];
   const unreadAlerts = state.unreadAlertCount;
   const connectionLabel = state.connectionStatus === 'online'
     ? 'Backend đã kết nối'
@@ -116,7 +116,7 @@ function renderShell() {
           <div class="sidebar-footer">
             <button class="sidebar-profile" data-page="account">
               <span class="sidebar-avatar">AD</span>
-              <span><strong>Quản trị viên</strong><small>Mã #${escapeHtml(state.userId || '—')} · Bảo mật</small></span>
+              <span><strong>Quản trị viên</strong><small>${escapeHtml(state.userName || 'Chưa cập nhật họ tên')} · Bảo mật</small></span>
               <span class="sidebar-profile-arrow" aria-hidden="true">${icons.chevronRight}</span>
             </button>
           </div>
@@ -132,7 +132,7 @@ function renderShell() {
               <div class="user-menu">
                 <button class="avatar" data-action="toggle-user-menu" aria-label="Mở menu tài khoản" aria-controls="user-popover" aria-expanded="${state.userMenuOpen}">AD<i class="avatar-status" aria-hidden="true"></i></button>
                 <div class="user-popover ${state.userMenuOpen ? '' : 'hidden'}" id="user-popover">
-                  <div class="identity"><strong>Quản trị viên</strong><small>Mã người dùng #${escapeHtml(state.userId || '—')}</small></div>
+                  <div class="identity"><strong>Quản trị viên</strong><small>${escapeHtml(state.userName || 'Chưa cập nhật họ tên')}</small></div>
                   <button class="popover-button" data-page="account">Tài khoản & bảo mật</button>
                   <button class="popover-button danger" data-action="logout">Đăng xuất</button>
                 </div>
@@ -161,7 +161,6 @@ function renderShell() {
         <p class="side-section">Công cụ & bảo mật</p>
         <nav aria-label="Công cụ và bảo mật"><ul class="nav-list">
           ${navItem('account', 'Tài khoản', 'account')}
-          ${navItem('api-lab', 'Công cụ Agent', 'lab')}
         </ul></nav>
         <div class="sidebar-footer">
           <div class="security-note"><span class="security-note-icon">${icons.policy}</span><span><strong>Kết nối được bảo vệ</strong><small>Phiên đăng nhập và Device Secret chỉ được giữ tạm thời.</small></span></div>
@@ -180,7 +179,7 @@ function renderShell() {
             <div class="user-menu">
               <button class="avatar" data-action="toggle-user-menu" aria-label="Mở menu tài khoản" aria-controls="user-popover" aria-expanded="${state.userMenuOpen}">PH</button>
               <div class="user-popover ${state.userMenuOpen ? '' : 'hidden'}" id="user-popover">
-                <div class="identity"><strong>Phụ huynh</strong><small>Mã người dùng #${escapeHtml(state.userId || '—')}</small></div>
+                <div class="identity"><strong>Phụ huynh</strong><small>${escapeHtml(state.userName || 'Chưa cập nhật họ tên')}</small></div>
                 <button class="popover-button" data-page="account">Tài khoản & bảo mật</button>
                 <button class="popover-button" data-action="logout">Đăng xuất</button>
               </div>

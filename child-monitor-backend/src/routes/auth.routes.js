@@ -16,6 +16,7 @@ router.post('/register', registerLimiter, authController.register);
 router.post('/login', loginLimiter, authController.login);
 router.post('/admin-face', faceAuthLimiter, authController.verifyAdminFace);
 router.post('/logout', auth, authController.logout);
+router.get('/me', auth, authController.getProfile);
 
 // Email verification routes
 router.post('/verify', verifyEmailLimiter, authController.verifyEmail);

@@ -39,6 +39,7 @@ const { adminPool, backendPool, validateRlsConfiguration } = require('./src/conf
 const { cleanupExpiredTokens, cleanupExpiredRefreshTokens } = require('./src/utils/tokenBlacklist');
 const { initTransporter } = require('./src/utils/email');
 const { initializeRedis, closeRedis } = require('./src/config/redis');
+const { warmUpFaceRuntime } = require('./src/services/faceAuth.service');
 const {
   initializePushProviders,
   scheduleExpoReceiptProcessing,
@@ -82,6 +83,7 @@ async function bootstrap() {
     const publicScheme = process.env.NODE_ENV === 'production' ? 'https' : 'http';
     console.log(`🚀 Server ready behind ${publicScheme}://localhost:${PORT}`);
     console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+    void warmUpFaceRuntime();
     scheduleCleanup();
     scheduleExpoReceiptProcessing();
   });

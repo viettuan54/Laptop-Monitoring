@@ -70,6 +70,9 @@ async function handleSubmit(event) {
   const form = event.target;
   if (!(form instanceof HTMLFormElement)) return;
   event.preventDefault();
+  if (form.id === 'agent-request-form' && state.role !== 'admin') {
+    return toast('Không có quyền truy cập', 'Trang này chỉ dành cho quản trị viên.', 'error');
+  }
   if (['admin-create-user-form', 'admin-reset-face-form'].includes(form.id)) {
     if (form.dataset.pending === 'true') return;
     form.dataset.pending = 'true';
@@ -97,6 +100,11 @@ async function handleSubmit(event) {
       await completeLogin(result);
     } else if (form.id === 'register-form') {
       const result = await api('/auth/register', { method: 'POST', body: data, noAuth: true });
+      if (result.verificationEmailSent === false) {
+        toast('Chưa gửi được email xác minh', localizeError(result.message), 'error');
+        renderAuth('resend');
+        return;
+      }
       toast('Đã gửi yêu cầu đăng ký', localizeMessage(result.message));
       renderAuth('verify');
     } else if (form.id === 'forgot-form') {
@@ -275,6 +283,9 @@ async function handleClick(event) {
   const button = event.target.closest('[data-action]');
   if (!button) return;
   const { action, id } = button.dataset;
+  if (['set-agent-secret', 'clear-agent-secret', 'select-agent-endpoint'].includes(action) && state.role !== 'admin') {
+    return toast('Không có quyền truy cập', 'Trang này chỉ dành cho quản trị viên.', 'error');
+  }
   if (['run-analysis', 'latest-analysis', 'summary', 'retry-ai-history', 'retry-ai-analysis', 'retry-ai-summary'].includes(action)) return await handleAIAction(button);
   const mutationActions = new Set([
     'confirm-delete-screenshot',

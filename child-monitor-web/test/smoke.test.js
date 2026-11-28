@@ -67,6 +67,7 @@ test('static server, SPA fallback and API proxy work together', async (t) => {
 
   const index = await fetch(`http://127.0.0.1:${webPort}/`);
   assert.equal(index.status, 200);
+  assert.equal(index.headers.get('cache-control'), 'no-store');
   assert.equal(index.headers.get('x-content-type-options'), 'nosniff');
   assert.equal(index.headers.get('x-frame-options'), 'DENY');
   assert.equal(
@@ -81,6 +82,11 @@ test('static server, SPA fallback and API proxy work together', async (t) => {
   assert.match(contentSecurityPolicy, /frame-ancestors 'none'/);
   const html = await index.text();
   assert.match(html, /id="app"/);
+  for (const asset of ['app.js', 'modules/account.js', 'modules/navigation.js', 'styles.css']) {
+    const response = await fetch(`http://127.0.0.1:${webPort}/${asset}`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('cache-control'), 'no-cache', `${asset} must revalidate after a code update`);
+  }
   await promisify(execFile)(process.execPath, [
     '--experimental-vm-modules', path.join(__dirname, 'moduleEntry.js'), index.url,
   ]);

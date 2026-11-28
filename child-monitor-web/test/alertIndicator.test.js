@@ -43,6 +43,7 @@ function dashboard({ count = 0, page = 'devices', role = 'parent', request } = {
     localMonthKey: () => '2026-10', loadOverviewUsageSummary: async () => ({}),
     api: async route => {
       calls.push(route);
+      if (route === '/auth/me') return { user_id: 7, name: 'Nguyễn Minh Anh', role };
       if (route === '/admin/stats') {
         if (role === 'admin') return {};
         throw Object.assign(new Error('Parent session'), { status: 403 });
@@ -66,6 +67,7 @@ test('restored parent session shows badges on a direct device URL without openin
   await view.context.initialize();
   await flush();
   assert.deepEqual(view.navigations, ['devices']);
+  assert.equal(view.state.userName, 'Nguyễn Minh Anh');
   assert.deepEqual(view.badgeText(), ['7', '7', '7']);
   assert.equal(view.calls.filter(route => route.includes('is_read=false')).length, 1);
   assert.equal(view.intervals.size, 1);
@@ -84,6 +86,9 @@ test('login starts refreshing once and admin sessions do not fetch parent alerts
   const admin = dashboard({ role: 'admin' });
   await admin.context.initialize();
   await flush();
+  assert.equal(admin.state.userName, 'Nguyễn Minh Anh');
+  admin.context.clearSession();
+  assert.equal(admin.state.userName, '');
   assert.equal(admin.intervals.size, 0);
   assert.equal(admin.calls.some(route => route.startsWith('/alerts')), false);
 });
